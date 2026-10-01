@@ -53,7 +53,7 @@ Client name: RAE Attendance System V2.
 | Signout | `https://sso.mju.ac.th/signout.aspx?cid=<client id>` | **CONFIRMED** |
 | Token URL | — | **UNKNOWN** |
 | Userinfo URL | — | **UNKNOWN** |
-| Callback query (`code` vs `sso_token`) | — | **UNKNOWN** |
+| Callback query | `GET` with one field `ac`, length 32, no body | **CONFIRMED** shape. Meaning of `ac` is **UNKNOWN**. |
 
 When `SSO_SIGNIN_URL` is set, `GET /api/v1/auth/sso/login` redirects to that URL with **only** `cid`. Logout JSON includes `signoutUrl` built the same way. Portal-mode callback stays `503` `SSO_NOT_READY` until the query contract is proven. Mock OAuth tests do not set the signin URL, so they still exercise code and state.
 
@@ -96,7 +96,7 @@ Do **not** reuse `/attendance/api/...` or the legacy client.
 
 ## Blockers
 
-- The V2 callback URL is registered. The query contract is **not** confirmed. See `docs/SSO_CONTRACT_CONFIRMATION.md`.
+- The V2 callback URL is registered. The query shape is `GET` `ac` (length 32). What `ac` means, and how it becomes an identity, is **unknown**. See `docs/SSO_CONTRACT_CONFIRMATION.md`.
 - Split URL env vars vs donor `SSO_ENDPOINT` contract is **unknown**.
 - Until confirmed: runtime returns `SSO_DISABLED` or `SSO_NOT_READY`; HTTP provider must not be used against production MJU in CI.
 
