@@ -4,8 +4,8 @@ Legacy forensic recovery is stopped. Further inspection of the legacy tree happe
 
 ## Now
 
-1. Keep this repository as the canonical V2 codebase.
-2. Leave the legacy host, nginx, PM2, Docker attendance image, and production database unchanged.
+1. Keep this repository as the canonical V2 codebase (**GitHub-first / VPS-last** — see `PROJECT_DIRECTION.md`).
+2. Leave the legacy host, nginx, PM2, Docker attendance image, and production database unchanged until an approved cutover.
 3. Implement Release 1 against `/api/v1` using the contract in `API_CONTRACT.md`.
 4. Treat legacy production database files as **recovery evidence only**. Any restore path goes through an isolated lab and a logical export into a clean V2 database (`docs/DB_RECOVERY_LAB_REPORT.md`, operator steps in `docs/DB_RECOVERY_EXECUTION_RUNBOOK.md`).
 5. Prepare SSO activation using `docs/SSO_ACTIVATION_CHECKLIST.md` — keep `SSO_ENABLED=false` until MJU confirms the V2 callback and endpoint URLs.

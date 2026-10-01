@@ -1,6 +1,6 @@
 # DB recovery execution runbook
 
-Date: 2026-10-01. **Operator execution guide.** No production datadir writes. Work only on **copied** evidence on an isolated lab host.
+Date: 2026-10-01. **Operator execution guide (VPS-last).** Scripts and DDL are maintained in GitHub; run on the VPS only after approval when CI cannot substitute. No production datadir writes. Work only on **copied** evidence on an isolated lab host.
 
 ## Scope and references
 

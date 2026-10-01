@@ -1,0 +1,10 @@
+.git
+.github
+frontend/node_modules
+backend/node_modules
+frontend/dist
+**/*.md
+docs
+database/recovery-lab
+.env
+.env.*

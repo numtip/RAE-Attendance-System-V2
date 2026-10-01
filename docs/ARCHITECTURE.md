@@ -9,15 +9,17 @@ browser
        controllers
        services
        repositories
-       MariaDB (existing production schema, later, read through a reviewed connection)
+       fixtures (default) | clean V2 MariaDB (migrations) | legacy recovery import (later)
 ```
+
+Development and CI use **fixtures** or disposable DB containers — not the broken production database.
 
 ## Backend
 
 - `backend/src/app.js` builds the Express app.
 - `backend/src/server.js` binds `127.0.0.1` and port `3210` by default. On the legacy host, `3000` is the old attendance port and `3100` is already taken by another service.
 - `backend/src/api/v1` is the only HTTP namespace.
-- Controllers, services, and repositories are reserved directories. Release 1 routes other than health return `501`.
+- Controllers, services, and repositories implement Release 1 against fixture data by default.
 
 ## Frontend
 
