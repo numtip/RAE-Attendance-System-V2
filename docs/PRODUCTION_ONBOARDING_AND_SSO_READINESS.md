@@ -57,7 +57,7 @@ Mock tests cover a valid callback, invalid and reused state, missing claims, unk
 2. Legacy InnoDB recovery is still a separate problem and is not a source.
 3. MJU has not confirmed the callback, endpoints, scopes, or claims.
 4. SSO `state` is in memory, so more than one API process needs a shared store before go-live.
-5. Success redirect is `{APP_URL}/?sso=success`. Aligning that path with the public SPA is an operator step, not guessed here.
+5. The callback redirects to `{APP_URL}/?sso=success` and does not give the browser the access or refresh token. A live login is blocked until that handoff is specified. Aligning the path with the public SPA is a separate operator step.
 
 ## Remaining VPS tasks (not done here)
 
