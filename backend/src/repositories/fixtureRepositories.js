@@ -26,6 +26,9 @@ function createFixtureRepositories() {
         return true;
       },
     },
+    authLogs: {
+      async append() {},
+    },
   };
 }
 

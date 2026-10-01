@@ -9,7 +9,7 @@ const { createApp } = require('../src/app');
 const { EmployeeRepository } = require('../src/repositories/employeeRepository');
 const { AttendanceRepository } = require('../src/repositories/attendanceRepository');
 const { LeaveRepository } = require('../src/repositories/leaveRepository');
-const { createMariaDbRepositories } = require('../src/repositories/mariadbRepositories');
+const { createMariaDbRepositories, isDatabaseConfigured } = require('../src/repositories/mariadbRepositories');
 const { createSsoService } = require('../src/services/ssoService');
 const fixtures = require('../src/dev/fixtures');
 
@@ -57,8 +57,17 @@ test('repositories read fixtures and hide password hashes', async () => {
   assert.equal((await leave.balance(userUid, 2026))[0].remainingDays, 5);
 });
 
-test('mariadb adapter is blocked and does not open a connection', async () => {
-  const repos = createMariaDbRepositories();
+test('mariadb adapter is blocked when database env is not configured', async (t) => {
+  if (isDatabaseConfigured()) {
+    t.skip('DB_HOST, DB_NAME, and DB_USER are set in this environment');
+  }
+  const repos = createMariaDbRepositories({
+    host: '',
+    name: '',
+    user: '',
+    password: '',
+    port: 3306,
+  });
   await assert.rejects(
     () => repos.employees.findByEmail('user@example.test'),
     (err) => err.code === 'DB_UNAVAILABLE' && err.status === 503,
