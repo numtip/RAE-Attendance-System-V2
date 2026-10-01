@@ -1,0 +1,40 @@
+# Disposable local stack — not production. MariaDB + optional API smoke.
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: rae-v2-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: attendance_v2
+      MARIADB_USER: attendance
+      MARIADB_PASSWORD: attendance
+    ports:
+      - "3307:3306"
+    volumes:
+      - rae_v2_mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    profiles: ['api']
+    build:
+      context: ..
+      dockerfile: deploy/docker/backend/Dockerfile
+    container_name: rae-v2-backend
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      PORT: '3210'
+      HOST: 0.0.0.0
+      DATA_SOURCE: fixture
+      JWT_SECRET: dev-only-change-me
+    ports:
+      - '3210:3210'
+
+volumes:
+  rae_v2_mariadb_data:

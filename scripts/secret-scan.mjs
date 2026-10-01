@@ -6,7 +6,14 @@ const files = execSync('git ls-files', { encoding: 'utf8' })
   .map((line) => line.trim())
   .filter(Boolean);
 
-const blockedName = /(\.env$|\.pem$|\.key$|service-account|id_rsa|\.sql$|\.dump$)/i;
+const blockedName = /(\.env$|\.pem$|\.key$|service-account|id_rsa|\.dump$)/i;
+
+function isBlockedSqlPath(file) {
+  if (!/\.sql$/i.test(file)) return false;
+  if (file.startsWith('database/migrations/')) return false;
+  if (file.startsWith('database/seeds/')) return false;
+  return true;
+}
 const blockedContent = [
   /BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY/,
   /AKIA[0-9A-Z]{16}/,
@@ -16,7 +23,7 @@ const blockedContent = [
 const failures = [];
 
 for (const file of files) {
-  if (blockedName.test(file)) {
+  if (blockedName.test(file) || isBlockedSqlPath(file)) {
     failures.push(`${file}: blocked filename`);
     continue;
   }

@@ -1,0 +1,20 @@
+CREATE TABLE daily_attendance (
+  id INT(11) NOT NULL AUTO_INCREMENT,
+  employee_uid VARCHAR(36) NOT NULL,
+  date DATE NOT NULL,
+  check_in DATETIME DEFAULT NULL,
+  check_out DATETIME DEFAULT NULL,
+  is_late TINYINT(1) NOT NULL DEFAULT 0,
+  late_minutes INT(11) NOT NULL DEFAULT 0,
+  work_duration DECIMAL(5, 2) NOT NULL DEFAULT 0.00,
+  is_leave TINYINT(1) NOT NULL DEFAULT 0,
+  leave_type ENUM('sick', 'personal', 'vacation', 'other') DEFAULT NULL,
+  status ENUM('present', 'late', 'absent', 'leave', 'holiday') NOT NULL,
+  notes TEXT DEFAULT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_daily_attendance_employee_uid (employee_uid),
+  KEY idx_daily_attendance_date (date),
+  KEY idx_daily_attendance_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
