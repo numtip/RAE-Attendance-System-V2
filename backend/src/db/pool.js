@@ -31,6 +31,7 @@ function getPool(database = config.database) {
       password: database.password,
       waitForConnections: true,
       connectionLimit: 10,
+      connectTimeout: 10_000,
       timezone: 'Z',
     });
   }
