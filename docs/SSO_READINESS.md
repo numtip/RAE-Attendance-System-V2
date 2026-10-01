@@ -120,7 +120,7 @@ Prepared chain (tests only, not HTTP): `ssoIdentityChainService.issueSessionFrom
 
 ## Blockers
 
-- The V2 callback URL is registered. The query shape is `GET` `ac` (length 32). What `ac` means, and how it becomes an identity, is **unknown**. See `docs/SSO_CONTRACT_CONFIRMATION.md`.
+- The V2 callback URL is registered. The query shape is `GET` `ac` (length 32). What `ac` means, and how it becomes an identity, is **unknown**. See `docs/SSO_CONTRACT_CONFIRMATION.md` and **`docs/SSO_SUBJECT_CONTRACT_INTEGRATION_CHECKLIST.md`** (facts still required from MJU).
 - Split URL env vars vs donor `SSO_ENDPOINT` contract is **unknown**.
 - Until confirmed: runtime returns `SSO_DISABLED` or `SSO_NOT_READY`; HTTP provider must not be used against production MJU in CI.
 

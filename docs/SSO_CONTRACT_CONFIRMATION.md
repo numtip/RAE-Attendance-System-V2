@@ -4,6 +4,8 @@ Reviewed 2026-10-01 from public pages and the V2 repository. No username or pass
 
 **MJU subject contract is still UNKNOWN;** `backend/src/services/sso/mjuSubjectAdapter.js` is fail-closed (`extractVerifiedSubject` → `status: unknown`) until MJU documents the immutable subject claim and operators set `SSO_SUBJECT_CONTRACT_CONFIRMED=true`. Callback query field `ac` (32 chars) is **not** treated as identity.
 
+Integration gate checklist: `docs/SSO_SUBJECT_CONTRACT_INTEGRATION_CHECKLIST.md`.
+
 Sources:
 
 - V2 code and docs on `main` (`ssoService.js`, `SSO_READINESS.md`, `SSO_REUSE_PLAN.md`)

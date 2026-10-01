@@ -65,17 +65,21 @@ approved → revoked
 
 Ambiguous, `not_found`, timeout, or fallback enrichment outcomes **must not** auto-approve. See `docs/SSO_PERSON_ENRICHMENT_INTEGRATION.md`.
 
-## Authentication chain (future runtime)
+## Authentication chain (locked architecture; HTTP callback not wired)
 
 ```text
-MJU SSO subject
+MJU callback (HTTP route exists; chain not connected)
+  → extractVerifiedSubject()
+  → IdentityResolutionService.resolve()
   → approved identity link
   → active employee
-  → RBAC / data scope (authorization grants)
-  → V2 session
+  → RBAC / data scope (authorization grants, per request)
+  → V2 session (JWT + refresh)
 ```
 
-Any missing or invalid step **fail closed** (no session).
+`ssoIdentityChainService.issueSessionFromVerifiedInput()` implements the steps after extraction for **tests and future wiring only**. `ssoService.handleCallback` does **not** call it while `SSO_SUBJECT_CONTRACT_CONFIRMED=false`.
+
+Any missing or invalid step **fail closed** (no session). See `docs/SSO_SUBJECT_CONTRACT_INTEGRATION_CHECKLIST.md`.
 
 ## Code
 
