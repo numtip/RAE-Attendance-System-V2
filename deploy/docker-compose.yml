@@ -1,5 +1,5 @@
-# Disposable local / staging stack — not production. MariaDB + API + SPA.
-# From repo root: docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
+# Disposable local / staging stack — not production. MariaDB + migrate + API + SPA.
+# From repo root: npm run staging:up   (or docker compose -f deploy/docker-compose.yml up -d --build --wait)
 
 services:
   mariadb:
@@ -21,6 +21,24 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    image: node:20-alpine
+    container_name: rae-v2-migrate
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: mariadb
+      MYSQL_PORT: '3306'
+      MYSQL_USER: ${MARIADB_USER:-attendance}
+      MYSQL_PASSWORD: ${MARIADB_PASSWORD:-attendance}
+      MYSQL_DATABASE: ${MARIADB_DATABASE:-attendance_v2}
+    command: sh -c "npm ci && npm run db:migrate:seed"
+    restart: 'no'
+
   backend:
     build:
       context: ..
@@ -28,8 +46,8 @@ services:
     container_name: rae-v2-backend
     restart: unless-stopped
     depends_on:
-      mariadb:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       PORT: '3210'
@@ -71,6 +89,12 @@ services:
         condition: service_healthy
     ports:
       - '${COMPOSE_FRONTEND_PORT:-8080}:8080'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   rae_v2_mariadb_data:

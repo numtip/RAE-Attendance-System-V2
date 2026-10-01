@@ -10,7 +10,10 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:migrate:seed": "node scripts/migrate.mjs --seed",
     "db:hash-dev-password": "node scripts/hash-dev-password.mjs",
-    "contract:smoke": "node scripts/contract-smoke.mjs"
+    "contract:smoke": "node scripts/contract-smoke.mjs",
+    "compose:smoke": "node scripts/compose-smoke.mjs",
+    "staging:up": "docker compose -f deploy/docker-compose.yml up -d --build --wait",
+    "staging:down": "docker compose -f deploy/docker-compose.yml down -v"
   },
   "devDependencies": {
     "bcryptjs": "^3.0.3",
