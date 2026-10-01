@@ -15,7 +15,8 @@ Legacy forensic recovery has stopped. The legacy host is left unchanged.
 - `backend/` Node.js API under `/api/v1/`
 - `frontend/` Vue 3 + Vite + TypeScript shell
 - `database/` future migrations; `database/recovery-lab/` isolated InnoDB recovery scripts (lab copies only)
-- `docs/` direction, contract, schema, migration, recovery runbook, and SSO activation
+- `agent/jev/` Jev decision layer (OpenRouter, agent-only — not HTTP API)
+- `docs/` direction, contract, schema, migration, recovery runbook, SSO, and agent policy
 
 ## Local checks
 
@@ -23,6 +24,7 @@ Use Node.js 20 or newer.
 
 ```bash
 cd backend && npm ci && npm test && npm run lint
+cd agent && npm test
 cd frontend && npm ci && npm run build
 node scripts/secret-scan.mjs
 docker build -f deploy/docker/backend/Dockerfile .

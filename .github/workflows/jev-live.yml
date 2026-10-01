@@ -1,0 +1,43 @@
+name: Jev live (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      use_case:
+        description: Jev use case id
+        required: true
+        default: architecture_review
+
+jobs:
+  jev-live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Live OpenRouter decision (optional)
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          USE_CASE: ${{ inputs.use_case }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "OPENROUTER_API_KEY secret not configured — skipping live test."
+            exit 0
+          fi
+          node -e "
+          const { createJevDecisionsFromEnv } = require('./agent/jev/decisions');
+          (async () => {
+            const api = createJevDecisionsFromEnv();
+            if (!api) { console.log('No API'); process.exit(0); }
+            const result = await api.decide({
+              useCase: process.env.USE_CASE,
+              context: { summary: 'Manual workflow smoke test' },
+            });
+            console.log(JSON.stringify({
+              decision: result.decision,
+              risk: result.risk,
+              requires_human_approval: result.requires_human_approval,
+            }));
+          })();
+          "

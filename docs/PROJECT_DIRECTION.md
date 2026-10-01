@@ -55,6 +55,11 @@ Recovery scripts and runbooks live in this repo; **execution** on `10.1.245.190`
 - Frontend build
 - Secret scan
 - Backend container image build (`deploy/docker/backend/Dockerfile`)
+- Jev agent layer tests (mock OpenRouter — no API key)
+
+### Agent Jev decision layer
+
+Jev supports **agent-only** planning and reviews via OpenRouter (`OPENROUTER_API_KEY`). Default model alias is in code (`openrouter/jev:latest`); not on the Attendance API path. Policy: `docs/AGENT_JEV_POLICY.md`.
 
 ## Legacy database runtime decision
 

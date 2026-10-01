@@ -1,0 +1,12 @@
+{
+  "name": "rae-attendance-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Jev agent decision layer (not on Attendance request path)",
+  "scripts": {
+    "test": "node --test jev/tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
