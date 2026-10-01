@@ -4,7 +4,9 @@ V2 reuses the production schema. It does not create a second attendance model in
 
 ## Blocker
 
-`employees` does not open in the storage engine (`ERROR 1932`) even though `information_schema` still lists its columns. Views that depend on it fail the same way. Release 1 must not pretend it can query live rows until that is investigated and fixed under a separate approval. This repository does not run `REPAIR` or any write.
+`ERROR 1932` is proven for the whole schema, not only `employees`. On 2026-06-02 the InnoDB system tablespace was reinitialized while the `.frm` and `.ibd` files stayed on disk. Details are in `DB_EMPLOYEES_1932_INVESTIGATION.md`.
+
+Release 1 code uses repository interfaces. Tests and the default process use fixtures. The MariaDB adapter does not connect and reports `DB_UNAVAILABLE`. Do not repair or replace the production tables from this repository.
 
 ## Reuse
 
