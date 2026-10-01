@@ -44,19 +44,21 @@ The current schema has `employees.department` and `employees.role` (`admin`, `ma
 
 **PARTIAL.**
 
-A read-only pass of `https://raeservice.mju.ac.th/attendance/` confirmed the legacy UI entry `/attendance/api/auth/sso/login` (live response HTML 200), callback query `sso_token`, `GET /attendance/api/auth/sso/me`, and logout via `POST` plus `https://sso.mju.ac.th/signout.aspx`. Authorize, token, and userinfo URLs remain **UNKNOWN**. The `cid` parameter on sign-out is not a V2 client id.
+MJU registration for client **RAE Attendance System V2** is **CONFIRMED**. Client id `a46a0b5374b4404a9f71a2397dcab283`, callback `https://raeservice.mju.ac.th/api/v1/auth/sso/callback`, signin `https://sso.mju.ac.th/signin.aspx?cid=<client id>`, signout `https://sso.mju.ac.th/signout.aspx?cid=<client id>`, after signout `https://raeservice.mju.ac.th/attendance-v2/`. The legacy public bundle `cid` is a different client and is not used.
+
+Token URL, userinfo URL, and the callback query shape remain **UNKNOWN**. Portal-mode callback fails closed. `SSO_ENABLED` stays `false`.
 
 | Item | Status |
 |---|---|
-| Proposed callback `https://raeservice.mju.ac.th/api/v1/auth/sso/callback` | Written down. **Not confirmed** with MJU. Legacy UI does not use this path. |
-| Authorization URL | **UNKNOWN** (no redirect observed) |
+| Callback | **CONFIRMED** |
+| Client ID | **CONFIRMED** in `.env.example`. Secret stays empty |
+| Signin / signout | **CONFIRMED** bases. Code adds only `cid` |
 | Token URL | **UNKNOWN** |
 | Userinfo URL | **UNKNOWN** |
-| Scopes | Default `openid profile email` is an assumption |
-| Client ID / secret | **UNKNOWN** values. Secret stays empty in git. |
 | Required claims | Code tries `email`, `mail`, `preferred_username`. MJU claim is **UNKNOWN.** |
 | Employee match | `employees.email`, fail closed |
-| `SSO_ENABLED` | Must stay `false` |
+| `SSO_ENABLED` | `false` |
+| `SSO_CALLBACK_CONFIRMED` | `true` in the example contract only. Live host env is unchanged |
 
 Mock tests cover a valid callback, invalid and reused state, missing claims, unknown employee, disabled employee, provider timeout, a token body without `access_token`, and a userinfo HTTP error.
 
@@ -64,14 +66,14 @@ Mock tests cover a valid callback, invalid and reused state, missing claims, unk
 
 1. No evidenced employee, attendance, or leave extract.
 2. Legacy InnoDB recovery is still a separate problem and is not a source.
-3. MJU has not confirmed the callback, endpoints, scopes, or claims.
+3. MJU confirmed the client, callback, signin, and signout. Token URL, userinfo URL, callback query, and claims are still unconfirmed.
 4. SSO `state` is in memory, so more than one API process needs a shared store before go-live.
 5. The callback redirects to `{APP_URL}/?sso=success` and does not give the browser the access or refresh token. A live login is blocked until that handoff is specified. Aligning the path with the public SPA is a separate operator step.
 
 ## Remaining VPS tasks (not done here)
 
 1. After PR merge, deploy the chosen SHA through the existing release path. Do not hot-edit the live tree.
-2. Keep `SSO_ENABLED=false` and `SSO_CALLBACK_CONFIRMED=false`.
+2. Keep `SSO_ENABLED=false` on the host until a controlled live test. Do not copy this PR's example flag onto the running container as part of a deploy.
 3. When a source is evidenced, run the dry-run on that file **off** the server or against a copy, then request a separate import window.
 4. Do not point the importer at the legacy MariaDB data directory.
 
@@ -82,5 +84,5 @@ Mock tests cover a valid callback, invalid and reused state, missing claims, unk
 | Named source, checksum, and owner | Any import into `attendance_v2` |
 | Dry-run validation and reconcile pass | The same import |
 | Explicit import approval | SQL writes |
-| MJU callback and URL confirmation | `SSO_CALLBACK_CONFIRMED=true` |
+| Proven callback query plus token handoff | `SSO_ENABLED=true` |
 | One controlled live login, then disable drill | `SSO_ENABLED=true` |

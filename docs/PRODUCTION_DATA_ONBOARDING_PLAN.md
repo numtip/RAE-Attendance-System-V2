@@ -46,7 +46,7 @@ Rejected forever at this layer:
 
 `refresh_tokens` and `auth_logs` stay empty until a person logs in on V2. `system_logs` is not an import target.
 
-Role and org scope use `authorization_grants` and `employee_org_membership`. Codes are opaque. The importer does not derive a manager's staff from `department` or from any guessed unit tree. See `docs/DATA_MAPPING.md`.
+An import that is later used for SSO must carry identity mapping (`employees.email`), employee code (`employee_id`), org unit (`employee_org_membership.org_unit_code`), role and manager scope (`authorization_grants`), and account status (`employees.status`). Role and org scope use opaque codes. The importer does not derive a manager's staff from `department` or from any guessed unit tree. See `docs/DATA_MAPPING.md`.
 
 ## 3. Quality gates
 

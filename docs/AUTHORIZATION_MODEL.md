@@ -32,4 +32,4 @@ No unit names are seeded. A code is valid only when an evidenced import supplies
 
 `backend/src/services/authorizationService.js` resolves the JWT `employeeUid` and role. Repositories then return rows, and the service drops anything outside the resolved set. Daily attendance for a whole date is rejected with 403 unless the caller has an organization grant or at least one org-unit grant.
 
-Frontend role checks in the legacy bundle (`isAdmin`, `isManager`) are not copied as security.
+The SPA may hide a control. That is UX. The review fixture refuses another person's attendance and leave with 403 and does not treat `admin` or `manager` as organization-wide access. Legacy bundle checks (`isAdmin`, `isManager`) are not security.

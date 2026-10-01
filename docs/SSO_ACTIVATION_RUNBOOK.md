@@ -16,7 +16,7 @@ Observed on 2026-10-01 from `https://raeservice.mju.ac.th/attendance/` and the b
 | OAuth `state` | **UNKNOWN** | The public bundle does not create or check an OAuth `state` parameter. |
 | After callback, `/me` | **CONFIRMED** | `GET /attendance/api/auth/sso/me` with `Authorization: Bearer <sso_token>` and `withCredentials`. A second call omits the bearer and relies on cookies. Expected JSON is `{ success, data }`. |
 | Password `/me` | **CONFIRMED** | `GET` path built as `/attendance/api/auth/me` via the same prefix helper. |
-| Logout | **CONFIRMED** | Clears `localStorage`, `POST /attendance/api/auth/sso/logout` with credentials, then navigates to `https://sso.mju.ac.th/signout.aspx` with a `cid` query parameter. That host is a sign-out page, not an authorize, token, or userinfo URL. Do not copy `cid` into `SSO_CLIENT_ID`. |
+| Logout | **CONFIRMED** | Clears `localStorage`, `POST /attendance/api/auth/sso/logout` with credentials, then navigates to `https://sso.mju.ac.th/signout.aspx` with a `cid` query parameter. That legacy `cid` is not the V2 client id. |
 | Identity key | **UNKNOWN** | `user_not_found` is a frontend error code. The bundle does not show whether the legacy server matches email, employee id, or another claim. |
 | Frontend role checks | **CONFIRMED** as UX only | `isAdmin` is `role === "admin"`. `isManager` is admin or manager. `requiresAdmin` routes redirect to the dashboard with `error=insufficient_permissions`. This is not server enforcement. |
 | Authorize / token / userinfo URLs | **UNKNOWN** | Not present in the bundle and not observed as a redirect. |
@@ -25,10 +25,10 @@ Observed on 2026-10-01 from `https://raeservice.mju.ac.th/attendance/` and the b
 
 | Step | Legacy public behavior | V2 `/api/v1/auth/sso/*` |
 |---|---|---|
-| Login | Browser navigates to `/attendance/api/auth/sso/login` (currently HTML) | `GET /api/v1/auth/sso/login` redirects to the configured authorize URL with `state`, or 403 while SSO is disabled |
+| Login | Browser navigates to `/attendance/api/auth/sso/login` (currently HTML) | `GET /api/v1/auth/sso/login` redirects to `SSO_SIGNIN_URL?cid=<SSO_CLIENT_ID>` when the signin URL is set, otherwise to the OAuth authorize URL. `403` while SSO is disabled |
 | Callback | Query `sso_token` becomes the bearer token. No `state` in the bundle | `GET /api/v1/auth/sso/callback` expects `code` and `state`, then redirects to `{APP_URL}/?sso=success` **without** putting tokens on the URL |
 | Me | `GET /attendance/api/auth/sso/me` | `GET /api/v1/auth/sso/me` with the V2 access token |
-| Logout | POST legacy logout, then MJU `signout.aspx` | `POST /api/v1/auth/sso/logout` revokes the V2 refresh token only. No IdP sign-out |
+| Logout | POST legacy logout, then MJU `signout.aspx` | `POST /api/v1/auth/sso/logout` revokes the V2 refresh token and returns `signoutUrl` as `SSO_SIGNOUT_URL?cid=<SSO_CLIENT_ID>` |
 | Identity vs authorization | Frontend role strings are UX | SSO maps an email claim onto `employees`. Data scope is a separate authorization check |
 
 ## What is known
@@ -36,7 +36,10 @@ Observed on 2026-10-01 from `https://raeservice.mju.ac.th/attendance/` and the b
 | Item | Value | Evidence |
 |---|---|---|
 | V2 routes | `GET /api/v1/auth/sso/login`, `GET /api/v1/auth/sso/callback`, `GET /api/v1/auth/sso/me`, `POST /api/v1/auth/sso/logout` | `docs/SSO_READINESS.md` |
-| Proposed production callback | `https://raeservice.mju.ac.th/api/v1/auth/sso/callback` | Proposed in `docs/SSO_ACTIVATION_CHECKLIST.md`. **Not confirmed registered.** |
+| Registered callback | `https://raeservice.mju.ac.th/api/v1/auth/sso/callback` | **CONFIRMED** MJU registration |
+| Client ID | `a46a0b5374b4404a9f71a2397dcab283` | **CONFIRMED**. Public value. Not a secret |
+| Signin | `https://sso.mju.ac.th/signin.aspx?cid=<client id>` | **CONFIRMED**. Code adds only `cid` |
+| Signout | `https://sso.mju.ac.th/signout.aspx?cid=<client id>` | **CONFIRMED**. After-signout URL is `https://raeservice.mju.ac.th/attendance-v2/` and is not appended |
 | Donor routes | `/api/auth/sso/login`, `/callback`, `/me`, `POST /logout` | `docs/SSO_REUSE_PLAN.md` |
 | Donor env names read by legacy code | `SSO_ENABLED`, `SSO_ENDPOINT`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`, `SSO_CALLBACK_URL` | Same doc. Values are not in git. |
 | Host env names not read by donor code | `SSO_AUTHORIZATION_URL`, `SSO_TOKEN_URL`, `SSO_USER_INFO_URL`, `SSO_REDIRECT_URI` | Names only. Values are not in git. |
@@ -48,11 +51,11 @@ Observed on 2026-10-01 from `https://raeservice.mju.ac.th/attendance/` and the b
 
 | Item | Why it stays unknown |
 |---|---|
-| Authorization URL | Donor `SSO_ENDPOINT` and host `SSO_AUTHORIZATION_URL` were not proven to be the same URL. No URL value is in the repo. |
+| Token and userinfo URLs | Signin and signout are portal pages. Token and userinfo URLs were not in the registration. |
 | Token URL | Host had the env name. The value is not in the repo. |
 | Userinfo URL | Host had the env name. The value is not in the repo. |
 | Scopes | V2 default `openid profile email` is documented as an assumption in `SSO_READINESS.md`. |
-| Client ID | Name exists. Value must come from MJU and must not be committed. |
+| Client secret | Not part of the confirmed registration. Stays empty in git. |
 | Required claims | Code accepts `email`, `mail`, or `preferred_username`. MJU has not confirmed which claim it sends. |
 | Registered legacy callback | `SSO_CALLBACK_URL` / `SSO_REDIRECT_URI` values were not recorded. Do not assume they equal the V2 path. |
 | Post-login browser path | The controller redirects to `{APP_URL}/?sso=success` and drops the tokens `handleCallback` returned. The browser does not receive an access or refresh token. How the SPA should pick up that session is **UNKNOWN** and blocks a live test. |

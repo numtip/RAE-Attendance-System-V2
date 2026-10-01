@@ -288,6 +288,62 @@ test('contract: unknown employee rejects the callback', async () => {
   );
 });
 
+test('contract: missing employee mapping does not fall back to employee_id', async () => {
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { access_token: 'provider-token' } },
+      { body: { employee_id: 'E-USER' } },
+    ]),
+    (err) => err.code === 'SSO_USER_UNKNOWN',
+  );
+});
+
+test('MJU signin and signout use only the cid parameter', async () => {
+  const clientId = 'a46a0b5374b4404a9f71a2397dcab283';
+  const repositories = createFixtureRepositories();
+  const ssoConfig = {
+    ...baseSsoConfig,
+    provider: 'http',
+    signinUrl: 'https://sso.mju.ac.th/signin.aspx',
+    signoutUrl: 'https://sso.mju.ac.th/signout.aspx',
+    clientId,
+    authorizationUrl: '',
+    tokenUrl: '',
+    userInfoUrl: '',
+    clientSecret: '',
+  };
+  const ssoService = createSsoService({
+    config: { jwt: baseJwtConfig, sso: ssoConfig },
+    repositories,
+  });
+  const loginUrl = new URL(await ssoService.beginLogin());
+  assert.equal(`${loginUrl.origin}${loginUrl.pathname}`, 'https://sso.mju.ac.th/signin.aspx');
+  assert.deepEqual([...loginUrl.searchParams.keys()], ['cid']);
+  assert.equal(loginUrl.searchParams.get('cid'), clientId);
+
+  await assert.rejects(
+    () => ssoService.handleCallback({ code: 'mock-auth-code', state: 'unused' }),
+    (err) => err.code === 'SSO_NOT_READY',
+  );
+
+  const employee = await repositories.employees.findByEmail('user@example.test');
+  await repositories.refreshTokens.save({
+    token: 'portal-refresh',
+    employeeUid: employee.employeeUid,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    revokedAt: null,
+  });
+  const loggedOut = await ssoService.logout({
+    refreshToken: 'portal-refresh',
+    auth: { employeeUid: employee.employeeUid },
+  });
+  const signoutUrl = new URL(loggedOut.signoutUrl);
+  assert.equal(loggedOut.revoked, true);
+  assert.equal(`${signoutUrl.origin}${signoutUrl.pathname}`, 'https://sso.mju.ac.th/signout.aspx');
+  assert.deepEqual([...signoutUrl.searchParams.keys()], ['cid']);
+  assert.equal(signoutUrl.searchParams.get('cid'), clientId);
+});
+
 test('contract: disabled employee rejects the callback', async () => {
   const repositories = createFixtureRepositories();
   const previous = repositories.employees.findByEmail.bind(repositories.employees);

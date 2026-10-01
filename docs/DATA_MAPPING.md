@@ -4,6 +4,19 @@ Targets are the V2 tables created by migrations 001–010. Source column names f
 
 Transforms below are what `scripts/data-onboarding/lib.mjs` does to a JSON bundle. They are not permission to load production.
 
+## Identity and access fields the importer must be able to carry
+
+| Need | Target | Rule |
+|---|---|---|
+| Identity mapping | `employees.email` | V2 SSO matches this column. The MJU claim name is still unknown. |
+| Employee code | `employees.employee_id` | Natural key in the file. Not a session key. |
+| Org unit | `employee_org_membership.org_unit_code` | Opaque code. `department` is not a hierarchy. |
+| Role | `authorization_grants.role` | `EXECUTIVE`, `MANAGER`, `EMPLOYEE`, `ADMIN`. |
+| Manager scope | `authorization_grants` with `scope_type=org_unit` | No invented parent unit. |
+| Account status | `employees.status` | `active`, `inactive`, `resigned`. Inactive SSO login is refused. |
+
+Do not import old sessions, refresh tokens, or auth secrets. Those columns are dropped.
+
 ## employees
 
 | Source field | Target field | Transform | Required | Validation | Duplicate policy | Null / default |
