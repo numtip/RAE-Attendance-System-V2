@@ -191,6 +191,14 @@ async function main() {
     console.log(`contract-smoke: ok (${routes.length} API_CONTRACT paths, DATA_SOURCE=${process.env.DATA_SOURCE})`);
   } finally {
     server.close();
+    if (process.env.DATA_SOURCE === 'mariadb') {
+      try {
+        const { closePool } = require(join(root, 'backend', 'src', 'db', 'pool.js'));
+        await closePool();
+      } catch {
+        // ignore if pool was never opened
+      }
+    }
   }
 }
 
