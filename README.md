@@ -4,6 +4,10 @@ Rebuild of the RAE attendance API and Vue client from verified contracts and the
 
 Canonical repository: https://github.com/numtip/RAE-Attendance-System-V2
 
+## Development policy
+
+**GitHub-first / VPS-last** — build and test in this repo and CI. VPS `10.1.245.190` is for approved recovery, production validation, live SSO QA, and cutover only. See `docs/PROJECT_DIRECTION.md`.
+
 Legacy forensic recovery has stopped. The legacy host is left unchanged.
 
 ## Layout
@@ -21,7 +25,10 @@ Use Node.js 20 or newer.
 cd backend && npm ci && npm test && npm run lint
 cd frontend && npm ci && npm run build
 node scripts/secret-scan.mjs
+docker build -f deploy/docker/backend/Dockerfile .
 ```
+
+CI runs the same gates on every pull request (including container build).
 
 Release 1 core routes are implemented against fixture data by default (`DATA_SOURCE=fixture`). Production MariaDB stays blocked while `ERROR 1932` stands.
 
