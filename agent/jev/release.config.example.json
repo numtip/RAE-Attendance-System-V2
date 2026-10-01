@@ -1,4 +1,0 @@
-{
-  "comment": "Optional release pin for reproducible Jev decisions. Copy to release.config.json locally or in release pipeline only — do not commit pins unless approved.",
-  "model": "openrouter/jev:2026-01-01"
-}

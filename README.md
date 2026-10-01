@@ -15,7 +15,7 @@ Legacy forensic recovery has stopped. The legacy host is left unchanged.
 - `backend/` Node.js API under `/api/v1/`
 - `frontend/` Vue 3 + Vite + TypeScript shell
 - `database/` future migrations; `database/recovery-lab/` isolated InnoDB recovery scripts (lab copies only)
-- `agent/jev/` Jev decision layer (OpenRouter, agent-only — not HTTP API)
+- `agent/` shared Agent Core adapter (agent-only — not HTTP API)
 - `docs/` direction, contract, schema, migration, recovery runbook, SSO, and agent policy
 
 ## Local checks

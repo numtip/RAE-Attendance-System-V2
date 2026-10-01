@@ -25,12 +25,23 @@ Development and CI use **fixtures** or disposable DB containers — not the brok
 
 Vue 3, Vite, and TypeScript. The bootstrap screen does not call the legacy API.
 
+## Agent decisions (out of band)
+
+```text
+Cursor / cloud agents / scripts
+  -> agent/ (Agent Core adapter)
+  -> HTTPS POST /v1/decision on shared Agent Core
+  -> policy + routing inside Agent Core (Jev/OpenRouter not in this repo)
+```
+
+The Express API **does not** import `agent/` at runtime.
+
 ## What is intentionally absent
 
 - No copy of the legacy tree.
 - No Docker runtime of `docker-raeserver-attendance-api`.
 - No production nginx change.
-- No database driver connection in this bootstrap. Config names exist so a later release can connect without inventing a second schema first.
+- No direct OpenRouter/Jev client in this repository.
 
 ## Response envelope
 
