@@ -77,12 +77,27 @@ Do **not** reuse `/attendance/api/...` or the legacy client.
 | `SSO_SCOPES` | Default `openid profile email` |
 | `SSO_PROVIDER` | `http` (default) or `mock` for tests |
 
+## MJU subject adapter
+
+`backend/src/services/sso/mjuSubjectAdapter.js` exposes `extractVerifiedSubject(input)`:
+
+| `status` | Meaning |
+|---|---|
+| `unknown` | Callback/subject contract not confirmed — **no session** |
+| `invalid` | Rejected input (e.g. callback `ac`, email-only “subject”) |
+| `verified` | Only when `SSO_SUBJECT_CONTRACT_CONFIRMED=true` and an opaque confirmed claim is supplied |
+
+**MJU subject contract is still UNKNOWN; adapter default behavior is fail-closed (`unknown`).** No Person API, no `ac` identity, no email-as-subject.
+
+Prepared chain (tests only, not HTTP): `ssoIdentityChainService.issueSessionFromVerifiedInput` → `IdentityResolutionService.resolve` → tokens. RBAC/data scope still apply on API calls after login.
+
 ## Identity link prep (schema only)
 
 - [x] Migration `012_identity_links.sql` — `identity_providers`, `employee_identity_links`.
 - [x] `IdentityResolutionService` — resolve / candidate / approve / reject / revoke (not wired to callback yet).
 - [x] `backend/tests/identityLink.test.js` — synthetic approval and fail-closed resolution.
-- [ ] MJU verified-subject adapter (fail-closed until contract confirmed).
+- [x] MJU verified-subject adapter (`extractVerifiedSubject`, fail-closed until `SSO_SUBJECT_CONTRACT_CONFIRMED=true`).
+- [x] Prepared session chain (`ssoIdentityChainService`; **not** connected to HTTP callback).
 - [ ] Callback wired through subject adapter + identity resolution (no live SSO until checklist).
 - Local **`mju-person-enrich`** remains offline review only (`docs/SSO_PERSON_ENRICHMENT_INTEGRATION.md`).
 
@@ -109,8 +124,11 @@ Do **not** reuse `/attendance/api/...` or the legacy client.
 - Split URL env vars vs donor `SSO_ENDPOINT` contract is **unknown**.
 - Until confirmed: runtime returns `SSO_DISABLED` or `SSO_NOT_READY`; HTTP provider must not be used against production MJU in CI.
 
-## Tests
+## Tests (CI)
 
-- `backend/tests/sso.test.js` — mock provider flow, gates, HTTP route redirect.
-- `backend/tests/release1.test.js` — default closed SSO behavior.
-- `backend/tests/identityLink.test.js` — provider-subject link approval and fail-closed resolution.
+- [x] `backend/tests/sso.test.js` — mock provider flow, gates, HTTP route redirect.
+- [x] `backend/tests/release1.test.js` — default closed SSO behavior.
+- [x] `backend/tests/identityLink.test.js` — provider-subject link approval and fail-closed resolution.
+- [x] `backend/tests/mjuSubjectAdapter.test.js` — unknown contract, `ac`/email rejection.
+- [x] `backend/tests/ssoIdentityChain.test.js` — chain session gates (no live callback).
+- [x] `backend/tests/ssoCallbackWiring.test.js` — HTTP callback stays off identity chain until subject contract.
