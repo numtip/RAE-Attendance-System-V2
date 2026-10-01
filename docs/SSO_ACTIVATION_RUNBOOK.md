@@ -4,6 +4,33 @@
 
 Related: `docs/SSO_ACTIVATION_CHECKLIST.md`, `docs/SSO_READINESS.md`, `docs/SSO_REUSE_PLAN.md`.
 
+## Legacy public reference (read-only)
+
+Observed on 2026-10-01 from `https://raeservice.mju.ac.th/attendance/` and the bundle `index-78450XmL.js` / `LoginSSOView-DYfn6qI-.js` / `LandingPageView-NKtVgL6Z.js`. No legacy system was changed. Authorize, token, and userinfo URLs were not guessed.
+
+| Behavior | Class | Evidence |
+|---|---|---|
+| Landing buttons | **CONFIRMED** | Header links "เข้าสู่ระบบ (SSO)" and "เข้าสู่ระบบ" point at `/attendance/api/auth/sso/login`. "เข้าสู่ระบบ (ปกติ)" and "เข้าสู่ระบบแบบปกติ" go to `/attendance/login/regular`, which shows email and password fields. Cards go to `/app/attendance`, `/app/reports`, and `/app/employees`. Without a token the browser stayed on the landing URL with `?redirect=` set to that path. |
+| SSO login entry | **CONFIRMED** | `startSSOLogin` sets `window.location` to `/attendance/api/auth/sso/login`. A live GET of that URL returned **200 HTML** (the SPA). `GET /api/auth/sso/login` returned **502**. Neither response was an MJU authorize redirect. |
+| Callback query | **CONFIRMED** | The bundle reads `sso_token` from the query, stores it as `localStorage.accessToken`, then strips the query. Login errors read `error` and `details`: `missing_code`, `sso_failed`, `user_not_found`, `sso_disabled`, `sso_config_error`. |
+| OAuth `state` | **UNKNOWN** | The public bundle does not create or check an OAuth `state` parameter. |
+| After callback, `/me` | **CONFIRMED** | `GET /attendance/api/auth/sso/me` with `Authorization: Bearer <sso_token>` and `withCredentials`. A second call omits the bearer and relies on cookies. Expected JSON is `{ success, data }`. |
+| Password `/me` | **CONFIRMED** | `GET` path built as `/attendance/api/auth/me` via the same prefix helper. |
+| Logout | **CONFIRMED** | Clears `localStorage`, `POST /attendance/api/auth/sso/logout` with credentials, then navigates to `https://sso.mju.ac.th/signout.aspx` with a `cid` query parameter. That host is a sign-out page, not an authorize, token, or userinfo URL. Do not copy `cid` into `SSO_CLIENT_ID`. |
+| Identity key | **UNKNOWN** | `user_not_found` is a frontend error code. The bundle does not show whether the legacy server matches email, employee id, or another claim. |
+| Frontend role checks | **CONFIRMED** as UX only | `isAdmin` is `role === "admin"`. `isManager` is admin or manager. `requiresAdmin` routes redirect to the dashboard with `error=insufficient_permissions`. This is not server enforcement. |
+| Authorize / token / userinfo URLs | **UNKNOWN** | Not present in the bundle and not observed as a redirect. |
+
+### Comparison with V2
+
+| Step | Legacy public behavior | V2 `/api/v1/auth/sso/*` |
+|---|---|---|
+| Login | Browser navigates to `/attendance/api/auth/sso/login` (currently HTML) | `GET /api/v1/auth/sso/login` redirects to the configured authorize URL with `state`, or 403 while SSO is disabled |
+| Callback | Query `sso_token` becomes the bearer token. No `state` in the bundle | `GET /api/v1/auth/sso/callback` expects `code` and `state`, then redirects to `{APP_URL}/?sso=success` **without** putting tokens on the URL |
+| Me | `GET /attendance/api/auth/sso/me` | `GET /api/v1/auth/sso/me` with the V2 access token |
+| Logout | POST legacy logout, then MJU `signout.aspx` | `POST /api/v1/auth/sso/logout` revokes the V2 refresh token only. No IdP sign-out |
+| Identity vs authorization | Frontend role strings are UX | SSO maps an email claim onto `employees`. Data scope is a separate authorization check |
+
 ## What is known
 
 | Item | Value | Evidence |

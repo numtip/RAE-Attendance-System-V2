@@ -11,6 +11,20 @@ Goal: V2 SSO is **implementable and testable** without calling MJU until the cal
 | GET | `/api/v1/auth/sso/me` |
 | POST | `/api/v1/auth/sso/logout` |
 
+## Legacy public bundle (2026-10-01)
+
+Read-only check of `https://raeservice.mju.ac.th/attendance/`. Labels: **CONFIRMED** / **INFERRED** / **UNKNOWN**.
+
+- **CONFIRMED:** SSO buttons navigate to `/attendance/api/auth/sso/login`. That URL returned HTML 200, not an upstream redirect. `/api/auth/sso/login` returned 502.
+- **CONFIRMED:** Callback handling in the bundle is the query parameter `sso_token`, saved as `accessToken`. Error query values include `missing_code`, `sso_failed`, `user_not_found`, `sso_disabled`, and `sso_config_error`.
+- **CONFIRMED:** Profile reload calls `GET /attendance/api/auth/sso/me` with a bearer token and cookies.
+- **CONFIRMED:** Logout POSTs `/attendance/api/auth/sso/logout`, then opens `https://sso.mju.ac.th/signout.aspx`. A `cid` parameter is present. It is **not** evidence of the authorize, token, or userinfo URL, and it is not a V2 client id.
+- **CONFIRMED:** Landing cards target `/app/attendance`, `/app/reports`, and `/app/employees`, and an anonymous session stays on the landing page with `?redirect=`.
+- **INFERRED:** The `cid` parameter is an identifier for the sign-out page. Its OAuth meaning is not proven.
+- **UNKNOWN:** MJU authorize URL, token URL, userinfo URL, scopes, claims, and the employee match key. The bundle does not implement an OAuth `state` check.
+
+V2 still uses `/api/v1/auth/sso/login|callback|me|logout`. It does not adopt `/attendance/api/*`. The V2 callback does not accept `sso_token`.
+
 ## Confirmed facts
 
 - Donor image (December 2025) exposes `/api/auth/sso/login`, `/callback`, `/me`, and `POST /logout` (see `SSO_REUSE_PLAN.md`).
