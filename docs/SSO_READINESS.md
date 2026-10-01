@@ -79,8 +79,11 @@ Do **not** reuse `/attendance/api/...` or the legacy client.
 
 ## Identity link prep (schema only)
 
-- Migration `012_identity_links.sql` — `identity_providers`, `employee_identity_links`.
-- `IdentityResolutionService` — resolve / candidate / approve / reject / revoke (not wired to callback yet).
+- [x] Migration `012_identity_links.sql` — `identity_providers`, `employee_identity_links`.
+- [x] `IdentityResolutionService` — resolve / candidate / approve / reject / revoke (not wired to callback yet).
+- [x] `backend/tests/identityLink.test.js` — synthetic approval and fail-closed resolution.
+- [ ] MJU verified-subject adapter (fail-closed until contract confirmed).
+- [ ] Callback wired through subject adapter + identity resolution (no live SSO until checklist).
 - Local **`mju-person-enrich`** remains offline review only (`docs/SSO_PERSON_ENRICHMENT_INTEGRATION.md`).
 
 ## Implementation status
@@ -93,7 +96,7 @@ Do **not** reuse `/attendance/api/...` or the legacy client.
 
 ## Activation checklist
 
-1. [ ] MJU registers `{APP_URL}/api/v1/auth/sso/callback`.
+1. [x] MJU registers `{APP_URL}/api/v1/auth/sso/callback` (V2 callback URL confirmed in MJU registration).
 2. [ ] Confirm authorization, token, and userinfo URLs (resolve donor `SSO_ENDPOINT` vs split URLs).
 3. [ ] Set all `SSO_*` env vars on the V2 host (secrets outside git).
 4. [ ] Set `SSO_CALLBACK_CONFIRMED=true` only after step 1–3.
