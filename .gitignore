@@ -12,3 +12,4 @@ coverage/
 logs/
 .DS_Store
 *.log
+agent/jev/release.config.json
