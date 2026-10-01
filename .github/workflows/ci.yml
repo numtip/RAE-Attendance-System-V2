@@ -122,6 +122,7 @@ jobs:
       - run: npm ci
       - env:
           VITE_BASE_PATH: /RAE-Attendance-System-V2/
+          VITE_REVIEW_MODE: fixture
         run: npm run build
 
   container:

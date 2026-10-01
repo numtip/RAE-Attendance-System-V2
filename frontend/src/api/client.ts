@@ -5,20 +5,13 @@ import {
   getRefreshToken,
   setTokens,
 } from '../auth/session';
+import { isReviewFixtureMode } from '../config/reviewMode';
+import { ApiError } from './errors';
+import { fixtureApiRequest } from './fixtures/mockApi';
+
+export { ApiError };
 
 const API_BASE = '/api/v1';
-
-export class ApiError extends Error {
-  readonly code: string;
-  readonly status: number;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown;
@@ -43,6 +36,19 @@ async function refreshAccessToken(): Promise<boolean> {
   if (!refreshToken) {
     return false;
   }
+  if (isReviewFixtureMode) {
+    try {
+      await fixtureApiRequest<{ accessToken: string; refreshToken: string }>('/auth/refresh', {
+        method: 'POST',
+        body: { refreshToken },
+        auth: false,
+      });
+      return true;
+    } catch {
+      clearSession();
+      return false;
+    }
+  }
   const response = await fetch(`${API_BASE}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -60,6 +66,30 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  if (isReviewFixtureMode) {
+    const { auth = true, retryOnUnauthorized = true } = options;
+    try {
+      return await fixtureApiRequest<T>(path, options);
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 401 &&
+        auth &&
+        retryOnUnauthorized &&
+        getRefreshToken()
+      ) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          return apiRequest<T>(path, { ...options, retryOnUnauthorized: false });
+        }
+      }
+      if (error instanceof ApiError && error.status === 401 && auth) {
+        clearSession();
+      }
+      throw error;
+    }
+  }
+
   const { body, auth = true, retryOnUnauthorized = true, headers: initHeaders, ...rest } = options;
   const headers = new Headers(initHeaders);
   if (body !== undefined) {

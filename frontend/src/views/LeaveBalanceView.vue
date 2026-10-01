@@ -50,7 +50,8 @@ onMounted(load);
       :empty="!loading && !error && rows.length === 0"
       empty-message="No balance rows for this year."
     >
-      <table v-if="rows.length" class="data-table">
+      <div v-if="rows.length" class="table-scroll">
+        <table class="data-table">
         <thead>
           <tr>
             <th>Type</th>
@@ -67,7 +68,8 @@ onMounted(load);
             <td>{{ row.remainingDays }}</td>
           </tr>
         </tbody>
-      </table>
+        </table>
+      </div>
     </AsyncState>
   </section>
 </template>

@@ -49,19 +49,21 @@ async function logout() {
         <button type="button" class="btn btn--ghost" @click="logout">Log out</button>
       </div>
     </header>
-    <nav class="app-nav" aria-label="Main">
-      <RouterLink
-        v-for="item in nav"
-        :key="item.name"
-        :to="{ name: item.name }"
-        class="nav-link"
-        :class="{ 'nav-link--active': isActive(item.name) }"
-      >
-        {{ item.label }}
-      </RouterLink>
-    </nav>
-    <main class="app-main">
-      <RouterView />
-    </main>
+    <div class="app-body">
+      <nav class="app-nav" aria-label="Main">
+        <RouterLink
+          v-for="item in nav"
+          :key="item.name"
+          :to="{ name: item.name }"
+          class="nav-link"
+          :class="{ 'nav-link--active': isActive(item.name) }"
+        >
+          {{ item.label }}
+        </RouterLink>
+      </nav>
+      <main class="app-main">
+        <RouterView />
+      </main>
+    </div>
   </div>
 </template>

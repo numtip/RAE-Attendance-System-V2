@@ -34,6 +34,23 @@ CI runs the same gates on every pull request (including container build).
 
 Release 1 core routes are implemented against fixture data by default (`DATA_SOURCE=fixture`). Production MariaDB stays blocked while `ERROR 1932` stands.
 
+## GitHub Pages review
+
+Pushes to `main` deploy the Vue app to GitHub Pages under `/RAE-Attendance-System-V2/` with **fixture review mode** (`VITE_REVIEW_MODE=fixture`): no backend or secrets, only static data matching `backend/src/dev/fixtures.js`.
+
+- **URL:** https://numtip.github.io/RAE-Attendance-System-V2/ (after Pages is enabled on the repo)
+- **Sign in:** `user@example.test` / `valid-pass` (admin: `admin@example.test`, same password)
+- **Local Pages-like build:**
+
+```bash
+cd frontend
+npm ci
+VITE_BASE_PATH=/RAE-Attendance-System-V2/ VITE_REVIEW_MODE=fixture npm run build
+npm run preview -- --base /RAE-Attendance-System-V2/
+```
+
+The build copies `dist/index.html` to `dist/404.html` so deep links work on GitHub Pages.
+
 ## Recovery and SSO (pre-production)
 
 | Track | Doc |
