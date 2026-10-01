@@ -75,6 +75,9 @@ const monthly = [
   },
 ];
 
+const authorizationGrants = [];
+const orgMemberships = [];
+
 const leave = [
   {
     leaveId: 'LV-1',
@@ -98,4 +101,12 @@ const balances = [
   },
 ];
 
-module.exports = { employees, attendance, monthly, leave, balances };
+module.exports = {
+  employees,
+  attendance,
+  monthly,
+  leave,
+  balances,
+  authorizationGrants,
+  orgMemberships,
+};

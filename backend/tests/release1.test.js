@@ -137,7 +137,8 @@ test('employees, attendance, and leave enforce ownership', async () => {
 
     const list = await api(port, 'GET', '/api/v1/employees', { token: user.accessToken });
     assert.equal(list.status, 200);
-    assert.equal(list.body.data.length, 3);
+    assert.equal(list.body.data.length, 1);
+    assert.equal(list.body.data[0].employeeUid, userUid);
 
     const detail = await api(port, 'GET', `/api/v1/employees/${userUid}`, { token: user.accessToken });
     assert.equal(detail.status, 200);
@@ -162,8 +163,8 @@ test('employees, attendance, and leave enforce ownership', async () => {
     const daily = await api(port, 'GET', '/api/v1/attendance/daily/2026-03-02', {
       token: admin.accessToken,
     });
-    assert.equal(daily.status, 200);
-    assert.equal(daily.body.data.length, 1);
+    assert.equal(daily.status, 403);
+    assert.equal(daily.body.error.code, 'FORBIDDEN');
 
     const monthly = await api(port, 'GET', `/api/v1/attendance/monthly/${userUid}/2026/3`, {
       token: user.accessToken,

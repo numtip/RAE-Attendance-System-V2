@@ -1,10 +1,7 @@
-const { HttpError } = require('../utils/httpError');
+const { assertInScope } = require('./authorizationService');
 
-function assertCanReadEmployee(auth, employeeUid) {
-  if (auth.role === 'admin' || auth.role === 'manager' || auth.employeeUid === employeeUid) {
-    return;
-  }
-  throw new HttpError(403, 'FORBIDDEN', 'You can only read your own attendance and leave records');
+function assertCanReadEmployee(auth, employeeUid, repositories, domain = 'data') {
+  return assertInScope(auth, employeeUid, repositories, domain);
 }
 
 module.exports = { assertCanReadEmployee };
