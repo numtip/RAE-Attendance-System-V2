@@ -61,7 +61,8 @@ onMounted(load);
       :empty="isManager && !loading && !error && rows.length === 0"
       empty-message="No attendance records for this date."
     >
-      <table v-if="rows.length" class="data-table">
+      <div v-if="rows.length" class="table-scroll">
+        <table class="data-table">
         <thead>
           <tr>
             <th>Employee</th>
@@ -82,7 +83,8 @@ onMounted(load);
             <td>{{ row.lateMinutes ?? '—' }}</td>
           </tr>
         </tbody>
-      </table>
+        </table>
+      </div>
     </AsyncState>
   </section>
 </template>

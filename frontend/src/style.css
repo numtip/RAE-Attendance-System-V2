@@ -36,7 +36,7 @@ code {
 .app-shell {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 1.5rem 1rem 2rem;
+  padding: 1rem clamp(0.75rem, 3vw, 1.5rem) 2rem;
 }
 
 .app-header {
@@ -66,6 +66,11 @@ code {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  max-width: 100%;
+}
+
+.app-user span:first-child {
+  overflow-wrap: anywhere;
 }
 
 .badge {
@@ -76,11 +81,40 @@ code {
   font-size: 0.85rem;
 }
 
+.app-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .app-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.35rem;
-  margin-bottom: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+@media (min-width: 768px) {
+  .app-body {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .app-nav {
+    flex: 0 0 11.5rem;
+    flex-direction: column;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+
+  .app-main {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 .nav-link {
@@ -138,6 +172,16 @@ code {
 
 .login-card {
   width: min(420px, 100%);
+}
+
+.review-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #fff8e6;
+  border: 1px solid #e6c200;
+  color: #5c4a00;
+  font-size: 0.9rem;
 }
 
 .form {
@@ -232,8 +276,15 @@ code {
   color: var(--muted);
 }
 
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .data-table {
   width: 100%;
+  min-width: 28rem;
   border-collapse: collapse;
   font-size: 0.95rem;
 }

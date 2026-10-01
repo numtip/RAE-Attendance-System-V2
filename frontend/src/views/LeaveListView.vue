@@ -36,7 +36,8 @@ onMounted(load);
       :empty="!loading && !error && rows.length === 0"
       empty-message="No leave requests."
     >
-      <table v-if="rows.length" class="data-table">
+      <div v-if="rows.length" class="table-scroll">
+        <table class="data-table">
         <thead>
           <tr>
             <th>ID</th>
@@ -55,7 +56,8 @@ onMounted(load);
             <td>{{ row.status }}</td>
           </tr>
         </tbody>
-      </table>
+        </table>
+      </div>
     </AsyncState>
   </section>
 </template>
