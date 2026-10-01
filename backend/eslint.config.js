@@ -12,6 +12,11 @@ module.exports = [
         console: 'readonly',
         fetch: 'readonly',
         Buffer: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        AbortController: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
       },
     },
     rules: {

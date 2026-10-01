@@ -19,7 +19,7 @@ function createV1Router(container) {
   const leaveService = createLeaveService(container);
   const ssoService = createSsoService(container);
   const auth = createAuthController(authService);
-  const sso = createSsoController(ssoService);
+  const sso = createSsoController(ssoService, container);
   const employees = createEmployeeController(employeeService, attendanceService);
   const attendance = createAttendanceController(attendanceService);
   const leave = createLeaveController(leaveService);
@@ -34,8 +34,8 @@ function createV1Router(container) {
 
   router.get('/auth/sso/login', sso.login);
   router.get('/auth/sso/callback', sso.callback);
-  router.get('/auth/sso/me', sso.me);
-  router.post('/auth/sso/logout', sso.logout);
+  router.get('/auth/sso/me', authenticate, sso.me);
+  router.post('/auth/sso/logout', authenticate, sso.logout);
 
   router.get('/employees', authenticate, employees.list);
   router.get('/employees/:employeeUid/attendance', authenticate, employees.attendance);
