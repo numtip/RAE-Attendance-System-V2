@@ -7,6 +7,8 @@ function createAuthController(authService) {
       const data = await authService.login({
         email: req.body?.email,
         password: req.body?.password,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
       });
       success(res, data, 'เข้าสู่ระบบสำเร็จ');
     }),
@@ -22,6 +24,8 @@ function createAuthController(authService) {
       const data = await authService.logout({
         refreshToken: req.body?.refreshToken,
         auth: req.auth,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
       });
       success(res, data, 'ออกจากระบบแล้ว');
     }),
