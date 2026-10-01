@@ -7,6 +7,7 @@ Legacy forensic recovery is stopped. Further inspection of the legacy tree happe
 1. Keep this repository as the canonical V2 codebase.
 2. Leave the legacy host, nginx, PM2, Docker attendance image, and production database unchanged.
 3. Implement Release 1 against `/api/v1` using the contract in `API_CONTRACT.md`.
+4. Treat legacy production database files as **recovery evidence only**. Any restore path goes through an isolated lab and a logical export into a clean V2 database (`docs/DB_RECOVERY_LAB_REPORT.md`).
 
 ## Before any production cutover
 
