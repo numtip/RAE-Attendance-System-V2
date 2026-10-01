@@ -9,7 +9,8 @@
   "scripts": {
     "db:migrate": "node scripts/migrate.mjs",
     "db:migrate:seed": "node scripts/migrate.mjs --seed",
-    "db:hash-dev-password": "node scripts/hash-dev-password.mjs"
+    "db:hash-dev-password": "node scripts/hash-dev-password.mjs",
+    "contract:smoke": "node scripts/contract-smoke.mjs"
   },
   "devDependencies": {
     "bcryptjs": "^3.0.3",
