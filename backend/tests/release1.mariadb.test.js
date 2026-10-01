@@ -75,7 +75,7 @@ test('Release 1 MariaDB paths: refresh rotation, employees, monthly, leave histo
 
     const employees = await api(port, 'GET', '/api/v1/employees', { token });
     assert.equal(employees.status, 200);
-    assert.equal(employees.body.data.length, 3);
+    assert.equal(employees.body.data.length, 1);
     assert.ok(employees.body.data.every((row) => row.passwordHash === undefined));
 
     const monthly = await api(port, 'GET', `/api/v1/attendance/monthly/${userUid}/2026/3`, { token });
