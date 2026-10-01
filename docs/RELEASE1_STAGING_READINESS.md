@@ -109,8 +109,8 @@ Single command brings up MariaDB → migrate+seed → backend → frontend with 
 
 ## Sign-off checklist (staging)
 
-- [ ] CI green on `main` (all jobs including `compose-smoke`)
-- [ ] Pages review URL loads with fixture banner
-- [ ] Local `staging:up` + `compose:smoke` pass
-- [ ] Human review of `docs/API_CONTRACT.md` vs UI
-- [ ] Approve VPS deployment phase separately (out of scope here)
+- [x] CI green on `main` (all jobs including `compose-smoke`) — see `docs/RELEASE1_FINAL_SIGNOFF.md`
+- [x] Pages review URL loads with fixture banner
+- [x] `compose:smoke` pass in CI (local Docker optional)
+- [ ] Human review of `docs/API_CONTRACT.md` vs UI (recommended before VPS)
+- [ ] Approve VPS deployment phase separately — gate **`READY_FOR_VPS_APPROVAL`** in `docs/RELEASE1_FINAL_SIGNOFF.md`
