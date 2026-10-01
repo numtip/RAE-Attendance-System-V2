@@ -2,6 +2,8 @@
 
 **Purpose:** Facts still required from MJU before V2 may wire `GET /api/v1/auth/sso/callback` to `extractVerifiedSubject()` and `ssoIdentityChainService`.
 
+**Evidence pack:** [`MJU_SSO_SUBJECT_EVIDENCE_PACK.md`](./MJU_SSO_SUBJECT_EVIDENCE_PACK.md) · **Admin request:** [`MJU_SSO_ADMIN_REQUEST.md`](./MJU_SSO_ADMIN_REQUEST.md) · **Response template:** [`MJU_SSO_SUBJECT_CONTRACT_RESPONSE_TEMPLATE.md`](./MJU_SSO_SUBJECT_CONTRACT_RESPONSE_TEMPLATE.md)
+
 **Policy:** `SSO_ENABLED=false` and `SSO_SUBJECT_CONTRACT_CONFIRMED=false` remain the defaults. No VPS changes. No production database writes. **`mju-person-enrich` is local-only and must never run on the callback path.**
 
 ## Target chain (prepared on `main`, HTTP not connected)
