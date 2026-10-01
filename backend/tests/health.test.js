@@ -10,6 +10,20 @@ function listen(app) {
   });
 }
 
+test('GET /api/v1/health/db reports unconfigured when DB env is empty', async () => {
+  const app = createApp();
+  const { server, port } = await listen(app);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/health/db`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.data.status, 'unconfigured');
+  } finally {
+    server.close();
+  }
+});
+
 test('GET /api/v1/health returns the V2 envelope', async () => {
   const app = createApp();
   const { server, port } = await listen(app);

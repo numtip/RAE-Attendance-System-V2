@@ -20,7 +20,60 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npm run lint
-      - run: npm test
+      - env:
+          JWT_SECRET: ci-fixture-only-secret
+        run: npm test
+
+  backend-mariadb:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: attendance_v2
+          MARIADB_USER: attendance
+          MARIADB_PASSWORD: attendance
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      JWT_SECRET: ci-mariadb-only-secret
+      RUN_MARIADB_TESTS: '1'
+      DATA_SOURCE: mariadb
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_NAME: attendance_v2
+      DB_USER: attendance
+      DB_PASSWORD: attendance
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_USER: attendance
+      MYSQL_PASSWORD: attendance
+      MYSQL_DATABASE: attendance_v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+      - name: Install migration tooling
+        run: npm ci
+      - name: Apply migrations and dev seed
+        run: npm run db:migrate:seed
+      - name: Backend lint and MariaDB integration tests
+        working-directory: backend
+        run: |
+          npm ci
+          npm run lint
+          npm test
 
   frontend:
     runs-on: ubuntu-latest
@@ -67,3 +120,10 @@ jobs:
           file: deploy/docker/backend/Dockerfile
           push: false
           tags: rae-attendance-v2-backend:ci
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/frontend/Dockerfile
+          push: false
+          tags: rae-attendance-v2-frontend:ci
