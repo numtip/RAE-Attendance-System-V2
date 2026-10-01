@@ -16,14 +16,17 @@ From the repository root:
 cp .env.example .env
 # Set JWT_SECRET to a long random value for anything beyond fixture smoke tests.
 
-docker compose -f deploy/docker-compose.yml up -d --build
+npm run staging:up
 ```
 
-Apply schema and dev fixtures **before** first API use if MariaDB was empty or you skipped compose auto-migration:
+This starts MariaDB, runs migrations + dev seed (`migrate` service), then backend and frontend with healthchecks.
+
+Manual equivalent: `docker compose -f deploy/docker-compose.yml up -d --build --wait`
+
+Verify Release 1 paths through the SPA proxy:
 
 ```bash
-npm ci
-npm run db:migrate:seed
+npm run compose:smoke
 ```
 
 Use `MYSQL_*` env vars (defaults in `.env.example` target host port `3307` when MariaDB is published from compose).

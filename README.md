@@ -30,7 +30,9 @@ node scripts/secret-scan.mjs
 docker build -f deploy/docker/backend/Dockerfile .
 ```
 
-CI runs the same gates on every pull request (including container build).
+CI runs the same gates on every pull request (contract smoke, MariaDB integration, compose smoke, container build).
+
+**Release 1 staging:** see `docs/RELEASE1_STAGING_READINESS.md` · local stack: `npm run staging:up`
 
 Release 1 core routes are implemented against fixture data by default (`DATA_SOURCE=fixture`). Production MariaDB stays blocked while `ERROR 1932` stands.
 
