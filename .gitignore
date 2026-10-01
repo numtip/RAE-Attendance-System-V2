@@ -8,6 +8,8 @@ coverage/
 *.key
 *service-account*
 *.sql
+!database/migrations/*.sql
+!database/seeds/*.sql
 *.dump
 logs/
 .DS_Store
