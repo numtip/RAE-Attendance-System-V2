@@ -1,0 +1,85 @@
+{
+  "manifest": {
+    "label": "synthetic-sample",
+    "kind": "synthetic",
+    "authority": "not-authoritative",
+    "note": "Invented rows for tests. Not an employee master and not a legacy export."
+  },
+  "employees": [
+    {
+      "employee_id": "SYN-001",
+      "first_name_th": "สมชาย",
+      "last_name_th": "ทดสอบ",
+      "email": "syn.one@example.test",
+      "department": "ทดสอบ",
+      "employee_type": "department",
+      "status": "active",
+      "role": "user"
+    },
+    {
+      "employee_id": "SYN-002",
+      "first_name_th": "สมหญิง",
+      "last_name_th": "ทดสอบ",
+      "email": "syn.two@example.test",
+      "department": "ทดสอบ",
+      "employee_type": "university",
+      "status": "active",
+      "role": "manager"
+    }
+  ],
+  "employee_identifier": [
+    {
+      "employee_id": "SYN-001",
+      "id_type": "facescan_id",
+      "id_value": "FS-SYN-001",
+      "is_primary": 1
+    }
+  ],
+  "daily_attendance": [
+    {
+      "employee_id": "SYN-001",
+      "date": "2026-03-02",
+      "check_in": "2026-03-02 08:05:00",
+      "check_out": "2026-03-02 16:30:00",
+      "status": "present",
+      "is_late": 0,
+      "late_minutes": 0,
+      "work_duration": 8
+    }
+  ],
+  "monthly_summary": [
+    {
+      "employee_id": "SYN-001",
+      "year": 2026,
+      "month": 3,
+      "total_work_days": 22,
+      "total_present": 20,
+      "total_late": 1,
+      "total_absent": 0,
+      "total_leave": 1,
+      "total_late_minutes": 5,
+      "total_work_hours": 160
+    }
+  ],
+  "staging_leave": [
+    {
+      "leave_id": "SYN-LV-1",
+      "employee_id": "SYN-001",
+      "leave_type": "personal",
+      "start_date": "2026-03-10",
+      "end_date": "2026-03-10",
+      "status": "approved",
+      "match_status": "matched"
+    }
+  ],
+  "leave_balance": [
+    {
+      "employee_id": "SYN-001",
+      "year": 2026,
+      "leave_type": "personal",
+      "total_days": 6,
+      "used_days": 1,
+      "remaining_days": 5
+    }
+  ]
+}
