@@ -17,9 +17,18 @@ function signAccessToken(config, employee) {
   );
 }
 
+async function logAuthEvent(repositories, entry) {
+  if (!repositories.authLogs?.append) return;
+  try {
+    await repositories.authLogs.append(entry);
+  } catch {
+    // Auth must succeed even when audit logging fails.
+  }
+}
+
 function createAuthService({ config, repositories }) {
   return {
-    async login({ email, password }) {
+    async login({ email, password, ipAddress, userAgent }) {
       assertSecret(config);
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'A valid email is required');
@@ -32,9 +41,26 @@ function createAuthService({ config, repositories }) {
         ? await bcrypt.compare(String(password), employee.passwordHash)
         : false;
       if (!employee || !matches) {
+        await logAuthEvent(repositories, {
+          employeeUid: employee?.employeeUid,
+          email,
+          eventType: 'failed_login',
+          success: false,
+          ipAddress,
+          userAgent,
+          errorMessage: 'Invalid credentials',
+        });
         throw new HttpError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
       }
       if (employee.lockedUntil && new Date(employee.lockedUntil).getTime() > Date.now()) {
+        await logAuthEvent(repositories, {
+          employeeUid: employee.employeeUid,
+          email: employee.email,
+          eventType: 'locked',
+          success: false,
+          ipAddress,
+          userAgent,
+        });
         throw new HttpError(403, 'ACCOUNT_LOCKED', 'This account is locked');
       }
       const refreshToken = randomUUID();
@@ -46,6 +72,14 @@ function createAuthService({ config, repositories }) {
         email: employee.email,
         expiresAt,
         revokedAt: null,
+      });
+      await logAuthEvent(repositories, {
+        employeeUid: employee.employeeUid,
+        email: employee.email,
+        eventType: 'login',
+        success: true,
+        ipAddress,
+        userAgent,
       });
       return {
         accessToken: signAccessToken(config, employee),
@@ -96,7 +130,7 @@ function createAuthService({ config, repositories }) {
       return employee;
     },
 
-    async logout({ refreshToken, auth }) {
+    async logout({ refreshToken, auth, ipAddress, userAgent }) {
       if (!refreshToken) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'refreshToken is required');
       }
@@ -105,6 +139,14 @@ function createAuthService({ config, repositories }) {
         throw new HttpError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is invalid');
       }
       await repositories.refreshTokens.revoke(refreshToken);
+      await logAuthEvent(repositories, {
+        employeeUid: auth.employeeUid,
+        email: current.email,
+        eventType: 'logout',
+        success: true,
+        ipAddress,
+        userAgent,
+      });
       return { revoked: true };
     },
   };
