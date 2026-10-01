@@ -86,6 +86,29 @@ test('reconcile compares row counts and checksum', () => {
   assert.equal(bad.mismatches[0].code, 'ROW_COUNT');
 });
 
+test('scope mapping accepts opaque org codes and rejects an invented hierarchy', () => {
+  const withScope = structuredClone(sample);
+  withScope.authorization_grants = [
+    { employee_id: 'SYN-002', role: 'MANAGER', scope_type: 'org_unit', org_unit_code: 'OU-SYN-1' },
+  ];
+  withScope.employee_org_membership = [
+    { employee_id: 'SYN-001', org_unit_code: 'OU-SYN-1' },
+  ];
+  assert.equal(validateSource(withScope).ok, true);
+  const transformed = transformSource(withScope);
+  assert.equal(transformed.authorization_grants[0].org_unit_code, 'OU-SYN-1');
+
+  const invented = structuredClone(withScope);
+  invented.authorization_grants[0] = {
+    employee_id: 'SYN-002',
+    role: 'MANAGER',
+    scope_type: 'organization',
+  };
+  const result = validateSource(invented);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((item) => item.code === 'HIERARCHY_UNKNOWN'));
+});
+
 test('inspect lists fields and does not treat the sample as authoritative', () => {
   const inspected = inspectSource(sample);
   assert.equal(inspected.manifest.authority, 'not-authoritative');

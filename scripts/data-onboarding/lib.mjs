@@ -24,6 +24,8 @@ export const EMPLOYEE_TYPES = new Set(['university', 'department', 'contract']);
 export const EMPLOYEE_STATUSES = new Set(['active', 'inactive', 'resigned']);
 export const ATTENDANCE_STATUSES = new Set(['present', 'late', 'absent', 'leave', 'holiday']);
 export const ID_TYPES = new Set(['facescan_id', 'national_id', 'employee_id']);
+export const ACCESS_ROLES = new Set(['EXECUTIVE', 'MANAGER', 'EMPLOYEE', 'ADMIN']);
+export const SCOPE_TYPES = new Set(['self', 'org_unit', 'organization']);
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -64,6 +66,8 @@ export function inspectSource(bundle) {
     'monthly_summary',
     'staging_leave',
     'leave_balance',
+    'authorization_grants',
+    'employee_org_membership',
   ];
   const tables = {};
   for (const name of sections) {
@@ -102,6 +106,8 @@ export function validateSource(bundle) {
   const monthly = asArray(bundle, 'monthly_summary');
   const leave = asArray(bundle, 'staging_leave');
   const balances = asArray(bundle, 'leave_balance');
+  const grants = asArray(bundle, 'authorization_grants');
+  const memberships = asArray(bundle, 'employee_org_membership');
 
   const employeeIds = new Map();
   const emails = new Map();
@@ -239,6 +245,36 @@ export function validateSource(bundle) {
     }
   });
 
+  grants.forEach((row, index) => {
+    if (!knownIds.has(row?.employee_id)) {
+      issue(errors, 'authorization_grants', index, 'UNKNOWN_EMPLOYEE', 'grant employee_id is unknown');
+    }
+    if (!ACCESS_ROLES.has(row?.role)) {
+      issue(errors, 'authorization_grants', index, 'INVALID_ENUM', 'role must be EXECUTIVE, MANAGER, EMPLOYEE, or ADMIN');
+    }
+    if (!SCOPE_TYPES.has(row?.scope_type)) {
+      issue(errors, 'authorization_grants', index, 'INVALID_ENUM', 'scope_type is invalid');
+    }
+    if (row?.scope_type === 'org_unit' && !row?.org_unit_code) {
+      issue(errors, 'authorization_grants', index, 'REQUIRED', 'org_unit scope requires an org_unit_code');
+    }
+    if (row?.scope_type === 'organization' && row?.org_unit_code) {
+      issue(errors, 'authorization_grants', index, 'HIERARCHY_UNKNOWN', 'organization scope must not invent an org unit');
+    }
+    if (row?.role === 'MANAGER' && row?.scope_type === 'organization') {
+      issue(errors, 'authorization_grants', index, 'HIERARCHY_UNKNOWN', 'manager organization-wide scope is not defined');
+    }
+  });
+
+  memberships.forEach((row, index) => {
+    if (!knownIds.has(row?.employee_id)) {
+      issue(errors, 'employee_org_membership', index, 'UNKNOWN_EMPLOYEE', 'membership employee_id is unknown');
+    }
+    if (!row?.org_unit_code) {
+      issue(errors, 'employee_org_membership', index, 'REQUIRED', 'org_unit_code is required');
+    }
+  });
+
   return { ok: errors.length === 0, errors };
 }
 
@@ -331,6 +367,22 @@ export function transformSource(bundle) {
     updated_at: row.updated_at ?? now,
   }));
 
+  const authorizationGrants = asArray(bundle, 'authorization_grants').map((row) => ({
+    employee_uid: uidFor(row, employeesById),
+    role: row.role,
+    scope_type: row.scope_type,
+    org_unit_code: row.scope_type === 'org_unit' ? row.org_unit_code : null,
+    created_at: row.created_at ?? now,
+    updated_at: row.updated_at ?? now,
+  }));
+
+  const employeeOrgMembership = asArray(bundle, 'employee_org_membership').map((row) => ({
+    employee_uid: uidFor(row, employeesById),
+    org_unit_code: row.org_unit_code,
+    created_at: row.created_at ?? now,
+    updated_at: row.updated_at ?? now,
+  }));
+
   const leaveBalance = asArray(bundle, 'leave_balance').map((row) => ({
     employee_uid: uidFor(row, employeesById),
     year: Number(row.year),
@@ -349,6 +401,8 @@ export function transformSource(bundle) {
     monthly_summary: monthlySummary,
     employee_leave: employeeLeave,
     leave_balance: leaveBalance,
+    authorization_grants: authorizationGrants,
+    employee_org_membership: employeeOrgMembership,
     omitted: {
       refresh_tokens: 'create on login; do not copy legacy tokens',
       auth_logs: 'start empty; do not copy legacy auth events',
@@ -373,6 +427,10 @@ export function naturalKey(table, row) {
       return `leave_id:${row.leave_id}`;
     case 'leave_balance':
       return `${row.employee_uid}|${row.year}|${row.leave_type}`;
+    case 'authorization_grants':
+      return `${row.employee_uid}|${row.role}|${row.scope_type}|${row.org_unit_code ?? ''}`;
+    case 'employee_org_membership':
+      return `${row.employee_uid}|${row.org_unit_code}`;
     default:
       return JSON.stringify(row);
   }

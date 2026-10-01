@@ -92,6 +92,21 @@ V2 has no `staging_leave` table. Release 1 leave rows live on `employee_leave` (
 | `leave_type` | `leave_type` | Copy | Required | Balance enum, including maternity, paternity, study | Same | No default |
 | `total_days`, `used_days`, `remaining_days` | same | Number | Required | `remaining = total - used` | n/a | No default |
 
+## Role and organizational scope
+
+`employees.department` is a label. It is not a hierarchy and this importer does not turn it into one. Scope arrives only as explicit rows.
+
+| Source field | Target | Transform | Required | Validation | Duplicate policy | Null / default |
+|---|---|---|---|---|---|---|
+| `authorization_grants.employee_id` | `authorization_grants.employee_uid` | Resolve | Required | Known employee | Unique `(employee, role, scope_type, org_unit_code)` | No default |
+| `role` | `role` | Copy | Required | `EXECUTIVE`, `MANAGER`, `EMPLOYEE`, `ADMIN` | Same | No default |
+| `scope_type` | `scope_type` | Copy | Required | `self`, `org_unit`, `organization` | Same | No default |
+| `org_unit_code` | `org_unit_code` | Copy for `org_unit` only | Required for `org_unit` | Opaque code. `organization` must not also carry a code. Manager plus `organization` is rejected. | Same | `NULL` except `org_unit` |
+| `employee_org_membership.employee_id` | `employee_org_membership.employee_uid` | Resolve | Required | Known employee | Unique `(employee, org_unit_code)` | No default |
+| `employee_org_membership.org_unit_code` | same | Copy | Required | Non-empty opaque code | Same | No default |
+
+Legacy `admin` / `manager` / `user` values are not rewritten here. The API maps those stored values at read time. An import that wants the four roles must send those four names.
+
 ## Not migrated
 
 | Table | Policy |

@@ -46,6 +46,8 @@ Rejected forever at this layer:
 
 `refresh_tokens` and `auth_logs` stay empty until a person logs in on V2. `system_logs` is not an import target.
 
+Role and org scope use `authorization_grants` and `employee_org_membership`. Codes are opaque. The importer does not derive a manager's staff from `department` or from any guessed unit tree. See `docs/DATA_MAPPING.md`.
+
 ## 3. Quality gates
 
 `validate.mjs` fails the file when any of these occur:
