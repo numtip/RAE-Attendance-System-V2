@@ -15,8 +15,19 @@ function formatDateTime(value) {
   return String(value);
 }
 
+const decimalKeys = new Set([
+  'totalDays',
+  'usedDays',
+  'remainingDays',
+  'workDuration',
+  'totalWorkHours',
+]);
+
 function normalizeValue(camelKey, value) {
   if (value == null) return value;
+  if (decimalKeys.has(camelKey) && typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value)) {
+    return Number(value);
+  }
   if (camelKey === 'date' || camelKey === 'startDate' || camelKey === 'endDate' || camelKey === 'hireDate') {
     return formatDateOnly(value);
   }
