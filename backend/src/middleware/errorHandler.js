@@ -4,7 +4,11 @@ function errorHandler(err, _req, res, _next) {
   if (err instanceof HttpError) {
     res.status(err.status).json({
       success: false,
-      error: { code: err.code, message: err.message },
+      error: {
+        code: err.code,
+        message: err.message,
+        ...(err.details ? { details: err.details } : {}),
+      },
     });
     return;
   }

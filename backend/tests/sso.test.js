@@ -422,3 +422,131 @@ test('SSO login redirect when enabled with mock provider env', async () => {
     server.close();
   }
 });
+
+test('diagnostic callback lists unknown field names only and issues no session', async () => {
+  const repositories = createFixtureRepositories();
+  let saves = 0;
+  const originalSave = repositories.refreshTokens.save.bind(repositories.refreshTokens);
+  repositories.refreshTokens.save = async (...args) => {
+    saves += 1;
+    return originalSave(...args);
+  };
+  const rawEmail = 'person@example.test';
+  const rawToken = 'sso-token-value-should-not-appear';
+  const ssoService = createSsoService({
+    config: {
+      jwt: baseJwtConfig,
+      sso: {
+        ...baseSsoConfig,
+        provider: 'http',
+        signinUrl: 'https://sso.mju.ac.th/signin.aspx',
+        signoutUrl: 'https://sso.mju.ac.th/signout.aspx',
+        clientId: 'a46a0b5374b4404a9f71a2397dcab283',
+        authorizationUrl: '',
+        tokenUrl: '',
+        userInfoUrl: '',
+        clientSecret: '',
+        callbackDiagnostic: true,
+      },
+    },
+    repositories,
+  });
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.map(String).join(' '));
+  try {
+    await assert.rejects(
+      () => ssoService.handleCallback({
+        rawQuery: {
+          unexpected_field: 'abc',
+          sso_token: rawToken,
+          email: rawEmail,
+        },
+      }),
+      (err) => {
+        assert.equal(err.code, 'SSO_NOT_READY');
+        assert.equal(err.status, 503);
+        const packed = JSON.stringify(err.details);
+        assert.equal(packed.includes(rawToken), false);
+        assert.equal(packed.includes(rawEmail), false);
+        assert.deepEqual(err.details.fields.map((field) => field.name), [
+          'email',
+          'sso_token',
+          'unexpected_field',
+        ]);
+        const email = err.details.fields.find((field) => field.name === 'email');
+        assert.equal(email.type, 'email-shaped');
+        assert.equal(email.length, rawEmail.length);
+        const token = err.details.fields.find((field) => field.name === 'sso_token');
+        assert.equal(token.type, 'token-shaped');
+        assert.equal(token.length, rawToken.length);
+        return true;
+      },
+    );
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(saves, 0);
+  assert.equal(logs.join('\n').includes(rawToken), false);
+  assert.equal(logs.join('\n').includes(rawEmail), false);
+});
+
+test('diagnostic mode stays off unless the flag is set and does not bypass SSO_DISABLED', async () => {
+  const closed = createEnabledSsoService({
+    ssoConfig: {
+      provider: 'http',
+      signinUrl: 'https://sso.mju.ac.th/signin.aspx',
+      signoutUrl: 'https://sso.mju.ac.th/signout.aspx',
+      callbackDiagnostic: false,
+    },
+  });
+  await assert.rejects(
+    () => closed.handleCallback({ rawQuery: { sso_token: 'raw-token-value-not-logged' } }),
+    (err) => err.code === 'SSO_NOT_READY' && err.details == null,
+  );
+
+  const disabled = createEnabledSsoService({
+    ssoConfig: { enabled: false, callbackDiagnostic: true },
+  });
+  await assert.rejects(
+    () => disabled.handleCallback({ rawQuery: { email: 'person@example.test' } }),
+    (err) => err.code === 'SSO_DISABLED' && err.details == null,
+  );
+});
+
+test('diagnostic HTTP callback returns masked field metadata and no session', async () => {
+  const previous = { ...config.sso };
+  Object.assign(config.sso, {
+    ...baseSsoConfig,
+    provider: 'http',
+    signinUrl: 'https://sso.mju.ac.th/signin.aspx',
+    signoutUrl: 'https://sso.mju.ac.th/signout.aspx',
+    clientId: 'a46a0b5374b4404a9f71a2397dcab283',
+    authorizationUrl: '',
+    tokenUrl: '',
+    userInfoUrl: '',
+    clientSecret: '',
+    callbackDiagnostic: true,
+  });
+  const rawToken = 'callback-token-must-stay-out-of-body';
+  const app = createApp({ dataSource: 'fixture' });
+  const { server, port } = await listen(app);
+  try {
+    const response = await rawGet(
+      port,
+      `/api/v1/auth/sso/callback?unexpected_field=abc&sso_token=${encodeURIComponent(rawToken)}`,
+    );
+    const packed = JSON.stringify(response.body);
+    assert.equal(response.status, 503);
+    assert.equal(response.body.error.code, 'SSO_NOT_READY');
+    assert.equal(packed.includes(rawToken), false);
+    assert.deepEqual(response.body.error.details.fields.map((field) => field.name), [
+      'sso_token',
+      'unexpected_field',
+    ]);
+  } finally {
+    Object.assign(config.sso, previous);
+    config.sso.callbackDiagnostic = false;
+    server.close();
+  }
+});

@@ -38,6 +38,7 @@ module.exports = {
     signinUrl: process.env.SSO_SIGNIN_URL || '',
     signoutUrl: process.env.SSO_SIGNOUT_URL || '',
     afterSignoutUrl: process.env.SSO_AFTER_SIGNOUT_URL || '',
+    callbackDiagnostic: process.env.SSO_CALLBACK_DIAGNOSTIC === 'true',
     httpTimeoutMs: Number(process.env.SSO_HTTP_TIMEOUT_MS || 15_000),
   },
   corsOrigin: process.env.CORS_ORIGIN || 'http://127.0.0.1:5173',

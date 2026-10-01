@@ -13,6 +13,7 @@ function createSsoController(ssoService, { config }) {
         state: req.query.state,
         error: req.query.error,
         error_description: req.query.error_description,
+        rawQuery: req.query,
       });
       const redirectBase = config.app.url.replace(/\/$/, '');
       const target = new URL(`${redirectBase}/`);
