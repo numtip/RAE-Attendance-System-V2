@@ -6,13 +6,33 @@ Legacy callers used `https://raeservice.mju.ac.th/api/...` and, in the same bund
 
 ## Implemented
 
+Default `DATA_SOURCE=fixture`. The MariaDB adapter does not connect while ERROR 1932 stands.
+
 | Method | Path | Status | Contract |
 |---|---|---|---|
-| GET | `/api/v1/health` | 200 | `{ success: true, data: { status: "healthy", service: "rae-attendance-v2", version }, message: "API is running" }` |
+| GET | `/api/v1/health` | 200 | `{ success: true, data: { status: "healthy", service: "rae-attendance-v2", version }, message }` |
+| POST | `/api/v1/auth/login` | 200 / 400 / 401 / 403 | Body `email`, `password`. Success `data` has `accessToken`, `refreshToken`, `employee`. |
+| POST | `/api/v1/auth/refresh` | 200 / 401 | Body `refreshToken`. The presented token is revoked on success. |
+| GET | `/api/v1/auth/me` | 200 / 401 | Bearer access token. Password hash is omitted. |
+| POST | `/api/v1/auth/logout` | 200 / 401 | Bearer token plus body `refreshToken`. |
+| GET | `/api/v1/employees` | 200 / 401 | Authenticated list. |
+| GET | `/api/v1/employees/:employeeUid` | 200 / 404 | Profile without `passwordHash`. |
+| GET | `/api/v1/employees/:employeeUid/attendance` | 200 / 403 / 404 | Own records, or any records for admin/manager. |
+| GET | `/api/v1/attendance/daily/:date` | 200 / 403 | Admin or manager. |
+| GET | `/api/v1/attendance/monthly/:employeeUid/:year/:month` | 200 / 403 / 404 | Own summary, or any summary for admin/manager. |
+| GET | `/api/v1/leave` | 200 / 403 | Own rows unless `employeeUid` is allowed. |
+| GET | `/api/v1/leave/balance/:employeeUid` | 200 / 403 / 404 | Query `year`. |
+| GET | `/api/v1/leave/history/:employeeUid` | 200 / 403 / 404 | |
+| GET | `/api/v1/auth/sso/login` | 403 | `SSO_DISABLED` until the MJU callback is confirmed. |
+| GET | `/api/v1/auth/sso/callback` | 403 | Same gate. Enabling the flag still returns `SSO_NOT_READY` and does not redirect. |
+| GET | `/api/v1/auth/sso/me` | 403 | Same gate. |
+| POST | `/api/v1/auth/sso/logout` | 403 | Same gate. |
 
-## Reserved for Release 1
+## Previously reserved
 
-These routes exist and return `501` with `error.code = NOT_IMPLEMENTED`.
+These routes existed as `501` placeholders in the bootstrap and are now the implemented set above, except SSO which stays closed.
+
+Failures use `{ success: false, error: { code, message } }`.
 
 | Method | Path | Legacy evidence | Notes |
 |---|---|---|---|
