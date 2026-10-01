@@ -19,6 +19,7 @@ function authenticate(req, _res, next) {
       employeeUid: payload.sub,
       role: payload.role,
       email: payload.email,
+      authMethod: payload.authMethod,
     };
     next();
   } catch {

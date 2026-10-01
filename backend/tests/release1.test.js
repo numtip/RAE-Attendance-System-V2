@@ -194,10 +194,17 @@ test('employees, attendance, and leave enforce ownership', async () => {
 });
 
 test('SSO stays disabled until the callback is confirmed', async () => {
-  const disabled = createSsoService({ config: { sso: { enabled: false } } });
-  await assert.rejects(() => disabled.login(), (err) => err.code === 'SSO_DISABLED' && err.status === 403);
-  const unready = createSsoService({ config: { sso: { enabled: true } } });
-  await assert.rejects(() => unready.callback(), (err) => err.code === 'SSO_NOT_READY');
+  const jwt = { secret: 'test-only-secret', expiresIn: '15m', refreshTokenDays: 14 };
+  const disabled = createSsoService({
+    config: { jwt, sso: { enabled: false } },
+    repositories: { employees: { findByEmail: async () => null }, refreshTokens: { save: async () => {} } },
+  });
+  await assert.rejects(() => disabled.beginLogin(), (err) => err.code === 'SSO_DISABLED' && err.status === 403);
+  const unready = createSsoService({
+    config: { jwt, sso: { enabled: true, callbackConfirmed: false } },
+    repositories: { employees: { findByEmail: async () => null }, refreshTokens: { save: async () => {} } },
+  });
+  await assert.rejects(() => unready.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
 
   const app = createApp();
   const { server, port } = await listen(app);

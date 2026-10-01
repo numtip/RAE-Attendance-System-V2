@@ -26,6 +26,9 @@ module.exports = {
   },
   sso: {
     enabled: process.env.SSO_ENABLED === 'true',
+    callbackConfirmed: process.env.SSO_CALLBACK_CONFIRMED === 'true',
+    provider: process.env.SSO_PROVIDER || 'http',
+    scopes: process.env.SSO_SCOPES || 'openid profile email',
     authorizationUrl: process.env.SSO_AUTHORIZATION_URL || '',
     tokenUrl: process.env.SSO_TOKEN_URL || '',
     userInfoUrl: process.env.SSO_USER_INFO_URL || '',
