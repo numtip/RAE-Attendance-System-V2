@@ -44,7 +44,6 @@ jobs:
     env:
       JWT_SECRET: ci-mariadb-only-secret
       RUN_MARIADB_TESTS: '1'
-      DATA_SOURCE: mariadb
       DB_HOST: 127.0.0.1
       DB_PORT: 3306
       DB_NAME: attendance_v2
@@ -73,7 +72,7 @@ jobs:
         run: |
           npm ci
           npm run lint
-          npm test
+          node --test --test-force-exit tests/*.test.js
 
   frontend:
     runs-on: ubuntu-latest
