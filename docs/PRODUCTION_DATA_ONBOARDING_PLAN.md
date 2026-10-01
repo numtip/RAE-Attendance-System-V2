@@ -46,7 +46,9 @@ Rejected forever at this layer:
 
 `refresh_tokens` and `auth_logs` stay empty until a person logs in on V2. `system_logs` is not an import target.
 
-An import that is later used for SSO must carry identity mapping (`employees.email`), employee code (`employee_id`), org unit (`employee_org_membership.org_unit_code`), role and manager scope (`authorization_grants`), and account status (`employees.status`). Role and org scope use opaque codes. The importer does not derive a manager's staff from `department` or from any guessed unit tree. See `docs/DATA_MAPPING.md`.
+An import that is later used for SSO must carry directory contact (`employees.email`), employee code (`employee_id`), org unit (`employee_org_membership.org_unit_code`), role and manager scope (`authorization_grants`), and account status (`employees.status`). Role and org scope use opaque codes. The importer does not derive a manager's staff from `department` or from any guessed unit tree. See `docs/DATA_MAPPING.md`.
+
+**MJU SSO subject links are not bulk-imported from HR files.** After the MJU contract confirms the immutable subject claim, operators create **candidate** rows in `employee_identity_links` (evidence from local `mju-person-enrich` is optional) and a second reviewer **approves** them. Email snapshots are audit evidence only; they do not replace `provider_subject`. See `docs/IDENTITY_LINK_MODEL.md`.
 
 ## 3. Quality gates
 
