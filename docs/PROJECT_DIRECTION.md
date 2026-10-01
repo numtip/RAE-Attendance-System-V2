@@ -55,11 +55,11 @@ Recovery scripts and runbooks live in this repo; **execution** on `10.1.245.190`
 - Frontend build
 - Secret scan
 - Backend container image build (`deploy/docker/backend/Dockerfile`)
-- Jev agent layer tests (mock OpenRouter — no API key)
+- Agent Core adapter tests (mock — no live Agent Core or OpenRouter)
 
-### Agent Jev decision layer
+### Agent Core decision layer
 
-Jev supports **agent-only** planning and reviews via OpenRouter (`OPENROUTER_API_KEY`). Default model alias is in code (`openrouter/jev:latest`); not on the Attendance API path. Policy: `docs/AGENT_JEV_POLICY.md`.
+Attendance V2 consumes shared **[Agent Core](https://github.com/numtip/agent-core)** for agent-only planning and reviews (`AGENT_CORE_URL`, `AGENT_CORE_PROJECT`). It does **not** own a direct Jev/OpenRouter runtime. Policy: `docs/AGENT_CORE_POLICY.md`.
 
 ## Legacy database runtime decision
 
