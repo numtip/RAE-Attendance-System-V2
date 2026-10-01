@@ -96,7 +96,7 @@ Do **not** reuse `/attendance/api/...` or the legacy client.
 
 ## Blockers
 
-- MJU callback registration for the V2 URL is **not confirmed**.
+- The V2 callback URL is registered. The query contract is **not** confirmed. See `docs/SSO_CONTRACT_CONFIRMATION.md`.
 - Split URL env vars vs donor `SSO_ENDPOINT` contract is **unknown**.
 - Until confirmed: runtime returns `SSO_DISABLED` or `SSO_NOT_READY`; HTTP provider must not be used against production MJU in CI.
 

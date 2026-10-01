@@ -5,6 +5,7 @@ const { assertSsoGate, portalConfigReady } = require('./sso/ssoConfig');
 const { createOAuthProvider } = require('./sso/oauthProvider');
 const { createSsoStateStore } = require('./sso/ssoStateStore');
 const { buildCidUrl } = require('./sso/mjuPortal');
+const { summarizeCallbackFields } = require('./sso/callbackDiagnostic');
 
 function assertJwtSecret(config) {
   if (!config.jwt.secret) {
@@ -48,7 +49,18 @@ function createSsoService(deps) {
       });
     },
 
-    async handleCallback({ code, state, error, error_description: errorDescription }) {
+    async handleCallback({ code, state, error, error_description: errorDescription, rawQuery }) {
+      if (!config.sso.enabled) {
+        throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
+      }
+      if (config.sso.callbackDiagnostic) {
+        throw new HttpError(
+          503,
+          'SSO_NOT_READY',
+          'MJU callback query contract is not confirmed',
+          { fields: summarizeCallbackFields(rawQuery) },
+        );
+      }
       disabledResponse();
       if (portalConfigReady(config.sso) && config.sso.provider !== 'mock') {
         throw new HttpError(503, 'SSO_NOT_READY', 'MJU callback query contract is not confirmed');
