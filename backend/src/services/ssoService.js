@@ -35,6 +35,15 @@ function createSsoService(deps) {
 
   return {
     async beginLogin() {
+      if (!config.sso.enabled) {
+        throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
+      }
+      if (config.sso.callbackDiagnostic) {
+        if (!config.sso.signinUrl || !config.sso.clientId) {
+          throw new HttpError(503, 'SSO_NOT_READY', 'SSO environment configuration is incomplete');
+        }
+        return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
+      }
       disabledResponse();
       if (config.sso.signinUrl) {
         return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
@@ -49,16 +58,31 @@ function createSsoService(deps) {
       });
     },
 
-    async handleCallback({ code, state, error, error_description: errorDescription, rawQuery }) {
+    async handleCallback({
+      code,
+      state,
+      error,
+      error_description: errorDescription,
+      rawQuery,
+      method,
+      rawBody,
+      cookieNames,
+    }) {
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
       }
       if (config.sso.callbackDiagnostic) {
+        const body = rawBody && typeof rawBody === 'object' && !Buffer.isBuffer(rawBody) ? rawBody : {};
         throw new HttpError(
           503,
           'SSO_NOT_READY',
           'MJU callback query contract is not confirmed',
-          { fields: summarizeCallbackFields(rawQuery) },
+          {
+            method: String(method || 'GET').toUpperCase(),
+            query: summarizeCallbackFields(rawQuery),
+            body: summarizeCallbackFields(body),
+            cookieNames: Array.isArray(cookieNames) ? cookieNames.map(String) : [],
+          },
         );
       }
       disabledResponse();

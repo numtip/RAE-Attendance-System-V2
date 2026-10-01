@@ -1,6 +1,12 @@
 const { success } = require('../utils/response');
 const { asyncRoute } = require('../utils/asyncRoute');
 
+function cookieNames(req) {
+  const header = req.headers?.cookie;
+  if (!header) return [];
+  return header.split(';').map((part) => part.split('=')[0].trim()).filter(Boolean);
+}
+
 function createSsoController(ssoService, { config }) {
   return {
     login: asyncRoute(async (_req, res) => {
@@ -14,6 +20,9 @@ function createSsoController(ssoService, { config }) {
         error: req.query.error,
         error_description: req.query.error_description,
         rawQuery: req.query,
+        method: req.method,
+        rawBody: req.body,
+        cookieNames: cookieNames(req),
       });
       const redirectBase = config.app.url.replace(/\/$/, '');
       const target = new URL(`${redirectBase}/`);

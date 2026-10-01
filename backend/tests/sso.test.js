@@ -457,11 +457,14 @@ test('diagnostic callback lists unknown field names only and issues no session',
   try {
     await assert.rejects(
       () => ssoService.handleCallback({
+        method: 'GET',
+        cookieNames: ['session_name'],
         rawQuery: {
           unexpected_field: 'abc',
           sso_token: rawToken,
           email: rawEmail,
         },
+        rawBody: { username: 'person-name' },
       }),
       (err) => {
         assert.equal(err.code, 'SSO_NOT_READY');
@@ -469,15 +472,19 @@ test('diagnostic callback lists unknown field names only and issues no session',
         const packed = JSON.stringify(err.details);
         assert.equal(packed.includes(rawToken), false);
         assert.equal(packed.includes(rawEmail), false);
-        assert.deepEqual(err.details.fields.map((field) => field.name), [
+        assert.equal(packed.includes('person-name'), false);
+        assert.equal(err.details.method, 'GET');
+        assert.deepEqual(err.details.cookieNames, ['session_name']);
+        assert.deepEqual(err.details.query.map((field) => field.name), [
           'email',
           'sso_token',
           'unexpected_field',
         ]);
-        const email = err.details.fields.find((field) => field.name === 'email');
+        assert.deepEqual(err.details.body.map((field) => field.name), ['username']);
+        const email = err.details.query.find((field) => field.name === 'email');
         assert.equal(email.type, 'email-shaped');
         assert.equal(email.length, rawEmail.length);
-        const token = err.details.fields.find((field) => field.name === 'sso_token');
+        const token = err.details.query.find((field) => field.name === 'sso_token');
         assert.equal(token.type, 'token-shaped');
         assert.equal(token.length, rawToken.length);
         return true;
@@ -489,6 +496,30 @@ test('diagnostic callback lists unknown field names only and issues no session',
   assert.equal(saves, 0);
   assert.equal(logs.join('\n').includes(rawToken), false);
   assert.equal(logs.join('\n').includes(rawEmail), false);
+});
+
+test('diagnostic login redirects while callback confirmation stays false', async () => {
+  const ssoService = createEnabledSsoService({
+    ssoConfig: {
+      callbackConfirmed: false,
+      callbackDiagnostic: true,
+      provider: 'http',
+      signinUrl: 'https://sso.mju.ac.th/signin.aspx',
+      signoutUrl: 'https://sso.mju.ac.th/signout.aspx',
+      clientId: 'a46a0b5374b4404a9f71a2397dcab283',
+      authorizationUrl: '',
+      tokenUrl: '',
+      userInfoUrl: '',
+      clientSecret: '',
+    },
+  });
+  const loginUrl = new URL(await ssoService.beginLogin());
+  assert.equal(`${loginUrl.origin}${loginUrl.pathname}`, 'https://sso.mju.ac.th/signin.aspx');
+  assert.deepEqual([...loginUrl.searchParams.keys()], ['cid']);
+  await assert.rejects(
+    () => ssoService.me({ employeeUid: '22222222-2222-2222-2222-222222222222' }),
+    (err) => err.code === 'SSO_NOT_READY',
+  );
 });
 
 test('diagnostic mode stays off unless the flag is set and does not bypass SSO_DISABLED', async () => {
@@ -540,7 +571,9 @@ test('diagnostic HTTP callback returns masked field metadata and no session', as
     assert.equal(response.status, 503);
     assert.equal(response.body.error.code, 'SSO_NOT_READY');
     assert.equal(packed.includes(rawToken), false);
-    assert.deepEqual(response.body.error.details.fields.map((field) => field.name), [
+    assert.equal(response.body.error.details.method, 'GET');
+    assert.deepEqual(response.body.error.details.cookieNames, []);
+    assert.deepEqual(response.body.error.details.query.map((field) => field.name), [
       'sso_token',
       'unexpected_field',
     ]);
