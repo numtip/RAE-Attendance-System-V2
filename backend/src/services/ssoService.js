@@ -73,16 +73,18 @@ function createSsoService(deps) {
       }
       if (config.sso.callbackDiagnostic) {
         const body = rawBody && typeof rawBody === 'object' && !Buffer.isBuffer(rawBody) ? rawBody : {};
+        const details = {
+          method: String(method || 'GET').toUpperCase(),
+          query: summarizeCallbackFields(rawQuery),
+          body: summarizeCallbackFields(body),
+          cookieNames: Array.isArray(cookieNames) ? cookieNames.map(String) : [],
+        };
+        console.log(`sso_callback_diagnostic ${JSON.stringify(details)}`);
         throw new HttpError(
           503,
           'SSO_NOT_READY',
           'MJU callback query contract is not confirmed',
-          {
-            method: String(method || 'GET').toUpperCase(),
-            query: summarizeCallbackFields(rawQuery),
-            body: summarizeCallbackFields(body),
-            cookieNames: Array.isArray(cookieNames) ? cookieNames.map(String) : [],
-          },
+          details,
         );
       }
       disabledResponse();
