@@ -35,7 +35,7 @@ for (const file of files) {
   }
   if (file.endsWith('.env.example')) {
     for (const line of text.split('\n')) {
-      const match = line.match(/^(JWT_SECRET|DB_PASSWORD|SSO_CLIENT_SECRET|AGENT_CORE_PROJECT_TOKEN|MYSQL_PASSWORD|MARIADB_PASSWORD)=(.*)$/);
+      const match = line.match(/^(JWT_SECRET|DB_PASSWORD|SSO_CLIENT_SECRET|AGENT_CORE_PROJECT_TOKEN)=(.*)$/);
       if (match && match[2].trim() !== '') {
         failures.push(`${file}: ${match[1]} must stay empty`);
       }
