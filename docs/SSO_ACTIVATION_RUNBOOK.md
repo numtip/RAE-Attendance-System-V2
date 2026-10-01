@@ -28,7 +28,7 @@ Related: `docs/SSO_ACTIVATION_CHECKLIST.md`, `docs/SSO_READINESS.md`, `docs/SSO_
 | Client ID | Name exists. Value must come from MJU and must not be committed. |
 | Required claims | Code accepts `email`, `mail`, or `preferred_username`. MJU has not confirmed which claim it sends. |
 | Registered legacy callback | `SSO_CALLBACK_URL` / `SSO_REDIRECT_URI` values were not recorded. Do not assume they equal the V2 path. |
-| Post-login browser path | The controller redirects to `{APP_URL}/?sso=success`. It does not read a return URL from the query string. Whether that path is the SPA entry is an operator decision and is **not** hard-coded here. |
+| Post-login browser path | The controller redirects to `{APP_URL}/?sso=success` and drops the tokens `handleCallback` returned. The browser does not receive an access or refresh token. How the SPA should pick up that session is **UNKNOWN** and blocks a live test. |
 
 ## Security behavior already in code
 
@@ -37,7 +37,7 @@ Related: `docs/SSO_ACTIVATION_CHECKLIST.md`, `docs/SSO_READINESS.md`, `docs/SSO_
 | State / CSRF | Random 24-byte hex `state`, 10 minute TTL, single `consume` (`ssoStateStore.js`). Missing, expired, or reused state is `403` `SSO_STATE_INVALID`. |
 | Callback validation | `code` required. IdP `error` is `401` `SSO_DENIED`. State is checked before any token request. |
 | Redirect allowlist | Login redirects only to the configured authorization URL plus OAuth query params. Success redirects only to `APP_URL`. There is no caller-supplied redirect. |
-| Token handling | Provider access token is used once for userinfo and is not stored as the V2 session. V2 issues its own JWT and refresh token. Legacy tokens are not imported. |
+| Token handling | The provider access token is used once for userinfo and is not stored. `handleCallback` saves a new V2 refresh token and returns an access JWT, but `ssoController.callback` ignores that return value. Legacy tokens are not imported. |
 | Account mapping | Lowercased email against `employees`. No row is `403` `SSO_USER_UNKNOWN`. |
 | Disabled user | Non-`active` status is `SSO_USER_DISABLED`. |
 | Replay | Consumed state cannot be reused. |
@@ -80,7 +80,7 @@ Copy `.env.example`. Leave secrets out of git.
 1. Keep a second shell ready to set `SSO_ENABLED=false`.
 2. On one non-production or agreed client, set the confirmed URLs, `SSO_CALLBACK_CONFIRMED=true`, then `SSO_ENABLED=true`.
 3. Open `GET /api/v1/auth/sso/login` and finish the MJU prompt.
-4. Expect a redirect to `{APP_URL}/?sso=success` and a V2 session for an **active** employee whose email matches the claim.
+4. Do not expect a browser session yet. The redirect is `{APP_URL}/?sso=success` only. A live test of `/auth/me` waits until a reviewed way exists to hand the V2 tokens to the SPA.
 5. Repeat the callback URL and expect `SSO_STATE_INVALID`.
 6. Try an email that is not in `employees` and an `inactive` row. Expect `SSO_USER_UNKNOWN` and `SSO_USER_DISABLED`.
 7. Call `GET /api/v1/auth/sso/me` and `POST /api/v1/auth/sso/logout` with the V2 token.
