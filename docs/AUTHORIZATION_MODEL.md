@@ -2,6 +2,20 @@
 
 SSO and password login prove identity. They do not grant data scope. Every employees, attendance, and leave read checks scope on the server. Hiding a control in the SPA is not a control.
 
+## Identity vs authorization
+
+Authentication (who signed in) and authorization (what they may read) are separate layers.
+
+| Layer | Source |
+|---|---|
+| Password login | Verified `employees` row + password |
+| Future MJU SSO | Confirmed **provider subject** via an **approved** row in `employee_identity_links` (see `docs/IDENTITY_LINK_MODEL.md`) |
+| Data scope | `authorization_grants` and `employee_org_membership` |
+
+`mju-person-enrich` is **local-only** candidate enrichment. It is not an identity provider and must never resolve callback `ac`.
+
+After SSO is connected, the chain is: MJU subject → approved identity link → active employee → JWT role → scope grants → repository filters. A valid JWT alone does not widen scope.
+
 ## Roles
 
 | Role | Directory (employees) | Attendance and leave |

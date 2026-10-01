@@ -3,6 +3,7 @@ const fixtures = require('../dev/fixtures');
 const { EmployeeRepository } = require('./employeeRepository');
 const { AttendanceRepository } = require('./attendanceRepository');
 const { LeaveRepository } = require('./leaveRepository');
+const { createFixtureIdentityLinkRepository } = require('./fixtureIdentityLinkRepository');
 
 function createFixtureRepositories() {
   const refreshTokens = new Map();
@@ -40,6 +41,7 @@ function createFixtureRepositories() {
           .map((row) => row.employeeUid);
       },
     },
+    identityLinks: createFixtureIdentityLinkRepository(),
   };
 }
 

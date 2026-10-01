@@ -32,7 +32,7 @@ V2 still uses `/api/v1/auth/sso/login|callback|me|logout`. It does not adopt `/a
 - Donor config reads `SSO_ENABLED`, `SSO_ENDPOINT`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`, `SSO_CALLBACK_URL`.
 - Legacy host environment also defines `SSO_AUTHORIZATION_URL`, `SSO_TOKEN_URL`, `SSO_USER_INFO_URL`, and `SSO_REDIRECT_URI`; donor code did **not** read those split URLs.
 - Frontend expects SSO `me` JSON `{ success: true, data: { ...user } }`.
-- V2 maps MJU identity to `employees.email` (fail closed if no row).
+- Today, mock OAuth mode still maps MJU profile email to `employees.email` (fail closed if no row). **Target runtime:** map a confirmed MJU SSO **provider subject** through an **approved** `employee_identity_links` row (`docs/IDENTITY_LINK_MODEL.md`). Email is evidence only, not the permanent key.
 
 ## Assumptions (unverified with MJU)
 
@@ -77,6 +77,15 @@ Do **not** reuse `/attendance/api/...` or the legacy client.
 | `SSO_SCOPES` | Default `openid profile email` |
 | `SSO_PROVIDER` | `http` (default) or `mock` for tests |
 
+## Identity link prep (schema only)
+
+- [x] Migration `012_identity_links.sql` — `identity_providers`, `employee_identity_links`.
+- [x] `IdentityResolutionService` — resolve / candidate / approve / reject / revoke (not wired to callback yet).
+- [x] `backend/tests/identityLink.test.js` — synthetic approval and fail-closed resolution.
+- [ ] MJU verified-subject adapter (fail-closed until contract confirmed).
+- [ ] Callback wired through subject adapter + identity resolution (no live SSO until checklist).
+- Local **`mju-person-enrich`** remains offline review only (`docs/SSO_PERSON_ENRICHMENT_INTEGRATION.md`).
+
 ## Implementation status
 
 - Adapter: `backend/src/services/ssoService.js` with injectable OAuth provider (`mock` / `http`).
@@ -87,7 +96,7 @@ Do **not** reuse `/attendance/api/...` or the legacy client.
 
 ## Activation checklist
 
-1. [ ] MJU registers `{APP_URL}/api/v1/auth/sso/callback`.
+1. [x] MJU registers `{APP_URL}/api/v1/auth/sso/callback` (V2 callback URL confirmed in MJU registration).
 2. [ ] Confirm authorization, token, and userinfo URLs (resolve donor `SSO_ENDPOINT` vs split URLs).
 3. [ ] Set all `SSO_*` env vars on the V2 host (secrets outside git).
 4. [ ] Set `SSO_CALLBACK_CONFIRMED=true` only after step 1–3.
@@ -104,3 +113,4 @@ Do **not** reuse `/attendance/api/...` or the legacy client.
 
 - `backend/tests/sso.test.js` — mock provider flow, gates, HTTP route redirect.
 - `backend/tests/release1.test.js` — default closed SSO behavior.
+- `backend/tests/identityLink.test.js` — provider-subject link approval and fail-closed resolution.
