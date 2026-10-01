@@ -84,9 +84,11 @@ Any missing or invalid step **fail closed** (no session).
 | Domain constants | `backend/src/domain/identityLink.js` |
 | Repository (fixture + MariaDB) | `backend/src/repositories/fixtureIdentityLinkRepository.js`, `backend/src/repositories/mariadb/identityLinkMariaDbRepository.js` |
 | Resolution / approval service | `backend/src/services/identityResolutionService.js` |
-| Tests | `backend/tests/identityLink.test.js` |
+| MJU subject adapter (fail-closed) | `backend/src/services/sso/mjuSubjectAdapter.js` — `extractVerifiedSubject()` |
+| Prepared session chain (not on HTTP callback) | `backend/src/services/ssoIdentityChainService.js` |
+| Tests | `backend/tests/identityLink.test.js`, `backend/tests/mjuSubjectAdapter.test.js`, `backend/tests/ssoIdentityChain.test.js` |
 
-The SSO callback is **not** wired to this service yet. Current `ssoService` still uses email matching only when SSO is enabled in non-diagnostic mock mode.
+**MJU subject contract is still UNKNOWN; the adapter returns `unknown` and issues no session.** The HTTP SSO callback is **not** wired to the chain yet. Mock OAuth in `ssoService` still uses email matching only when SSO is enabled in non-diagnostic mode.
 
 ## Operator workflow
 

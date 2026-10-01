@@ -58,6 +58,7 @@ function createSsoService(deps) {
       });
     },
 
+    // Live callback does not use createSsoIdentityChainService yet (subject contract UNKNOWN).
     async handleCallback({
       code,
       state,
