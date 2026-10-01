@@ -10,8 +10,8 @@ Legacy forensic recovery has stopped. The legacy host is left unchanged.
 
 - `backend/` Node.js API under `/api/v1/`
 - `frontend/` Vue 3 + Vite + TypeScript shell
-- `database/` future migrations only
-- `docs/` direction, contract, schema, and migration plans
+- `database/` future migrations; `database/recovery-lab/` isolated InnoDB recovery scripts (lab copies only)
+- `docs/` direction, contract, schema, migration, recovery runbook, and SSO activation
 
 ## Local checks
 
@@ -23,8 +23,19 @@ cd frontend && npm ci && npm run build
 node scripts/secret-scan.mjs
 ```
 
-`GET /api/v1/health` is implemented. The other Release 1 routes answer `501 NOT_IMPLEMENTED` until the next phase.
+Release 1 core routes are implemented against fixture data by default (`DATA_SOURCE=fixture`). Production MariaDB stays blocked while `ERROR 1932` stands.
+
+## Recovery and SSO (pre-production)
+
+| Track | Doc |
+|---|---|
+| DB recovery lab report | `docs/DB_RECOVERY_LAB_REPORT.md` |
+| Operator runbook (host `10.1.245.190`, copy-only) | `docs/DB_RECOVERY_EXECUTION_RUNBOOK.md` |
+| SSO readiness | `docs/SSO_READINESS.md` |
+| SSO activation checklist | `docs/SSO_ACTIVATION_CHECKLIST.md` |
+
+Legacy production database files are **evidence only** — not the V2 runtime. SSO stays **`SSO_ENABLED=false`** until MJU callback registration is confirmed.
 
 ## Status
 
-This bootstrap does not deploy, does not start legacy services, and does not write the production database.
+This repository does not deploy V2, does not start legacy services, and does not write the production database.

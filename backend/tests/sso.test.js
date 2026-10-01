@@ -8,7 +8,10 @@ process.env.DATA_SOURCE = 'fixture';
 const config = require('../src/config');
 const { createApp } = require('../src/app');
 const { createSsoService } = require('../src/services/ssoService');
-const { createMockOAuthProvider } = require('../src/services/sso/oauthProvider');
+const {
+  createMockOAuthProvider,
+  createHttpOAuthProvider,
+} = require('../src/services/sso/oauthProvider');
 const { createSsoStateStore } = require('../src/services/sso/ssoStateStore');
 const { createFixtureRepositories } = require('../src/repositories/fixtureRepositories');
 
@@ -23,6 +26,12 @@ const baseSsoConfig = {
   clientId: 'v2-client-id',
   clientSecret: 'v2-client-secret',
   callbackUrl: 'http://127.0.0.1:3210/api/v1/auth/sso/callback',
+};
+
+const baseJwtConfig = {
+  secret: process.env.JWT_SECRET,
+  expiresIn: '15m',
+  refreshTokenDays: 14,
 };
 
 function listen(app) {
@@ -41,38 +50,39 @@ async function rawGet(port, path) {
   };
 }
 
-test('SSO gates: disabled, unconfirmed callback, and incomplete config', async () => {
+function createEnabledSsoService(overrides = {}) {
   const repos = createFixtureRepositories();
-  const disabled = createSsoService({
-    config: { jwt: { secret: 'x', expiresIn: '15m', refreshTokenDays: 14 }, sso: { ...baseSsoConfig, enabled: false } },
-    repositories: repos,
-    oauthProvider: createMockOAuthProvider(),
-  });
-  await assert.rejects(() => disabled.beginLogin(), (err) => err.code === 'SSO_DISABLED');
-
-  const unconfirmed = createSsoService({
+  return createSsoService({
     config: {
-      jwt: { secret: 'x', expiresIn: '15m', refreshTokenDays: 14 },
-      sso: { ...baseSsoConfig, callbackConfirmed: false },
+      jwt: baseJwtConfig,
+      sso: { ...baseSsoConfig, ...overrides.ssoConfig },
     },
     repositories: repos,
-    oauthProvider: createMockOAuthProvider(),
+    oauthProvider: overrides.oauthProvider ?? createMockOAuthProvider(),
+    stateStore: overrides.stateStore ?? createSsoStateStore(),
   });
-  await assert.rejects(() => unconfirmed.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
+}
+
+test('contract: SSO_DISABLED when enabled flag is false', async () => {
+  const ssoService = createEnabledSsoService({ ssoConfig: { enabled: false } });
+  await assert.rejects(() => ssoService.beginLogin(), (err) => err.code === 'SSO_DISABLED');
 });
 
-test('mock SSO flow: login redirect, callback tokens, me, logout', async () => {
-  const stateStore = createSsoStateStore();
-  const repos = createFixtureRepositories();
-  const ssoService = createSsoService({
-    config: {
-      jwt: { secret: process.env.JWT_SECRET, expiresIn: '15m', refreshTokenDays: 14 },
-      sso: baseSsoConfig,
-    },
-    repositories: repos,
-    oauthProvider: createMockOAuthProvider(),
-    stateStore,
+test('contract: SSO_NOT_READY when callback is not confirmed', async () => {
+  const ssoService = createEnabledSsoService({ ssoConfig: { callbackConfirmed: false } });
+  await assert.rejects(() => ssoService.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
+});
+
+test('contract: SSO_NOT_READY when required env fields are missing', async () => {
+  const ssoService = createEnabledSsoService({
+    ssoConfig: { tokenUrl: '', clientSecret: '' },
   });
+  await assert.rejects(() => ssoService.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
+});
+
+test('contract: mock provider success flow (login, callback, me, logout)', async () => {
+  const stateStore = createSsoStateStore();
+  const ssoService = createEnabledSsoService({ stateStore });
 
   const loginUrl = await ssoService.beginLogin();
   const parsed = new URL(loginUrl);
@@ -101,6 +111,105 @@ test('mock SSO flow: login redirect, callback tokens, me, logout', async () => {
     auth: { employeeUid: session.employee.employeeUid },
   });
   assert.equal(loggedOut.revoked, true);
+});
+
+test('contract: SSO_STATE_INVALID for missing, wrong, or reused state', async () => {
+  const stateStore = createSsoStateStore();
+  const ssoService = createEnabledSsoService({ stateStore });
+
+  await assert.rejects(
+    () => ssoService.handleCallback({ code: 'mock-auth-code', state: 'not-issued' }),
+    (err) => err.code === 'SSO_STATE_INVALID',
+  );
+
+  const loginUrl = await ssoService.beginLogin();
+  const state = new URL(loginUrl).searchParams.get('state');
+  await ssoService.handleCallback({ code: 'mock-auth-code', state });
+
+  await assert.rejects(
+    () => ssoService.handleCallback({ code: 'mock-auth-code', state }),
+    (err) => err.code === 'SSO_STATE_INVALID',
+  );
+});
+
+function fetchThatAbortsOnSignal() {
+  return (_url, options) =>
+    new Promise((resolve, reject) => {
+      const onAbort = () => {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        reject(err);
+      };
+      if (options?.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      options?.signal?.addEventListener('abort', onAbort, { once: true });
+    });
+}
+
+test('contract: SSO_PROVIDER_TIMEOUT when token endpoint does not respond', async () => {
+  const stateStore = createSsoStateStore();
+  const httpProvider = createHttpOAuthProvider({
+    fetchImpl: fetchThatAbortsOnSignal(),
+    timeoutMs: 30,
+  });
+  const ssoService = createEnabledSsoService({
+    ssoConfig: { provider: 'http' },
+    oauthProvider: httpProvider,
+    stateStore,
+  });
+
+  const loginUrl = await ssoService.beginLogin();
+  const state = new URL(loginUrl).searchParams.get('state');
+
+  await assert.rejects(
+    () => ssoService.handleCallback({ code: 'any-code', state }),
+    (err) => err.code === 'SSO_PROVIDER_TIMEOUT',
+  );
+});
+
+test('contract: SSO_PROVIDER_ERROR when token endpoint returns HTTP error', async () => {
+  const stateStore = createSsoStateStore();
+  const failingFetch = async () => ({
+    ok: false,
+    status: 503,
+    text: async () => JSON.stringify({ error: 'unavailable' }),
+  });
+  const httpProvider = createHttpOAuthProvider({ fetchImpl: failingFetch });
+  const ssoService = createEnabledSsoService({
+    ssoConfig: { provider: 'http' },
+    oauthProvider: httpProvider,
+    stateStore,
+  });
+
+  const loginUrl = await ssoService.beginLogin();
+  const state = new URL(loginUrl).searchParams.get('state');
+
+  await assert.rejects(
+    () => ssoService.handleCallback({ code: 'any-code', state }),
+    (err) => err.code === 'SSO_PROVIDER_ERROR',
+  );
+});
+
+test('SSO gates: disabled, unconfirmed callback, and incomplete config', async () => {
+  const repos = createFixtureRepositories();
+  const disabled = createSsoService({
+    config: { jwt: { secret: 'x', expiresIn: '15m', refreshTokenDays: 14 }, sso: { ...baseSsoConfig, enabled: false } },
+    repositories: repos,
+    oauthProvider: createMockOAuthProvider(),
+  });
+  await assert.rejects(() => disabled.beginLogin(), (err) => err.code === 'SSO_DISABLED');
+
+  const unconfirmed = createSsoService({
+    config: {
+      jwt: { secret: 'x', expiresIn: '15m', refreshTokenDays: 14 },
+      sso: { ...baseSsoConfig, callbackConfirmed: false },
+    },
+    repositories: repos,
+    oauthProvider: createMockOAuthProvider(),
+  });
+  await assert.rejects(() => unconfirmed.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
 });
 
 test('SSO HTTP routes stay closed by default', async () => {
