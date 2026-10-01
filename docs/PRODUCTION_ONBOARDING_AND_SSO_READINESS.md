@@ -6,6 +6,7 @@ Companion pull requests:
 
 - Data onboarding: [PR #17](https://github.com/numtip/RAE-Attendance-System-V2/pull/17)
 - SSO activation prep: [PR #18](https://github.com/numtip/RAE-Attendance-System-V2/pull/18)
+- Authorization model: [PR #20](https://github.com/numtip/RAE-Attendance-System-V2/pull/20)
 
 ## Data source readiness
 
@@ -33,14 +34,22 @@ Not imported: `refresh_tokens`, `auth_logs`, `system_logs`, password hashes, nat
 
 Still required before a load: an evidenced source file, a reviewed dry-run, and a separate approval to write `attendance_v2`. The V2 schema also has no unique key on `(employee_uid, date)`; the dry-run enforces that key, and a later migration is not part of this change.
 
+## Authorization readiness
+
+**PARTIAL.**
+
+The current schema has `employees.department` and `employees.role` (`admin`, `manager`, `user`). It has no org-unit tree. PR #20 therefore keeps manager and executive data scope empty until `authorization_grants` and `employee_org_membership` rows exist. Those codes are opaque. Admin can list employees and cannot read other people's attendance or leave by role alone. PR #17's importer accepts those grant rows and rejects a manager-wide organization scope.
+
 ## SSO readiness
 
 **PARTIAL.**
 
+A read-only pass of `https://raeservice.mju.ac.th/attendance/` confirmed the legacy UI entry `/attendance/api/auth/sso/login` (live response HTML 200), callback query `sso_token`, `GET /attendance/api/auth/sso/me`, and logout via `POST` plus `https://sso.mju.ac.th/signout.aspx`. Authorize, token, and userinfo URLs remain **UNKNOWN**. The `cid` parameter on sign-out is not a V2 client id.
+
 | Item | Status |
 |---|---|
-| Proposed callback `https://raeservice.mju.ac.th/api/v1/auth/sso/callback` | Written down. **Not confirmed** with MJU. |
-| Authorization URL | **UNKNOWN** |
+| Proposed callback `https://raeservice.mju.ac.th/api/v1/auth/sso/callback` | Written down. **Not confirmed** with MJU. Legacy UI does not use this path. |
+| Authorization URL | **UNKNOWN** (no redirect observed) |
 | Token URL | **UNKNOWN** |
 | Userinfo URL | **UNKNOWN** |
 | Scopes | Default `openid profile email` is an assumption |
