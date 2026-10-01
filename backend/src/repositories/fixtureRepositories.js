@@ -29,6 +29,17 @@ function createFixtureRepositories() {
     authLogs: {
       async append() {},
     },
+    authorization: {
+      async grantsFor(employeeUid) {
+        return fixtures.authorizationGrants.filter((grant) => grant.employeeUid === employeeUid);
+      },
+      async uidsInOrgUnits(orgUnitCodes) {
+        const codes = new Set(orgUnitCodes);
+        return fixtures.orgMemberships
+          .filter((row) => codes.has(row.orgUnitCode))
+          .map((row) => row.employeeUid);
+      },
+    },
   };
 }
 

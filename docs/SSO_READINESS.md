@@ -1,6 +1,6 @@
 # SSO readiness (V2)
 
-Goal: V2 SSO is **implementable and testable** without calling MJU until the callback URL is registered and confirmed.
+Goal: V2 SSO is **implementable and testable**. The MJU client registration below is **CONFIRMED**. Runtime stays disabled (`SSO_ENABLED=false`) until a controlled live test. CI still mocks the provider.
 
 ## Canonical routes
 
@@ -10,6 +10,20 @@ Goal: V2 SSO is **implementable and testable** without calling MJU until the cal
 | GET | `/api/v1/auth/sso/callback` |
 | GET | `/api/v1/auth/sso/me` |
 | POST | `/api/v1/auth/sso/logout` |
+
+## Legacy public bundle (2026-10-01)
+
+Read-only check of `https://raeservice.mju.ac.th/attendance/`. Labels: **CONFIRMED** / **INFERRED** / **UNKNOWN**.
+
+- **CONFIRMED:** SSO buttons navigate to `/attendance/api/auth/sso/login`. That URL returned HTML 200, not an upstream redirect. `/api/auth/sso/login` returned 502.
+- **CONFIRMED:** Callback handling in the bundle is the query parameter `sso_token`, saved as `accessToken`. Error query values include `missing_code`, `sso_failed`, `user_not_found`, `sso_disabled`, and `sso_config_error`.
+- **CONFIRMED:** Profile reload calls `GET /attendance/api/auth/sso/me` with a bearer token and cookies.
+- **CONFIRMED:** Logout POSTs `/attendance/api/auth/sso/logout`, then opens `https://sso.mju.ac.th/signout.aspx` with a `cid` parameter. That legacy `cid` is **not** the V2 client id. Do not copy it into V2 config.
+- **CONFIRMED:** Landing cards target `/app/attendance`, `/app/reports`, and `/app/employees`, and an anonymous session stays on the landing page with `?redirect=`.
+- **INFERRED:** The `cid` parameter is an identifier for the sign-out page. Its OAuth meaning is not proven.
+- **UNKNOWN:** MJU authorize URL, token URL, userinfo URL, scopes, claims, and the employee match key. The bundle does not implement an OAuth `state` check.
+
+V2 still uses `/api/v1/auth/sso/login|callback|me|logout`. It does not adopt `/attendance/api/*`. The V2 callback does not accept `sso_token`.
 
 ## Confirmed facts
 
@@ -26,27 +40,24 @@ Goal: V2 SSO is **implementable and testable** without calling MJU until the cal
 - User info includes an email (or equivalent) suitable for employee lookup.
 - Scopes `openid profile email` are sufficient (override with `SSO_SCOPES`).
 
-## Proposed V2 callback URL
+## Confirmed MJU registration
 
-Register with MJU (exact host/path is an operator choice):
+Client name: RAE Attendance System V2.
 
-```text
-{APP_URL}/api/v1/auth/sso/callback
-```
+| Item | Value | Status |
+|---|---|---|
+| Client ID | `a46a0b5374b4404a9f71a2397dcab283` | **CONFIRMED** (public registration value, not a secret) |
+| Callback | `https://raeservice.mju.ac.th/api/v1/auth/sso/callback` | **CONFIRMED** |
+| After signout | `https://raeservice.mju.ac.th/attendance-v2/` | **CONFIRMED** (registered return URL, not a query parameter we append) |
+| Signin | `https://sso.mju.ac.th/signin.aspx?cid=<client id>` | **CONFIRMED** |
+| Signout | `https://sso.mju.ac.th/signout.aspx?cid=<client id>` | **CONFIRMED** |
+| Token URL | — | **UNKNOWN** |
+| Userinfo URL | — | **UNKNOWN** |
+| Callback query (`code` vs `sso_token`) | — | **UNKNOWN** |
 
-Example for local V2:
+When `SSO_SIGNIN_URL` is set, `GET /api/v1/auth/sso/login` redirects to that URL with **only** `cid`. Logout JSON includes `signoutUrl` built the same way. Portal-mode callback stays `503` `SSO_NOT_READY` until the query contract is proven. Mock OAuth tests do not set the signin URL, so they still exercise code and state.
 
-```text
-http://127.0.0.1:3210/api/v1/auth/sso/callback
-```
-
-Production example (placeholder until infra is chosen):
-
-```text
-https://raeservice.mju.ac.th/api/v1/auth/sso/callback
-```
-
-Do **not** reuse `/attendance/api/...` or legacy `/api/auth/sso/callback` without explicit confirmation.
+Do **not** reuse `/attendance/api/...` or the legacy client.
 
 ## Required configuration
 
@@ -57,9 +68,12 @@ Do **not** reuse `/attendance/api/...` or legacy `/api/auth/sso/callback` withou
 | `SSO_AUTHORIZATION_URL` | MJU authorize endpoint |
 | `SSO_TOKEN_URL` | MJU token endpoint |
 | `SSO_USER_INFO_URL` | MJU userinfo endpoint |
-| `SSO_CLIENT_ID` | OAuth client id |
-| `SSO_CLIENT_SECRET` | OAuth secret (env only) |
-| `SSO_CALLBACK_URL` | Must match registered callback exactly |
+| `SSO_CLIENT_ID` | Confirmed public client id |
+| `SSO_CLIENT_SECRET` | Empty in git. Still unknown whether MJU portal mode needs one |
+| `SSO_CALLBACK_URL` | Confirmed callback |
+| `SSO_SIGNIN_URL` | `https://sso.mju.ac.th/signin.aspx` (cid added in code) |
+| `SSO_SIGNOUT_URL` | `https://sso.mju.ac.th/signout.aspx` (cid added in code) |
+| `SSO_AFTER_SIGNOUT_URL` | Registered return URL. Not appended to signout |
 | `SSO_SCOPES` | Default `openid profile email` |
 | `SSO_PROVIDER` | `http` (default) or `mock` for tests |
 

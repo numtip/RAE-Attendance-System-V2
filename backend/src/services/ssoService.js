@@ -1,9 +1,10 @@
 const jwt = require('jsonwebtoken');
 const { randomUUID } = require('node:crypto');
 const { HttpError } = require('../utils/httpError');
-const { assertSsoGate } = require('./sso/ssoConfig');
+const { assertSsoGate, portalConfigReady } = require('./sso/ssoConfig');
 const { createOAuthProvider } = require('./sso/oauthProvider');
 const { createSsoStateStore } = require('./sso/ssoStateStore');
+const { buildCidUrl } = require('./sso/mjuPortal');
 
 function assertJwtSecret(config) {
   if (!config.jwt.secret) {
@@ -34,6 +35,9 @@ function createSsoService(deps) {
   return {
     async beginLogin() {
       disabledResponse();
+      if (config.sso.signinUrl) {
+        return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
+      }
       const state = stateStore.create();
       return oauthProvider.buildAuthorizationUrl({
         authorizationUrl: config.sso.authorizationUrl,
@@ -46,6 +50,9 @@ function createSsoService(deps) {
 
     async handleCallback({ code, state, error, error_description: errorDescription }) {
       disabledResponse();
+      if (portalConfigReady(config.sso) && config.sso.provider !== 'mock') {
+        throw new HttpError(503, 'SSO_NOT_READY', 'MJU callback query contract is not confirmed');
+      }
       if (error) {
         throw new HttpError(401, 'SSO_DENIED', errorDescription || error);
       }
@@ -80,6 +87,12 @@ function createSsoService(deps) {
       const employee = await repositories.employees.findByEmail(String(email).toLowerCase());
       if (!employee) {
         throw new HttpError(403, 'SSO_USER_UNKNOWN', 'No employee matches the MJU identity');
+      }
+      if (employee.status && employee.status !== 'active') {
+        throw new HttpError(403, 'SSO_USER_DISABLED', 'Employee is not active');
+      }
+      if (employee.lockedUntil && new Date(employee.lockedUntil).getTime() > Date.now()) {
+        throw new HttpError(403, 'ACCOUNT_LOCKED', 'This account is locked');
       }
 
       assertJwtSecret(config);
@@ -124,7 +137,11 @@ function createSsoService(deps) {
         throw new HttpError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is invalid');
       }
       await repositories.refreshTokens.revoke(refreshToken);
-      return { revoked: true };
+      const result = { revoked: true };
+      if (config.sso.signoutUrl && config.sso.clientId) {
+        result.signoutUrl = buildCidUrl(config.sso.signoutUrl, config.sso.clientId);
+      }
+      return result;
     },
 
   };

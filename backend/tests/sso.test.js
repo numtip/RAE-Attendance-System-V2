@@ -229,6 +229,164 @@ test('SSO HTTP routes stay closed by default', async () => {
   }
 });
 
+function scriptedFetch(responses) {
+  let index = 0;
+  return async () => {
+    const step = responses[Math.min(index, responses.length - 1)];
+    index += 1;
+    return {
+      ok: step.ok !== false,
+      status: step.status ?? 200,
+      text: async () => JSON.stringify(step.body ?? {}),
+    };
+  };
+}
+
+async function callbackWithFetch(responses, repositories) {
+  const stateStore = createSsoStateStore();
+  const httpProvider = createHttpOAuthProvider({ fetchImpl: scriptedFetch(responses) });
+  const ssoService = createSsoService({
+    config: {
+      jwt: baseJwtConfig,
+      sso: { ...baseSsoConfig, provider: 'http' },
+    },
+    repositories: repositories ?? createFixtureRepositories(),
+    oauthProvider: httpProvider,
+    stateStore,
+  });
+  const loginUrl = await ssoService.beginLogin();
+  const state = new URL(loginUrl).searchParams.get('state');
+  return ssoService.handleCallback({ code: 'any-code', state });
+}
+
+test('contract: valid callback issues tokens for a known active employee', async () => {
+  const session = await callbackWithFetch([
+    { body: { access_token: 'provider-token', token_type: 'Bearer' } },
+    { body: { email: 'user@example.test' } },
+  ]);
+  assert.equal(session.employee.email, 'user@example.test');
+  assert.ok(session.accessToken);
+});
+
+test('contract: missing claims reject the callback', async () => {
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { access_token: 'provider-token' } },
+      { body: { sub: 'only-a-subject' } },
+    ]),
+    (err) => err.code === 'SSO_USER_UNKNOWN',
+  );
+});
+
+test('contract: unknown employee rejects the callback', async () => {
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { access_token: 'provider-token' } },
+      { body: { email: 'nobody@example.test' } },
+    ]),
+    (err) => err.code === 'SSO_USER_UNKNOWN',
+  );
+});
+
+test('contract: missing employee mapping does not fall back to employee_id', async () => {
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { access_token: 'provider-token' } },
+      { body: { employee_id: 'E-USER' } },
+    ]),
+    (err) => err.code === 'SSO_USER_UNKNOWN',
+  );
+});
+
+test('MJU signin and signout use only the cid parameter', async () => {
+  const clientId = 'a46a0b5374b4404a9f71a2397dcab283';
+  const repositories = createFixtureRepositories();
+  const ssoConfig = {
+    ...baseSsoConfig,
+    provider: 'http',
+    signinUrl: 'https://sso.mju.ac.th/signin.aspx',
+    signoutUrl: 'https://sso.mju.ac.th/signout.aspx',
+    clientId,
+    authorizationUrl: '',
+    tokenUrl: '',
+    userInfoUrl: '',
+    clientSecret: '',
+  };
+  const ssoService = createSsoService({
+    config: { jwt: baseJwtConfig, sso: ssoConfig },
+    repositories,
+  });
+  const loginUrl = new URL(await ssoService.beginLogin());
+  assert.equal(`${loginUrl.origin}${loginUrl.pathname}`, 'https://sso.mju.ac.th/signin.aspx');
+  assert.deepEqual([...loginUrl.searchParams.keys()], ['cid']);
+  assert.equal(loginUrl.searchParams.get('cid'), clientId);
+
+  await assert.rejects(
+    () => ssoService.handleCallback({ code: 'mock-auth-code', state: 'unused' }),
+    (err) => err.code === 'SSO_NOT_READY',
+  );
+
+  const employee = await repositories.employees.findByEmail('user@example.test');
+  await repositories.refreshTokens.save({
+    token: 'portal-refresh',
+    employeeUid: employee.employeeUid,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    revokedAt: null,
+  });
+  const loggedOut = await ssoService.logout({
+    refreshToken: 'portal-refresh',
+    auth: { employeeUid: employee.employeeUid },
+  });
+  const signoutUrl = new URL(loggedOut.signoutUrl);
+  assert.equal(loggedOut.revoked, true);
+  assert.equal(`${signoutUrl.origin}${signoutUrl.pathname}`, 'https://sso.mju.ac.th/signout.aspx');
+  assert.deepEqual([...signoutUrl.searchParams.keys()], ['cid']);
+  assert.equal(signoutUrl.searchParams.get('cid'), clientId);
+});
+
+test('contract: disabled employee rejects the callback', async () => {
+  const repositories = createFixtureRepositories();
+  const previous = repositories.employees.findByEmail.bind(repositories.employees);
+  repositories.employees.findByEmail = async (email) => {
+    if (email === 'inactive@example.test') {
+      return {
+        employeeUid: '44444444-4444-4444-4444-444444444444',
+        email,
+        role: 'user',
+        status: 'inactive',
+        lockedUntil: null,
+      };
+    }
+    return previous(email);
+  };
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { access_token: 'provider-token' } },
+      { body: { email: 'inactive@example.test' } },
+    ], repositories),
+    (err) => err.code === 'SSO_USER_DISABLED',
+  );
+});
+
+test('contract: userinfo error rejects the callback', async () => {
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { access_token: 'provider-token' } },
+      { ok: false, status: 500, body: { error: 'userinfo-down' } },
+    ]),
+    (err) => err.code === 'SSO_PROVIDER_ERROR',
+  );
+});
+
+test('contract: token response without an access token is rejected', async () => {
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { token_type: 'Bearer' } },
+    ]),
+    (err) => err.code === 'SSO_TOKEN_ERROR',
+  );
+});
+
 test('SSO login redirect when enabled with mock provider env', async () => {
   const previous = {
     enabled: config.sso.enabled,

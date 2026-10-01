@@ -1,8 +1,16 @@
 const { HttpError } = require('../../utils/httpError');
 
+function portalConfigReady(sso) {
+  return Boolean(sso.signinUrl && sso.signoutUrl && sso.clientId && sso.callbackUrl);
+}
+
+function oauthConfigReady(sso) {
+  const { authorizationUrl, tokenUrl, userInfoUrl, clientId, clientSecret, callbackUrl } = sso;
+  return Boolean(authorizationUrl && tokenUrl && userInfoUrl && clientId && clientSecret && callbackUrl);
+}
+
 function requiredConfig(config) {
-  const { authorizationUrl, tokenUrl, userInfoUrl, clientId, clientSecret, callbackUrl } = config.sso;
-  return authorizationUrl && tokenUrl && userInfoUrl && clientId && clientSecret && callbackUrl;
+  return portalConfigReady(config.sso) || oauthConfigReady(config.sso);
 }
 
 function assertSsoGate(config) {
@@ -21,4 +29,9 @@ function isSsoOperational(config) {
   return config.sso.enabled && config.sso.callbackConfirmed && requiredConfig(config);
 }
 
-module.exports = { assertSsoGate, isSsoOperational, requiredConfig };
+module.exports = {
+  assertSsoGate,
+  isSsoOperational,
+  requiredConfig,
+  portalConfigReady,
+};

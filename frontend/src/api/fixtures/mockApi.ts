@@ -9,7 +9,6 @@ import type {
   MonthlySummary,
 } from '../types';
 import {
-  fixtureAttendance,
   fixtureBalances,
   fixtureEmployees,
   fixtureLeave,
@@ -55,10 +54,8 @@ function authFromSession(): { employeeUid: string; email: string; role: string }
 }
 
 function assertCanReadEmployee(auth: { employeeUid: string; role: string }, employeeUid: string): void {
-  if (auth.role === 'admin' || auth.role === 'manager' || auth.employeeUid === employeeUid) {
-    return;
-  }
-  throw new ApiError(403, 'FORBIDDEN', 'You can only read your own attendance and leave records');
+  if (auth.employeeUid === employeeUid) return;
+  throw new ApiError(403, 'FORBIDDEN', 'This record is outside your scope');
 }
 
 function findEmployeeByEmail(email: string) {
@@ -152,19 +149,13 @@ async function handleMe(): Promise<EmployeePublic> {
   return employee;
 }
 
-async function handleAttendanceDaily(date: string): Promise<AttendanceRecord[]> {
-  const auth = authFromSession();
-  if (auth.role !== 'admin' && auth.role !== 'manager') {
-    throw new ApiError(
-      403,
-      'FORBIDDEN',
-      'Daily attendance for all employees requires a manager or admin role',
-    );
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new ApiError(400, 'VALIDATION_ERROR', 'date must be YYYY-MM-DD');
-  }
-  return fixtureAttendance.filter((row) => row.date === date);
+async function handleAttendanceDaily(_date: string): Promise<AttendanceRecord[]> {
+  authFromSession();
+  throw new ApiError(
+    403,
+    'FORBIDDEN',
+    'Daily attendance for other employees is outside your scope',
+  );
 }
 
 async function handleAttendanceMonthly(

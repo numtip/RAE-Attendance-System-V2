@@ -14,14 +14,8 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const rows = ref<AttendanceRecord[]>([]);
 const employee = getStoredEmployee();
-const isManager = employee?.role === 'admin' || employee?.role === 'manager';
 
 async function load() {
-  if (!isManager) {
-    error.value = 'Daily attendance for all employees requires admin or manager role.';
-    rows.value = [];
-    return;
-  }
   loading.value = true;
   error.value = null;
   try {
@@ -46,19 +40,19 @@ onMounted(load);
           <span>Date</span>
           <input v-model="date" type="date" />
         </label>
-        <button type="button" class="btn btn--primary" :disabled="loading || !isManager" @click="load">
+        <button type="button" class="btn btn--primary" :disabled="loading" @click="load">
           Load
         </button>
       </div>
     </div>
-    <p v-if="!isManager" class="muted">
-      Signed in as <strong>{{ employee?.role }}</strong>. Use an admin account to query
+    <p class="muted">
+      Signed in as <strong>{{ employee?.role }}</strong>. The API decides who can query
       <code>GET /api/v1/attendance/daily/:date</code>.
     </p>
     <AsyncState
       :loading="loading"
       :error="error"
-      :empty="isManager && !loading && !error && rows.length === 0"
+      :empty="!loading && !error && rows.length === 0"
       empty-message="No attendance records for this date."
     >
       <div v-if="rows.length" class="table-scroll">

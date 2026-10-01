@@ -5,6 +5,7 @@ const { createAuthLogsMariaDbRepository } = require('./mariadb/authLogsMariaDbRe
 const { createEmployeeMariaDbRepository } = require('./mariadb/employeeMariaDbRepository');
 const { createLeaveMariaDbRepository } = require('./mariadb/leaveMariaDbRepository');
 const { createRefreshTokenMariaDbRepository } = require('./mariadb/refreshTokenMariaDbRepository');
+const { createAuthorizationMariaDbRepository } = require('./mariadb/authorizationMariaDbRepository');
 
 function blockedRepo() {
   const error = getDbUnavailableError();
@@ -22,6 +23,7 @@ function createMariaDbRepositories(database = config.database) {
       leave: blockedRepo(),
       refreshTokens: blockedRepo(),
       authLogs: blockedRepo(),
+      authorization: blockedRepo(),
     };
   }
 
@@ -32,6 +34,7 @@ function createMariaDbRepositories(database = config.database) {
     leave: createLeaveMariaDbRepository(pool),
     refreshTokens: createRefreshTokenMariaDbRepository(pool),
     authLogs: createAuthLogsMariaDbRepository(pool),
+    authorization: createAuthorizationMariaDbRepository(pool),
   };
 }
 

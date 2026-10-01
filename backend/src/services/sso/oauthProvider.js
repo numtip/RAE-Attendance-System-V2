@@ -108,7 +108,8 @@ function createOAuthProvider(config, overrides = {}) {
   if (mode === 'mock') {
     return createMockOAuthProvider();
   }
-  return createHttpOAuthProvider(overrides);
+  const timeoutMs = overrides.timeoutMs ?? config.sso?.httpTimeoutMs;
+  return createHttpOAuthProvider({ ...overrides, timeoutMs });
 }
 
 module.exports = {

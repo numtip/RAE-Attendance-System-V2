@@ -5,11 +5,11 @@ function createLeaveService({ repositories }) {
   return {
     async list(auth, employeeUid) {
       const target = employeeUid || auth.employeeUid;
-      assertCanReadEmployee(auth, target);
+      await assertCanReadEmployee(auth, target, repositories, 'data');
       return repositories.leave.list(target);
     },
     async history(auth, employeeUid) {
-      assertCanReadEmployee(auth, employeeUid);
+      await assertCanReadEmployee(auth, employeeUid, repositories, 'data');
       const employee = await repositories.employees.findByUid(employeeUid);
       if (!employee) {
         throw new HttpError(404, 'NOT_FOUND', 'Employee was not found');
@@ -20,7 +20,7 @@ function createLeaveService({ repositories }) {
       if (!Number.isInteger(year) || year < 2000 || year > 2100) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'year is invalid');
       }
-      assertCanReadEmployee(auth, employeeUid);
+      await assertCanReadEmployee(auth, employeeUid, repositories, 'data');
       const employee = await repositories.employees.findByUid(employeeUid);
       if (!employee) {
         throw new HttpError(404, 'NOT_FOUND', 'Employee was not found');

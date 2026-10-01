@@ -29,6 +29,8 @@ jobs:
         env:
           JWT_SECRET: ci-fixture-only-secret
         run: npm run contract:smoke
+      - name: Data onboarding dry-run tests
+        run: node --test scripts/data-onboarding/onboarding.test.mjs
 
   backend-mariadb:
     runs-on: ubuntu-latest
