@@ -26,7 +26,7 @@ Observed on 2026-10-01 from `https://raeservice.mju.ac.th/attendance/` and the b
 | Step | Legacy public behavior | V2 `/api/v1/auth/sso/*` |
 |---|---|---|
 | Login | Browser navigates to `/attendance/api/auth/sso/login` (currently HTML) | `GET /api/v1/auth/sso/login` redirects to `SSO_SIGNIN_URL?cid=<SSO_CLIENT_ID>` when the signin URL is set, otherwise to the OAuth authorize URL. `403` while SSO is disabled |
-| Callback | Query `sso_token` becomes the bearer token. No `state` in the bundle | `GET /api/v1/auth/sso/callback` expects `code` and `state`, then redirects to `{APP_URL}/?sso=success` **without** putting tokens on the URL |
+| Callback | Query `sso_token` becomes the bearer token. No `state` in the bundle | A human V2 callback was `GET` with only `ac` (length 32, no body). Meaning is unknown. Portal mode stays `503` and issues no session |
 | Me | `GET /attendance/api/auth/sso/me` | `GET /api/v1/auth/sso/me` with the V2 access token |
 | Logout | POST legacy logout, then MJU `signout.aspx` | `POST /api/v1/auth/sso/logout` revokes the V2 refresh token and returns `signoutUrl` as `SSO_SIGNOUT_URL?cid=<SSO_CLIENT_ID>` |
 | Identity vs authorization | Frontend role strings are UX | SSO maps an email claim onto `employees`. Data scope is a separate authorization check |
@@ -51,7 +51,8 @@ Observed on 2026-10-01 from `https://raeservice.mju.ac.th/attendance/` and the b
 
 | Item | Why it stays unknown |
 |---|---|
-| Token and userinfo URLs | Signin and signout are portal pages. Token and userinfo URLs were not in the registration. |
+| Meaning of callback field `ac` | Shape is confirmed: one query field, length 32. Not proven to be a code, token, or ticket. No public bundle or donor doc shows an exchange URL. |
+| One-time use, signature, and identity claim | Not observed. Cookie name `ses_person_citizen` was present. Its value is not an identity source. |
 | Token URL | Host had the env name. The value is not in the repo. |
 | Userinfo URL | Host had the env name. The value is not in the repo. |
 | Scopes | V2 default `openid profile email` is documented as an assumption in `SSO_READINESS.md`. |
