@@ -81,6 +81,12 @@ function createSsoService(deps) {
       if (!employee) {
         throw new HttpError(403, 'SSO_USER_UNKNOWN', 'No employee matches the MJU identity');
       }
+      if (employee.status && employee.status !== 'active') {
+        throw new HttpError(403, 'SSO_USER_DISABLED', 'Employee is not active');
+      }
+      if (employee.lockedUntil && new Date(employee.lockedUntil).getTime() > Date.now()) {
+        throw new HttpError(403, 'ACCOUNT_LOCKED', 'This account is locked');
+      }
 
       assertJwtSecret(config);
       const refreshToken = randomUUID();

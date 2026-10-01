@@ -1,5 +1,7 @@
 # SSO activation checklist (V2)
 
+Operator sequence, env, live test, and rollback: [`SSO_ACTIVATION_RUNBOOK.md`](./SSO_ACTIVATION_RUNBOOK.md).
+
 Use this document when turning on MJU SSO in production. Until every prerequisite is checked, keep **`SSO_ENABLED=false`** (default) and **`SSO_CALLBACK_CONFIRMED=false`**.
 
 Related: [`SSO_READINESS.md`](./SSO_READINESS.md), [`SSO_REUSE_PLAN.md`](./SSO_REUSE_PLAN.md).
