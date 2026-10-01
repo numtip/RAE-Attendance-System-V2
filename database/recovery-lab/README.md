@@ -50,6 +50,8 @@ bash scripts/logical-export-lab.sh
 | `import-logical-to-v2.sh` | Load export into clean V2 DB |
 | `poc-transportable-tablespace.sh` | Synthetic technique proof |
 
+Operator steps: **`docs/DB_RECOVERY_EXECUTION_RUNBOOK.md`**.
+
 ## Technique proof
 
 `scripts/poc-transportable-tablespace.sh` runs a synthetic import/export cycle on the local lab socket. It does not use production files.

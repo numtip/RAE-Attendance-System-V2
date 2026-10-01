@@ -23,3 +23,9 @@ If recovery succeeds, the path is:
 `legacy files → isolated recovery lab → logical export → clean V2 database`
 
 Do not revive the broken production InnoDB instance as the V2 runtime.
+
+Operator execution (copy-only, isolated lab): `docs/DB_RECOVERY_EXECUTION_RUNBOOK.md`.
+
+## SSO
+
+V2 SSO routes live under `/api/v1/auth/sso/*`. Implementation is testable with a mock provider; **production MJU calls stay off** until `SSO_CALLBACK_CONFIRMED=true` and the checklist in `docs/SSO_ACTIVATION_CHECKLIST.md` is complete. Proposed production callback: `https://raeservice.mju.ac.th/api/v1/auth/sso/callback`.
