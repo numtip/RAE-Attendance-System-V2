@@ -67,3 +67,13 @@ INSERT INTO leave_balance (
 ) VALUES (
   '22222222-2222-2222-2222-222222222222', 2026, 'personal', 6.00, 1.00, 5.00, @seed_ts, @seed_ts
 );
+
+INSERT INTO employee_identifier (
+  employee_uid, id_type, id_value, source_system, is_primary, status, verified_at, created_at, updated_at
+) VALUES
+  (
+    '22222222-2222-2222-2222-222222222222', 'personnel_id', 'P-USER-001', 'dev-seed', 0, 'active', NULL, @seed_ts, @seed_ts
+  ),
+  (
+    '22222222-2222-2222-2222-222222222222', 'facescan_id', 'FS-USER-001', 'dev-seed', 0, 'active', NULL, @seed_ts, @seed_ts
+  );

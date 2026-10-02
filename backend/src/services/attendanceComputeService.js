@@ -1,5 +1,6 @@
 const { HttpError } = require('../utils/httpError');
 const { createAttendanceCoreClient } = require('./attendanceCoreClient');
+const { createEmployeeIdentityService } = require('./employeeIdentityService');
 
 const ALLOWED_SOURCES = new Set(['CSV_IMPORT', 'FACESCAN_DB', 'API', 'MANUAL_CORRECTION']);
 
@@ -34,8 +35,25 @@ function normalizeEvaluateDayBody(body) {
   };
 }
 
+async function resolveEmployeeUidFromBusinessId(repositories, businessEmployeeId) {
+  if (!repositories?.employees) {
+    throw new HttpError(503, 'IDENTITY_UNAVAILABLE', 'Employee repositories are not configured');
+  }
+  const identity = createEmployeeIdentityService({ repositories });
+  return identity.resolveUid('employee_id', businessEmployeeId);
+}
+
+function buildCoreEvaluateDayPayload(boundaryPayload, employeeUid) {
+  return {
+    ...boundaryPayload,
+    employee_uid: employeeUid,
+    employeeUid,
+  };
+}
+
 function createAttendanceComputeService(options = {}) {
-  const config = options.config || {};
+  const config = options.config || options.container?.config || {};
+  const repositories = options.repositories || options.container?.repositories;
   const coreClient = options.coreClient || createAttendanceCoreClient({
     baseUrl: options.baseUrl || config.attendanceCore?.url,
     timeoutMs: options.timeoutMs || config.attendanceCore?.timeoutMs,
@@ -45,11 +63,19 @@ function createAttendanceComputeService(options = {}) {
   return {
     async evaluateDay(auth, body) {
       assertCanCompute(auth);
-      const payload = normalizeEvaluateDayBody(body);
-      const result = await coreClient.evaluateDay(payload);
+      const boundaryPayload = normalizeEvaluateDayBody(body);
+      let employeeUid;
+      if (repositories) {
+        employeeUid = await resolveEmployeeUidFromBusinessId(repositories, boundaryPayload.employee_id);
+      }
+      const corePayload = employeeUid
+        ? buildCoreEvaluateDayPayload(boundaryPayload, employeeUid)
+        : boundaryPayload;
+      const result = await coreClient.evaluateDay(corePayload);
       return {
         ...result,
-        source: payload.source,
+        ...(employeeUid ? { employeeUid } : {}),
+        source: boundaryPayload.source,
         explainedBy: 'attendance-core',
       };
     },
@@ -61,9 +87,15 @@ function createAttendanceComputeService(options = {}) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'days must be a non-empty array');
       }
       const normalizedDays = days.map((day) => normalizeEvaluateDayBody(day));
+      const coreDays = repositories
+        ? await Promise.all(normalizedDays.map(async (day) => {
+          const employeeUid = await resolveEmployeeUidFromBusinessId(repositories, day.employee_id);
+          return buildCoreEvaluateDayPayload(day, employeeUid);
+        }))
+        : normalizedDays;
       return coreClient.evaluatePeriod({
         month: body.month || '',
-        days: normalizedDays,
+        days: coreDays,
       });
     },
 
@@ -72,6 +104,7 @@ function createAttendanceComputeService(options = {}) {
       const evaluated = await this.evaluateDay(auth, body);
       return {
         employee_id: evaluated.employee_id,
+        employeeUid: evaluated.employeeUid,
         date: evaluated.date,
         attendance_status: evaluated.attendance_status,
         issues: evaluated.issues || [],
@@ -82,4 +115,9 @@ function createAttendanceComputeService(options = {}) {
   };
 }
 
-module.exports = { createAttendanceComputeService, normalizeEvaluateDayBody };
+module.exports = {
+  createAttendanceComputeService,
+  normalizeEvaluateDayBody,
+  resolveEmployeeUidFromBusinessId,
+  buildCoreEvaluateDayPayload,
+};

@@ -23,7 +23,7 @@ export const BALANCE_TYPES = new Set(['sick', 'personal', 'vacation', 'maternity
 export const EMPLOYEE_TYPES = new Set(['university', 'department', 'contract']);
 export const EMPLOYEE_STATUSES = new Set(['active', 'inactive', 'resigned']);
 export const ATTENDANCE_STATUSES = new Set(['present', 'late', 'absent', 'leave', 'holiday']);
-export const ID_TYPES = new Set(['facescan_id', 'national_id', 'employee_id']);
+export const ID_TYPES = new Set(['facescan_id', 'employee_id', 'personnel_id', 'national_id']);
 export const ACCESS_ROLES = new Set(['EXECUTIVE', 'MANAGER', 'EMPLOYEE', 'ADMIN']);
 export const SCOPE_TYPES = new Set(['self', 'org_unit', 'organization']);
 
@@ -146,8 +146,11 @@ export function validateSource(bundle) {
       issue(errors, 'employee_identifier', index, 'UNKNOWN_EMPLOYEE', 'identifier does not map to an employee');
     }
     if (!ID_TYPES.has(row?.id_type)) issue(errors, 'employee_identifier', index, 'INVALID_ENUM', 'id_type is invalid');
-    if (row?.id_type === 'national_id') {
-      issue(errors, 'employee_identifier', index, 'SENSITIVE_ID', 'national_id values are out of scope for this importer');
+    if (row?.id_type === 'national_id' && row?.id_value) {
+      const digits = String(row.id_value).replace(/\D/g, '');
+      if (digits.length !== 13) {
+        issue(errors, 'employee_identifier', index, 'INVALID_FORMAT', 'national_id must be 13 digits');
+      }
     }
     if (!row?.id_value) issue(errors, 'employee_identifier', index, 'REQUIRED', 'id_value is required');
   });
@@ -314,7 +317,6 @@ export function transformSource(bundle) {
   const employeesById = new Map(employees.map((row) => [row.employee_id, row]));
 
   const employeeIdentifier = asArray(bundle, 'employee_identifier')
-    .filter((row) => row.id_type !== 'national_id')
     .map((row) => ({
       employee_uid: uidFor(row, employeesById),
       id_type: row.id_type,
@@ -408,7 +410,7 @@ export function transformSource(bundle) {
       auth_logs: 'start empty; do not copy legacy auth events',
       system_logs: 'not imported',
       password_hash: 'forced null',
-      national_id: 'dropped',
+      national_id: 'allowed for SSO identity rows only; handle with care',
     },
   };
 }

@@ -35,7 +35,7 @@ async function login(port, email = 'admin@example.test') {
   return result.body.data;
 }
 
-test('attendance compute service delegates to core client', async () => {
+test('attendance compute service delegates to core client without identity repos', async () => {
   const service = createAttendanceComputeService({
     coreClient: {
       async evaluateDay(payload) {
@@ -83,7 +83,7 @@ test('evaluate-day route requires manager/admin and configured core', async () =
     const admin = await login(port, 'admin@example.test');
     const unavailable = await api(port, 'POST', '/api/v1/attendance/evaluate-day', {
       token: admin.accessToken,
-      body: { employee_id: 'E-100', date: '2026-08-03' },
+      body: { employee_id: 'E-USER', date: '2026-08-03' },
     });
     assert.equal(unavailable.status, 503);
     assert.equal(unavailable.body.error.code, 'ATTENDANCE_CORE_UNAVAILABLE');
