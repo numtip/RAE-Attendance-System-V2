@@ -6,6 +6,7 @@ const {
   normalizeCheckinoutRow,
   buildSourceEventKey,
 } = require('../domain/facescanIngestion');
+const { formatBangkokWall } = require('../utils/bangkokTime');
 
 function createFacescanIngestionService({ repositories }) {
   const store = repositories.facescanIngestion;
@@ -94,7 +95,7 @@ function createFacescanIngestionService({ repositories }) {
           resolutionStatus,
           importBatchUid: batchUid,
           rawPayload: normalized.rawPayload,
-          resolvedAt: employeeUid ? new Date().toISOString() : null,
+          resolvedAt: employeeUid ? formatBangkokWall(new Date()) : null,
         });
         rowsInserted += 1;
         if (employeeUid) {
