@@ -49,7 +49,7 @@ Seeded login password: **`valid-pass`** (bcrypt cost 8). Regenerate hash with `n
 - `system_logs` (minimal; optional diagnostics)
 - `schema_migrations` (runner bookkeeping)
 
-FaceScan **raw** staging (`facescan_import_batches`, `staging_facescan_raw`) is added in migration `014` (Phase A). Legacy catalog names `staging_facescan` / CSV daily flow remain separate. `staging_leave` and views are still out of bootstrap.
+FaceScan: **`014`** + **`015`** (raw HIP staging), **`016`** (`attendance_events` normalized facts). See `docs/FACESCAN_INGESTION.md`. Legacy catalog `staging_facescan` / CSV daily flow remain separate.
 
 ## Future legacy import hook strategy
 
