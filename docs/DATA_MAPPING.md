@@ -21,7 +21,7 @@ Do not import old sessions, refresh tokens, or auth secrets. Those columns are d
 
 | Source field | Target field | Transform | Required | Validation | Duplicate policy | Null / default |
 |---|---|---|---|---|---|---|
-| `employee_uid` | `employee_uid` | Keep when present. Otherwise `stableEmployeeUid(employee_id)`. | Optional in source | UUID text when supplied | One row per `employee_id` | Generated when absent |
+| `employee_uid` | `employee_uid` | Keep the UUID allocated during controlled batch preparation. Never derive it from `employee_id`. | Required in prepared batch | UUID | One row per `employee_id` | No default |
 | `employee_id` | `employee_id` | Trim not applied; exact string | Required | Non-empty, unique | Reject file | No default |
 | `first_name_th` / `last_name_th` | same | Copy | Required | Non-empty | n/a | No default |
 | `first_name_en` / `last_name_en` | same | Copy | Optional | None | n/a | `NULL` |
@@ -50,6 +50,15 @@ No second employee master is named in the repo. Do not assume `employee_id` from
 | `is_primary` | `is_primary` | `1` or `0` | Optional | None | n/a | `0` |
 
 The V2 table has no unique key on `(id_type, id_value)`. The dry-run enforces uniqueness anyway.
+
+### Planned MJU personnel identifier
+
+MJU Person API is authoritative for its `personnelId` field. Keep that value as a
+distinct planned identifier type, `personnel_id`; do not silently copy it to
+`employees.employee_id`. Migration `013_personnel_identifier.sql` adds the
+`personnel_id` enum value and unique `(id_type, id_value)` on `employee_identifier`.
+Import still requires a separate approved batch and writer. See
+`docs/PERSONNEL_ID_ONBOARDING_DESIGN.md` and `docs/IMPORT_BATCH_APPROVAL.md`.
 
 ## daily_attendance
 
