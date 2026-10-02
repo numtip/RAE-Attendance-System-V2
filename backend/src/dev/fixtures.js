@@ -75,6 +75,21 @@ const monthly = [
   },
 ];
 
+const employeeIdentifiers = [
+  {
+    employeeUid: '22222222-2222-2222-2222-222222222222',
+    idType: 'personnel_id',
+    idValue: 'P-USER-001',
+    sourceSystem: 'fixture',
+  },
+  {
+    employeeUid: '22222222-2222-2222-2222-222222222222',
+    idType: 'facescan_id',
+    idValue: 'FS-USER-001',
+    sourceSystem: 'fixture',
+  },
+];
+
 const authorizationGrants = [];
 const orgMemberships = [];
 
@@ -103,6 +118,7 @@ const balances = [
 
 module.exports = {
   employees,
+  employeeIdentifiers,
   attendance,
   monthly,
   leave,

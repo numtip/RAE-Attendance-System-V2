@@ -4,6 +4,7 @@ const { EmployeeRepository } = require('./employeeRepository');
 const { AttendanceRepository } = require('./attendanceRepository');
 const { LeaveRepository } = require('./leaveRepository');
 const { createFixtureIdentityLinkRepository } = require('./fixtureIdentityLinkRepository');
+const { createFixtureEmployeeIdentifierRepository } = require('./fixtureEmployeeIdentifierRepository');
 
 function createFixtureRepositories() {
   const refreshTokens = new Map();
@@ -42,6 +43,7 @@ function createFixtureRepositories() {
       },
     },
     identityLinks: createFixtureIdentityLinkRepository(),
+    employeeIdentifiers: createFixtureEmployeeIdentifierRepository(fixtures.employeeIdentifiers),
   };
 }
 
