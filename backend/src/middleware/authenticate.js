@@ -14,7 +14,7 @@ function authenticate(req, _res, next) {
     return;
   }
   try {
-    const payload = jwt.verify(match[1], config.jwt.secret);
+    const payload = jwt.verify(match[1], config.jwt.secret, { algorithms: ['HS256'] });
     req.auth = {
       employeeUid: payload.sub,
       role: payload.role,

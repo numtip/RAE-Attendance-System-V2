@@ -12,6 +12,7 @@ const {
   HIP_BATCH_SOURCE,
   deriveIdentityKind,
   ssoPolicyForKind,
+  attendanceEligibility,
 } = require('../src/domain/identityKind');
 
 // Synthetic ids only. Two distinct employee uids that exist in the fixture employees.
@@ -112,4 +113,25 @@ test('service: HIP contractor can later upgrade to MJU by attaching an MJU perso
   assert.equal((await service.getIdentityKind(HIP_UID)).kind, 'MJU');
   // facescan_id stays the attendance source for the same employee
   assert.equal((await service.resolve('facescan_id', '7002')).employeeUid, HIP_UID);
+});
+
+test('attendance eligibility never depends on SSO: inactive facescan_id = not eligible, MJU SSO still not required', () => {
+  const rows = [{ idType: 'facescan_id', idValue: '7003', sourceSystem: HIP_BATCH_SOURCE, status: 'inactive' }];
+  assert.deepEqual(attendanceEligibility(rows), { eligible: false, via: null, requiresMjuSso: false });
+  assert.equal(attendanceEligibility([{ idType: 'personnel_id', sourceSystem: MJU_PERSONNEL_SOURCE }]).eligible, false, 'an MJU personnel_id alone is not attendance eligibility');
+  for (const kind of Object.values(IDENTITY_KIND)) {
+    const policy = ssoPolicyForKind(kind);
+    assert.equal(policy.required, false);
+    assert.equal(policy.createSubject, false);
+  }
+});
+
+test('no import/onboarding script can create an SSO subject or identity link (only a verified SSO callback may)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const dir = path.resolve(path.dirname(require.resolve('../package.json')), '..', 'scripts', 'data-onboarding');
+  const offenders = fs.readdirSync(dir)
+    .filter((f) => /\.(mjs|js)$/.test(f) && !/\.test\./.test(f))
+    .filter((f) => /employee_identity_links|linkProviderSubject|provider_subject/i.test(fs.readFileSync(path.join(dir, f), 'utf8')));
+  assert.deepEqual(offenders, []);
 });

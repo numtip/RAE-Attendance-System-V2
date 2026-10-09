@@ -5,13 +5,17 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 function createMockOAuthProvider() {
   return {
     kind: 'mock',
-    buildAuthorizationUrl({ authorizationUrl, clientId, callbackUrl, scopes, state }) {
+    buildAuthorizationUrl({ authorizationUrl, clientId, callbackUrl, scopes, state, codeChallenge }) {
       const url = new URL(authorizationUrl);
       url.searchParams.set('client_id', clientId);
       url.searchParams.set('redirect_uri', callbackUrl);
       url.searchParams.set('response_type', 'code');
       url.searchParams.set('scope', scopes);
       url.searchParams.set('state', state);
+      if (codeChallenge) {
+        url.searchParams.set('code_challenge', codeChallenge);
+        url.searchParams.set('code_challenge_method', 'S256');
+      }
       return url.toString();
     },
     async exchangeCode({ code }) {
@@ -70,16 +74,20 @@ function createHttpOAuthProvider({ fetchImpl = global.fetch, timeoutMs = DEFAULT
 
   return {
     kind: 'http',
-    buildAuthorizationUrl({ authorizationUrl, clientId, callbackUrl, scopes, state }) {
+    buildAuthorizationUrl({ authorizationUrl, clientId, callbackUrl, scopes, state, codeChallenge }) {
       const url = new URL(authorizationUrl);
       url.searchParams.set('client_id', clientId);
       url.searchParams.set('redirect_uri', callbackUrl);
       url.searchParams.set('response_type', 'code');
       url.searchParams.set('scope', scopes);
       url.searchParams.set('state', state);
+      if (codeChallenge) {
+        url.searchParams.set('code_challenge', codeChallenge);
+        url.searchParams.set('code_challenge_method', 'S256');
+      }
       return url.toString();
     },
-    async exchangeCode({ tokenUrl, clientId, clientSecret, callbackUrl, code }) {
+    async exchangeCode({ tokenUrl, clientId, clientSecret, callbackUrl, code, codeVerifier }) {
       const body = new URLSearchParams({
         grant_type: 'authorization_code',
         code,
@@ -87,6 +95,9 @@ function createHttpOAuthProvider({ fetchImpl = global.fetch, timeoutMs = DEFAULT
         client_id: clientId,
         client_secret: clientSecret,
       });
+      if (codeVerifier) {
+        body.set('code_verifier', codeVerifier);
+      }
       return requestJson(tokenUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },

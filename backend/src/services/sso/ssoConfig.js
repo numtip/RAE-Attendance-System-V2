@@ -30,6 +30,24 @@ function assertProductionSafeSso(config) {
     throw new HttpError(503, 'CONFIG_ERROR', `SSO endpoints must use https in production: ${insecure.join(', ')}`);
   }
 }
+const SUPPORTED_PKCE_METHODS = ['', 'S256'];
+
+/**
+ * The MJU token / userinfo protocol is UNCONFIRMED (docs/SSO_PROTOCOL_EVIDENCE.md): the only confirmed
+ * transport is the portal sign-in (`signin.aspx?cid=`) and a GET callback carrying an opaque `ac` value.
+ * The OAuth code-exchange path is therefore fail-closed until an operator records MJU's written
+ * confirmation in SSO_PROTOCOL_CONTRACT_CONFIRMED. The mock provider (development only) is exempt.
+ */
+function assertProtocolConfirmed(config) {
+  if (config.sso.provider === 'mock') return;
+  if (config.sso.protocolContractConfirmed !== true) {
+    throw new HttpError(503, 'SSO_NOT_READY', 'MJU token/userinfo protocol contract is not confirmed');
+  }
+  if (!SUPPORTED_PKCE_METHODS.includes(String(config.sso.pkceMethod || ''))) {
+    throw new HttpError(503, 'CONFIG_ERROR', 'SSO_PKCE_METHOD must be empty or S256');
+  }
+}
+
 function assertSsoGate(config) {
   assertProductionSafeSso(config);
   if (!config.sso.enabled) {
@@ -50,6 +68,7 @@ function isSsoOperational(config) {
 module.exports = {
   assertSsoGate,
   assertProductionSafeSso,
+  assertProtocolConfirmed,
   isSsoOperational,
   requiredConfig,
   portalConfigReady,

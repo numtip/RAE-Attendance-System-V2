@@ -3,6 +3,7 @@
  * through createSsoService.handleCallback. No network, no real IDs, no real keys.
  */
 require('./helpers/syntheticIdentifierKeys');
+const { TEST_BINDING } = require('./helpers/ssoTestBinding');
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
@@ -38,8 +39,9 @@ function configFor(overrides = {}) {
     sso: {
       enabled: true,
       callbackConfirmed: true,
+      protocolContractConfirmed: true,
       subjectContractConfirmed: true,
-      nationalIdClaims: '',
+      nationalIdClaims: 'citizenID',
       authorizationUrl: 'https://sso.example.test/oauth/authorize',
       tokenUrl: 'https://sso.example.test/oauth/token',
       userInfoUrl: 'https://sso.example.test/oauth/userinfo',
@@ -76,9 +78,9 @@ function mockProvider({ profile = {}, tokenResponse = { access_token: 'synthetic
 }
 
 async function login(sso, code = 'good-code') {
-  const url = await sso.beginLogin();
+  const url = await sso.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(url).searchParams.get('state');
-  return sso.handleCallback({ code, state });
+  return sso.handleCallback({ code, state, browserBinding: TEST_BINDING });
 }
 
 function setup(providerOptions, configOverrides) {
@@ -185,10 +187,10 @@ test('invalid or hostile token flow is rejected before identity resolution', asy
   ctx = setup({ profile });
   await assert.rejects(() => ctx.sso.handleCallback({ code: 'good-code', state: 'forged' }), (e) => e.status === 403 && e.code === 'SSO_STATE_INVALID');
   await assert.rejects(() => ctx.sso.handleCallback({ code: 'good-code' }), (e) => e.code === 'SSO_STATE_INVALID');
-  const url = await ctx.sso.beginLogin();
+  const url = await ctx.sso.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(url).searchParams.get('state');
-  await ctx.sso.handleCallback({ code: 'good-code', state });
-  await assert.rejects(() => ctx.sso.handleCallback({ code: 'good-code', state }), (e) => e.code === 'SSO_STATE_INVALID', 'state is single-use');
+  await ctx.sso.handleCallback({ code: 'good-code', state, browserBinding: TEST_BINDING });
+  await assert.rejects(() => ctx.sso.handleCallback({ code: 'good-code', state, browserBinding: TEST_BINDING }), (e) => e.code === 'SSO_STATE_INVALID', 'state is single-use');
   await assert.rejects(() => ctx.sso.handleCallback({ error: 'access_denied', error_description: 'denied' }), (e) => e.status === 401 && e.code === 'SSO_DENIED');
   await assert.rejects(() => ctx.sso.handleCallback({ state }), (e) => e.status === 400 || e.code === 'SSO_STATE_INVALID');
 

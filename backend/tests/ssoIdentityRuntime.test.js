@@ -20,8 +20,9 @@ function baseConfig(overrides = {}) {
     sso: {
       enabled: true,
       callbackConfirmed: true,
+      protocolContractConfirmed: true,
       subjectContractConfirmed: true,
-      nationalIdClaims: '',
+      nationalIdClaims: 'citizenID',
       authorizationUrl: 'https://sso.example.test/oauth/authorize',
       tokenUrl: 'https://sso.example.test/oauth/token',
       userInfoUrl: 'https://sso.example.test/oauth/userinfo',

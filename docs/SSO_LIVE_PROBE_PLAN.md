@@ -21,8 +21,8 @@ Based on code and configuration metadata only (variable names, URL schemes, cont
 | F1 | `SSO_PROVIDER=mock` (fixed fake identity) had no production guard | High | **Fixed**: production refuses mock (`assertProductionSafeSso`, tests) |
 | F2 | Non-https SSO endpoints accepted | High | **Fixed**: production requires https for authorization/token/userinfo/callback/signin/signout (names only in the error) |
 | F3 | Fixture/seed `national_id` was stored as plaintext and SSO tests ran without keys | High | **Fixed**: seed rows are converted to HMAC lookups; tests use synthetic keys; SSO resolution passes audit context (`sso:callback`) |
-| F4 | No issuer/audience/JWKS/nonce validation | Medium (blocker if MJU issues `id_token`) | **Open**: ask MJU whether an OIDC `id_token` exists; if yes implement `iss`/`aud`/`exp`/signature via JWKS before go-live |
-| F5 | State not bound to browser session, no PKCE, in-memory stores | Medium | **Open**: bind state to a signed cookie, add PKCE if MJU supports it, move stores to a shared store before multi-instance |
+| F4 | No issuer/audience/JWKS/nonce validation | Medium (blocker if MJU issues `id_token`) | **Mitigated by fail-closed**: OIDC is not assumed (`docs/SSO_PROTOCOL_EVIDENCE.md`); any `id_token` is ignored; the OAuth path stays off until `SSO_PROTOCOL_CONTRACT_CONFIRMED`. If MJU confirms OIDC, `iss`/`aud`/`exp`/signature/nonce validation must be implemented before go-live |
+| F5 | State not bound to browser session, no PKCE, in-memory stores | Medium | **Partly fixed**: state bound to an HttpOnly SameSite=Lax cookie (login-CSRF test), burned on mismatch, bounded store; PKCE is opt-in (`SSO_PKCE_METHOD=S256`). **Open**: shared store before running more than one instance; rate limiting at the reverse proxy (no limiter exists in the app) |
 | F6 | Portal callback query contract and subject claim unconfirmed | Blocker | **Open**: MJU confirmation (`docs/SSO_SUBJECT_CONTRACT_INTEGRATION_CHECKLIST.md`) |
 | F7 | Citizen-ID claim name unconfirmed (`SSO_NATIONAL_ID_CLAIMS`) | Blocker | **Open**: probe with `SSO_USERINFO_PROBE=true` (masked) |
 | F8 | Logout does not invalidate the access JWT | Low | Accept for 15 min TTL or add a denylist |
@@ -34,7 +34,7 @@ Based on code and configuration metadata only (variable names, URL schemes, cont
 
 ## 4. Live SSO probe plan (nothing below is approved or executed)
 **Preconditions (all must be true):**
-1. MJU confirmations F6/F7 (callback contract, subject, citizen-ID claim) and whether OIDC `id_token` exists (F4).
+1. MJU written answers to the questions in `docs/SSO_PROTOCOL_EVIDENCE.md` (callback/`ac` contract, token/userinfo, subject, citizen-ID claim, OIDC or not), then, and only then, `SSO_PROTOCOL_CONTRACT_CONFIRMED=true`, `SSO_NATIONAL_ID_CLAIMS=<confirmed name>` and, once the subject is confirmed, `SSO_SUBJECT_CONTRACT_CONFIRMED=true` on the **test** host.
 2. Employee mapping QA passed on the approved scope of 50 unique employees (mapping counts reviewed; HIP id evidence recorded; MJU authoritative source status decided).
 3. Migrations 015 and 017 applied to the **target test database** through the separate migration approval; secrets (HMAC key, JWT secret, client secret) provisioned by the secret manager; backend deployed to a non-production host.
 4. Production-safety config check passes (https endpoints, `SSO_PROVIDER=http`).

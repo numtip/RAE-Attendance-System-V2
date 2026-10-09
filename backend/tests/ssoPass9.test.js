@@ -1,4 +1,5 @@
 require('./helpers/syntheticIdentifierKeys');
+const { TEST_BINDING } = require('./helpers/ssoTestBinding');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const test = require('node:test');
@@ -18,6 +19,7 @@ const config = require('../src/config');
 const baseSsoConfig = {
   enabled: true,
   callbackConfirmed: true,
+  protocolContractConfirmed: true,
   subjectContractConfirmed: true,
   provider: 'mock',
   scopes: 'openid email',
@@ -58,9 +60,9 @@ function createService(overrides = {}) {
 }
 
 async function loginSession(ssoService, _stateStore) {
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(loginUrl).searchParams.get('state');
-  return ssoService.handleCallback({ code: 'mock-auth-code', state });
+  return ssoService.handleCallback({ code: 'mock-auth-code', state, browserBinding: TEST_BINDING });
 }
 
 test('valid one-time code exchange returns session tokens', async () => {
@@ -132,10 +134,10 @@ test('userinfo probe mode issues no session', async () => {
   const { ssoService } = createService({
     ssoConfig: { userinfoProbe: true },
   });
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(loginUrl).searchParams.get('state');
   await assert.rejects(
-    () => ssoService.handleCallback({ code: 'mock-auth-code', state }),
+    () => ssoService.handleCallback({ code: 'mock-auth-code', state, browserBinding: TEST_BINDING }),
     (err) => err.code === 'SSO_NOT_READY' && Boolean(err.details?.userinfo),
   );
 });
@@ -154,9 +156,10 @@ test('redirect handoff URL contains opaque code only', async () => {
   try {
     const loginRes = await fetch(`http://127.0.0.1:${port}/api/v1/auth/sso/login`, { redirect: 'manual' });
     const state = new URL(loginRes.headers.get('location')).searchParams.get('state');
+    const cookie = loginRes.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
     const callbackRes = await fetch(
       `http://127.0.0.1:${port}/api/v1/auth/sso/callback?code=mock-auth-code&state=${encodeURIComponent(state)}`,
-      { redirect: 'manual' },
+      { redirect: 'manual', headers: { cookie } },
     );
     assert.equal(callbackRes.status, 302);
     const location = callbackRes.headers.get('location');
@@ -187,9 +190,10 @@ test('exchange HTTP endpoint returns tokens without national_id in JWT', async (
   try {
     const loginRes = await fetch(`http://127.0.0.1:${port}/api/v1/auth/sso/login`, { redirect: 'manual' });
     const state = new URL(loginRes.headers.get('location')).searchParams.get('state');
+    const cookie = loginRes.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
     const callbackRes = await fetch(
       `http://127.0.0.1:${port}/api/v1/auth/sso/callback?code=mock-auth-code&state=${encodeURIComponent(state)}`,
-      { redirect: 'manual' },
+      { redirect: 'manual', headers: { cookie } },
     );
     const code = new URL(callbackRes.headers.get('location')).searchParams.get('code');
     const response = await fetch(`http://127.0.0.1:${port}/api/v1/auth/sso/exchange`, {

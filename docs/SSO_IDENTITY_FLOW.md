@@ -161,3 +161,6 @@ Deferred to **Pass 10**. Planned algorithm when implemented: `HMAC-SHA256(pepper
 - Distributed OAuth `state` for multi-instance.
 
 See also: `docs/IDENTITY_CONTRACT.md`, `docs/SSO_CONTRACT_CONFIRMATION.md`, `docs/SSO_ACTIVATION_RUNBOOK.md`.
+
+## Update: protocol gates and state binding
+The OAuth path is OFF until `SSO_PROTOCOL_CONTRACT_CONFIRMED=true` and, for a live provider, `SSO_NATIONAL_ID_CLAIMS` names the confirmed citizen-ID claim. `/auth/sso/login` sets an HttpOnly SameSite=Lax binding cookie and the callback rejects (and burns) any `state` presented without it. Evidence and MJU questions: `docs/SSO_PROTOCOL_EVIDENCE.md`; review and merge order: `docs/PR_REVIEW_SSO_INTEGRATION.md`.

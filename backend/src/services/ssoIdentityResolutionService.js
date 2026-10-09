@@ -76,6 +76,11 @@ function createSsoIdentityResolutionService(deps) {
      */
     async issueSessionFromOAuthProfile(input = {}) {
       assertSsoGate(config);
+      // The citizen-ID claim name on MJU's userinfo is UNCONFIRMED (docs/SSO_PROTOCOL_EVIDENCE.md). The documented
+      // Person-API names are only a development default, so a live provider needs an explicit, operator-confirmed claim.
+      if (config.sso.provider !== 'mock' && !String(config.sso.nationalIdClaims || '').trim()) {
+        throw new HttpError(503, 'SSO_NOT_READY', 'MJU citizen ID claim name is not confirmed (SSO_NATIONAL_ID_CLAIMS)');
+      }
       const profile = input.profile || {};
       const rawQuery = input.rawQuery || {};
 

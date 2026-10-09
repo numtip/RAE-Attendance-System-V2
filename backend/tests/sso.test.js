@@ -1,4 +1,5 @@
 require('./helpers/syntheticIdentifierKeys');
+const { TEST_BINDING } = require('./helpers/ssoTestBinding');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const test = require('node:test');
@@ -19,6 +20,8 @@ const { createFixtureRepositories } = require('../src/repositories/fixtureReposi
 const baseSsoConfig = {
   enabled: true,
   callbackConfirmed: true,
+  protocolContractConfirmed: true,
+  nationalIdClaims: 'citizenID',
   subjectContractConfirmed: true,
   provider: 'mock',
   scopes: 'openid email',
@@ -43,10 +46,11 @@ function listen(app) {
   });
 }
 
-async function rawGet(port, path) {
-  const response = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual' });
+async function rawGet(port, path, headers = {}) {
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual', headers });
   return {
     status: response.status,
+    cookie: response.headers.getSetCookie().map((c) => c.split(';')[0]).join('; '),
     location: response.headers.get('location'),
     body: response.headers.get('content-type')?.includes('json') ? await response.json() : null,
   };
@@ -67,32 +71,32 @@ function createEnabledSsoService(overrides = {}) {
 
 test('contract: SSO_DISABLED when enabled flag is false', async () => {
   const ssoService = createEnabledSsoService({ ssoConfig: { enabled: false } });
-  await assert.rejects(() => ssoService.beginLogin(), (err) => err.code === 'SSO_DISABLED');
+  await assert.rejects(() => ssoService.beginLogin({ browserBinding: TEST_BINDING }), (err) => err.code === 'SSO_DISABLED');
 });
 
 test('contract: SSO_NOT_READY when callback is not confirmed', async () => {
   const ssoService = createEnabledSsoService({ ssoConfig: { callbackConfirmed: false } });
-  await assert.rejects(() => ssoService.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
+  await assert.rejects(() => ssoService.beginLogin({ browserBinding: TEST_BINDING }), (err) => err.code === 'SSO_NOT_READY');
 });
 
 test('contract: SSO_NOT_READY when required env fields are missing', async () => {
   const ssoService = createEnabledSsoService({
     ssoConfig: { tokenUrl: '', clientSecret: '' },
   });
-  await assert.rejects(() => ssoService.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
+  await assert.rejects(() => ssoService.beginLogin({ browserBinding: TEST_BINDING }), (err) => err.code === 'SSO_NOT_READY');
 });
 
 test('contract: mock provider success flow (login, callback, me, logout)', async () => {
   const stateStore = createSsoStateStore();
   const ssoService = createEnabledSsoService({ stateStore });
 
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const parsed = new URL(loginUrl);
   assert.match(parsed.hostname, /sso\.example\.test/);
   const state = parsed.searchParams.get('state');
   assert.ok(state);
 
-  const session = await ssoService.handleCallback({ code: 'mock-auth-code', state });
+  const session = await ssoService.handleCallback({ code: 'mock-auth-code', state, browserBinding: TEST_BINDING });
   assert.ok(session.accessToken);
   assert.ok(session.refreshToken);
   assert.equal(session.employee.email, 'user@example.test');
@@ -127,12 +131,12 @@ test('contract: SSO_STATE_INVALID for missing, wrong, or reused state', async ()
     (err) => err.code === 'SSO_STATE_INVALID',
   );
 
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(loginUrl).searchParams.get('state');
-  await ssoService.handleCallback({ code: 'mock-auth-code', state });
+  await ssoService.handleCallback({ code: 'mock-auth-code', state, browserBinding: TEST_BINDING });
 
   await assert.rejects(
-    () => ssoService.handleCallback({ code: 'mock-auth-code', state }),
+    () => ssoService.handleCallback({ code: 'mock-auth-code', state, browserBinding: TEST_BINDING }),
     (err) => err.code === 'SSO_STATE_INVALID',
   );
 });
@@ -165,11 +169,11 @@ test('contract: SSO_PROVIDER_TIMEOUT when token endpoint does not respond', asyn
     stateStore,
   });
 
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(loginUrl).searchParams.get('state');
 
   await assert.rejects(
-    () => ssoService.handleCallback({ code: 'any-code', state }),
+    () => ssoService.handleCallback({ code: 'any-code', state, browserBinding: TEST_BINDING }),
     (err) => err.code === 'SSO_PROVIDER_TIMEOUT',
   );
 });
@@ -188,11 +192,11 @@ test('contract: SSO_PROVIDER_ERROR when token endpoint returns HTTP error', asyn
     stateStore,
   });
 
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(loginUrl).searchParams.get('state');
 
   await assert.rejects(
-    () => ssoService.handleCallback({ code: 'any-code', state }),
+    () => ssoService.handleCallback({ code: 'any-code', state, browserBinding: TEST_BINDING }),
     (err) => err.code === 'SSO_PROVIDER_ERROR',
   );
 });
@@ -204,7 +208,7 @@ test('SSO gates: disabled, unconfirmed callback, and incomplete config', async (
     repositories: repos,
     oauthProvider: createMockOAuthProvider(),
   });
-  await assert.rejects(() => disabled.beginLogin(), (err) => err.code === 'SSO_DISABLED');
+  await assert.rejects(() => disabled.beginLogin({ browserBinding: TEST_BINDING }), (err) => err.code === 'SSO_DISABLED');
 
   const unconfirmed = createSsoService({
     config: {
@@ -214,7 +218,7 @@ test('SSO gates: disabled, unconfirmed callback, and incomplete config', async (
     repositories: repos,
     oauthProvider: createMockOAuthProvider(),
   });
-  await assert.rejects(() => unconfirmed.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
+  await assert.rejects(() => unconfirmed.beginLogin({ browserBinding: TEST_BINDING }), (err) => err.code === 'SSO_NOT_READY');
 });
 
 test('SSO HTTP routes stay closed by default', async () => {
@@ -259,9 +263,9 @@ async function callbackWithFetch(responses, repositories) {
     oauthProvider: httpProvider,
     stateStore,
   });
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(loginUrl).searchParams.get('state');
-  return ssoService.handleCallback({ code: 'any-code', state });
+  return ssoService.handleCallback({ code: 'any-code', state, browserBinding: TEST_BINDING });
 }
 
 test('contract: valid callback issues tokens for a known active employee', async () => {
@@ -321,7 +325,7 @@ test('MJU signin and signout use only the cid parameter', async () => {
     config: { jwt: baseJwtConfig, sso: ssoConfig },
     repositories,
   });
-  const loginUrl = new URL(await ssoService.beginLogin());
+  const loginUrl = new URL(await ssoService.beginLogin({ browserBinding: TEST_BINDING }));
   assert.equal(`${loginUrl.origin}${loginUrl.pathname}`, 'https://sso.mju.ac.th/signin.aspx');
   assert.deepEqual([...loginUrl.searchParams.keys()], ['cid']);
   assert.equal(loginUrl.searchParams.get('cid'), clientId);
@@ -427,6 +431,7 @@ test('SSO login redirect when enabled with mock provider env', async () => {
     const callback = await rawGet(
       port,
       `/api/v1/auth/sso/callback?code=mock-auth-code&state=${encodeURIComponent(state)}`,
+      { cookie: login.cookie },
     );
     assert.equal(callback.status, 302);
     assert.ok(callback.location.includes('/auth/sso/complete'));
@@ -529,7 +534,7 @@ test('diagnostic login redirects while callback confirmation stays false', async
       clientSecret: '',
     },
   });
-  const loginUrl = new URL(await ssoService.beginLogin());
+  const loginUrl = new URL(await ssoService.beginLogin({ browserBinding: TEST_BINDING }));
   assert.equal(`${loginUrl.origin}${loginUrl.pathname}`, 'https://sso.mju.ac.th/signin.aspx');
   assert.deepEqual([...loginUrl.searchParams.keys()], ['cid']);
   await assert.rejects(

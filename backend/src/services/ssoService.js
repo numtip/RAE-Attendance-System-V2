@@ -1,6 +1,12 @@
+const { createHash, randomBytes } = require('node:crypto');
 const { HttpError } = require('../utils/httpError');
 const { signAccessToken } = require('./sso/ssoTokens');
-const { assertSsoGate, assertProductionSafeSso, portalConfigReady } = require('./sso/ssoConfig');
+const {
+  assertSsoGate,
+  assertProductionSafeSso,
+  assertProtocolConfirmed,
+  portalConfigReady,
+} = require('./sso/ssoConfig');
 const { createOAuthProvider } = require('./sso/oauthProvider');
 const { createSsoStateStore } = require('./sso/ssoStateStore');
 const { createSsoLoginCodeStore } = require('./sso/ssoLoginCodeStore');
@@ -26,7 +32,11 @@ function createSsoService(deps) {
   }
 
   return {
-    async beginLogin() {
+    /**
+     * @param {{ browserBinding?: string }} [options] random per-browser value the controller keeps in an
+     *   HttpOnly cookie; the OAuth state is bound to it (login-CSRF protection). Required for the OAuth path.
+     */
+    async beginLogin({ browserBinding } = {}) {
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
       }
@@ -41,13 +51,24 @@ function createSsoService(deps) {
       if (config.sso.signinUrl) {
         return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
       }
-      const state = stateStore.create();
+      assertProtocolConfirmed(config);
+      if (typeof browserBinding !== 'string' || browserBinding.length < 16) {
+        throw new HttpError(500, 'SSO_STATE_BINDING_REQUIRED', 'Login state must be bound to the browser');
+      }
+      let codeVerifier;
+      let codeChallenge;
+      if (config.sso.pkceMethod === 'S256') {
+        codeVerifier = randomBytes(32).toString('base64url');
+        codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
+      }
+      const state = stateStore.create({ binding: browserBinding, codeVerifier });
       return oauthProvider.buildAuthorizationUrl({
         authorizationUrl: config.sso.authorizationUrl,
         clientId: config.sso.clientId,
         callbackUrl: config.sso.callbackUrl,
         scopes: config.sso.scopes,
         state,
+        codeChallenge,
       });
     },
 
@@ -60,6 +81,7 @@ function createSsoService(deps) {
       method,
       rawBody,
       cookieNames,
+      browserBinding,
     }) {
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
@@ -85,14 +107,23 @@ function createSsoService(deps) {
       if (portalConfigReady(config.sso) && config.sso.provider !== 'mock') {
         throw new HttpError(503, 'SSO_NOT_READY', 'MJU callback query contract is not confirmed');
       }
+      assertProtocolConfirmed(config);
       if (error) {
-        throw new HttpError(401, 'SSO_DENIED', errorDescription || error);
+        throw new HttpError(401, 'SSO_DENIED', String(errorDescription || error).slice(0, 200));
       }
-      if (!code) {
+      if (typeof code !== 'string' || code.length === 0 || code.length > 2048) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'code is required');
       }
-      if (!stateStore.consume(state)) {
+      if (typeof state !== 'string' || state.length === 0 || state.length > 256) {
         throw new HttpError(403, 'SSO_STATE_INVALID', 'OAuth state is missing or expired');
+      }
+      const pendingLogin = stateStore.consume(state, browserBinding);
+      if (!pendingLogin) {
+        throw new HttpError(
+          403,
+          'SSO_STATE_INVALID',
+          'OAuth state is missing, expired, already used, or not bound to this browser',
+        );
       }
 
       const tokenResponse = await oauthProvider.exchangeCode({
@@ -101,16 +132,25 @@ function createSsoService(deps) {
         clientSecret: config.sso.clientSecret,
         callbackUrl: config.sso.callbackUrl,
         code,
+        codeVerifier: pendingLogin.codeVerifier || undefined,
       });
-      const accessToken = tokenResponse.access_token;
-      if (!accessToken) {
+      // Only the access token returned by THIS exchange is used. Any id_token is deliberately ignored:
+      // MJU has not confirmed OIDC, so nothing in it is validated and nothing in it may identify a user.
+      const accessToken = tokenResponse && tokenResponse.access_token;
+      if (typeof accessToken !== 'string' || accessToken.length === 0) {
         throw new HttpError(502, 'SSO_TOKEN_ERROR', 'Provider did not return an access token');
+      }
+      if (tokenResponse.token_type !== undefined && !/^bearer$/i.test(String(tokenResponse.token_type))) {
+        throw new HttpError(502, 'SSO_TOKEN_ERROR', 'Provider returned an unsupported token type');
       }
 
       const profile = await oauthProvider.fetchUserInfo({
         userInfoUrl: config.sso.userInfoUrl,
         accessToken,
       });
+      if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+        throw new HttpError(502, 'SSO_PROVIDER_ERROR', 'Provider returned an invalid userinfo document');
+      }
 
       if (config.sso.userinfoProbe) {
         const userinfo = summarizeUserInfoProfile(profile);
