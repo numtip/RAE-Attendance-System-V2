@@ -297,6 +297,59 @@ for (const port of ports) {
       assert.equal(Number(reup.c), 1);
     });
   });
+  test(`${label} runner partial failure: legacy plaintext aborts 015 without ledger row; fix + rerun recovers`, { skip }, async () => {
+    await withDb(port, async (conn, name) => {
+      await applyUpTo(conn); // 001..014 + ledger
+      await addEmployee(conn, 'emp-a');
+      await conn.query(
+        `INSERT INTO employee_identifier (employee_uid, id_type, id_value, is_primary, created_at, updated_at)
+         VALUES ('emp-a', 'national_id', ?, 0, NOW(), NOW())`,
+        [FAKE_A],
+      );
+      const envVars = {
+        ...process.env,
+        MYSQL_HOST: host, MYSQL_PORT: String(port), MYSQL_USER: user, MYSQL_PASSWORD: password, MYSQL_DATABASE: name,
+      };
+      const failed = spawnSync('node', ['scripts/migrate.mjs'], { cwd: repoRoot, env: envVars, encoding: 'utf8' });
+      assert.notEqual(failed.status, 0);
+      assert.ok(!`${failed.stdout}${failed.stderr}`.includes(FAKE_A), 'runner output must not echo identifiers');
+      const [[ledger]] = await conn.query('SELECT COUNT(*) c FROM schema_migrations WHERE version = ?', [M015]);
+      assert.equal(Number(ledger.c), 0, 'failed migration must not be recorded');
+      const [[partial]] = await conn.query(
+        `SELECT (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='employee_identifier' AND COLUMN_NAME='lookup_key_version') AS col,
+                (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='employee_identifier_secret') AS secret`,
+      );
+      assert.deepEqual([Number(partial.col), Number(partial.secret)], [1, 0], 'only the additive NULLable column remains');
+
+      const keys = loadIdentifierKeys(keyEnv(1));
+      const [rows] = await conn.query("SELECT id, employee_uid, id_value, lookup_key_version FROM employee_identifier WHERE id_type='national_id'");
+      for (const u of planReindex(rows, keys).updates) {
+        await conn.query('UPDATE employee_identifier SET id_value=?, lookup_key_version=? WHERE id=?', [u.new_id_value, u.to_version, u.id]);
+      }
+      const recovered = spawnSync('node', ['scripts/migrate.mjs'], { cwd: repoRoot, env: envVars, encoding: 'utf8' });
+      assert.equal(recovered.status, 0, recovered.stderr);
+      const [[ledger2]] = await conn.query('SELECT COUNT(*) c FROM schema_migrations WHERE version = ?', [M015]);
+      assert.equal(Number(ledger2.c), 1);
+    });
+  });
+
+  test(`${label} owner-unique recovery: existing duplicate per-employee rows block the key; cleanup + rerun restores it`, { skip }, async () => {
+    await withDb(port, async (conn) => {
+      await applyUpTo(conn, { includeFrom015: true });
+      await addEmployee(conn, 'emp-a');
+      const keys = loadIdentifierKeys(keyEnv(1));
+      await conn.query('ALTER TABLE employee_identifier DROP INDEX uk_employee_identifier_national_owner');
+      const id1 = await addNational(conn, 'emp-a', buildLookup('national_id', FAKE_A, keys).lookup_hmac, 1);
+      await addNational(conn, 'emp-a', buildLookup('national_id', FAKE_B, keys).lookup_hmac, 1);
+      await rejects(run015(conn), 'ER_DUP_ENTRY');
+      const [[idx]] = await conn.query("SELECT COUNT(*) c FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND INDEX_NAME='uk_employee_identifier_national_owner'");
+      assert.equal(Number(idx.c), 0);
+      await conn.query('DELETE FROM employee_identifier WHERE id <> ?', [id1]);
+      await run015(conn);
+      const [[idx2]] = await conn.query("SELECT COUNT(*) c FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND INDEX_NAME='uk_employee_identifier_national_owner'");
+      assert.equal(Number(idx2.c), 1);
+    });
+  });
 }
 
 test('integration suite is opt-in and loopback-only', () => {

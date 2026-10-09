@@ -1,43 +1,109 @@
-const jwt = require('jsonwebtoken');
-const { randomUUID } = require('node:crypto');
 const { HttpError } = require('../utils/httpError');
-const { assertSsoGate, portalConfigReady } = require('./sso/ssoConfig');
+const { signAccessToken } = require('./sso/ssoTokens');
+const {
+  assertSsoGate,
+  assertProductionSafeSso,
+  assertProtocolConfirmed,
+  portalConfigReady,
+} = require('./sso/ssoConfig');
 const { createOAuthProvider } = require('./sso/oauthProvider');
 const { createSsoStateStore } = require('./sso/ssoStateStore');
+const { createSsoLoginCodeStore } = require('./sso/ssoLoginCodeStore');
+const { summarizeUserInfoProfile } = require('./sso/userinfoDiagnostic');
 const { buildCidUrl } = require('./sso/mjuPortal');
 const { summarizeCallbackFields } = require('./sso/callbackDiagnostic');
+const { createSsoIdentityResolutionService } = require('./ssoIdentityResolutionService');
+const { createMjuTokenClient, normalizeMjuIdentityResponse } = require('./sso/mjuTokenClient');
+const { createMjuPortalGuard } = require('./sso/mjuPortalGuard');
 
-function assertJwtSecret(config) {
-  if (!config.jwt.secret) {
-    throw new HttpError(503, 'CONFIG_ERROR', 'JWT_SECRET is not configured');
-  }
-}
-
-function signAccessToken(config, employee, authMethod = 'sso') {
-  return jwt.sign(
-    { role: employee.role, email: employee.email, authMethod },
-    config.jwt.secret,
-    { subject: employee.employeeUid, expiresIn: config.jwt.expiresIn },
-  );
-}
+const AC_PATTERN = /^[\x21-\x7E]{1,256}$/; // printable, no whitespace; MJU has not documented the format
 
 function createSsoService(deps) {
   const {
     config,
     repositories,
+    mjuTokenClient = createMjuTokenClient({ fetchImpl: deps.fetchImpl, timeoutMs: config.sso?.httpTimeoutMs }),
+    portalGuard = createMjuPortalGuard(),
     oauthProvider = createOAuthProvider(config, deps),
     stateStore = createSsoStateStore(),
+    loginCodeStore = createSsoLoginCodeStore({
+      ttlMs: config.sso.loginHandoffTtlMs,
+    }),
+    identityResolutionService = createSsoIdentityResolutionService(deps),
   } = deps;
 
   function disabledResponse() {
     assertSsoGate(config);
   }
 
+  /**
+   * Portal token flow opt-in. SSO_MJU_TOKEN_FLOW (default off) is the operator switch.
+   * SSO_PROTOCOL_CONTRACT_CONFIRMED is the OAuth written-confirmation gate and is not consulted here:
+   * this path uses vendor-sample evidence only and must not be described as MJU IT certified.
+   */
+  function assertMjuTokenFlowReady() {
+    if (!config.sso.tokenUrl || !config.sso.clientId) {
+      throw new HttpError(503, 'SSO_NOT_READY', 'SSO environment configuration is incomplete');
+    }
+  }
+
+  /**
+   * Portal callback: validate -> redeem `ac` at token.aspx -> validate the identity document -> only then resolve and
+   * open a session. `ac` is a one-shot credential, never an identity.
+   */
+  async function handleMjuPortalCallback({ ac, error, errorDescription, browserBinding }) {
+    assertMjuTokenFlowReady();
+    // Burn the browser binding first, whatever happens next: it is single use.
+    const bound = portalGuard.consumeBinding(browserBinding);
+    if (error) {
+      throw new HttpError(401, 'SSO_DENIED', String(errorDescription || error).slice(0, 200));
+    }
+    if (!bound) {
+      throw new HttpError(
+        403,
+        'SSO_STATE_INVALID',
+        'Login was not started in this browser, has expired, or was already used',
+      );
+    }
+    if (typeof ac !== 'string' || !AC_PATTERN.test(ac)) {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'ac is required');
+    }
+    if (!portalGuard.claimCode(ac)) {
+      throw new HttpError(403, 'SSO_CODE_REPLAY', 'This login code was already used');
+    }
+
+    const document = await mjuTokenClient.redeem({
+      tokenUrl: config.sso.tokenUrl,
+      clientId: config.sso.clientId,
+      code: ac,
+    });
+    const profile = normalizeMjuIdentityResponse(document, {
+      subjectClaim: config.sso.subjectClaim,
+      ac,
+    });
+
+    const session = await identityResolutionService.issueSessionFromOAuthProfile({
+      profile,
+      rawQuery: { ac },
+      source: 'mju_token',
+    });
+    return {
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      employee: session.employee,
+    };
+  }
+
   return {
-    async beginLogin() {
+    /**
+     * @param {{ browserBinding?: string }} [options] random per-browser value the controller keeps in an
+     *   HttpOnly cookie; the OAuth state is bound to it (login-CSRF protection). Required for the OAuth path.
+     */
+    async beginLogin({ browserBinding } = {}) {
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
       }
+      assertProductionSafeSso(config);
       if (config.sso.callbackDiagnostic) {
         if (!config.sso.signinUrl || !config.sso.clientId) {
           throw new HttpError(503, 'SSO_NOT_READY', 'SSO environment configuration is incomplete');
@@ -46,9 +112,20 @@ function createSsoService(deps) {
       }
       disabledResponse();
       if (config.sso.signinUrl) {
+        if (config.sso.mjuTokenFlow) {
+          assertMjuTokenFlowReady();
+          if (typeof browserBinding !== 'string' || browserBinding.length < 16) {
+            throw new HttpError(500, 'SSO_STATE_BINDING_REQUIRED', 'Login state must be bound to the browser');
+          }
+          portalGuard.registerBinding(browserBinding);
+        }
         return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
       }
-      const state = stateStore.create();
+      assertProtocolConfirmed(config);
+      if (typeof browserBinding !== 'string' || browserBinding.length < 16) {
+        throw new HttpError(500, 'SSO_STATE_BINDING_REQUIRED', 'Login state must be bound to the browser');
+      }
+      const state = stateStore.create({ binding: browserBinding });
       return oauthProvider.buildAuthorizationUrl({
         authorizationUrl: config.sso.authorizationUrl,
         clientId: config.sso.clientId,
@@ -58,8 +135,8 @@ function createSsoService(deps) {
       });
     },
 
-    // Live callback does not use createSsoIdentityChainService yet (subject contract UNKNOWN).
     async handleCallback({
+      ac,
       code,
       state,
       error,
@@ -68,10 +145,12 @@ function createSsoService(deps) {
       method,
       rawBody,
       cookieNames,
+      browserBinding,
     }) {
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
       }
+      assertProductionSafeSso(config);
       if (config.sso.callbackDiagnostic) {
         const body = rawBody && typeof rawBody === 'object' && !Buffer.isBuffer(rawBody) ? rawBody : {};
         const details = {
@@ -89,17 +168,33 @@ function createSsoService(deps) {
         );
       }
       disabledResponse();
+      if (config.sso.mjuTokenFlow && portalConfigReady(config.sso)) {
+        return handleMjuPortalCallback({
+          ac,
+          error,
+          errorDescription,
+          browserBinding,
+        });
+      }
       if (portalConfigReady(config.sso) && config.sso.provider !== 'mock') {
         throw new HttpError(503, 'SSO_NOT_READY', 'MJU callback query contract is not confirmed');
       }
+      assertProtocolConfirmed(config);
       if (error) {
-        throw new HttpError(401, 'SSO_DENIED', errorDescription || error);
+        throw new HttpError(401, 'SSO_DENIED', String(errorDescription || error).slice(0, 200));
       }
-      if (!code) {
+      if (typeof code !== 'string' || code.length === 0 || code.length > 2048) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'code is required');
       }
-      if (!stateStore.consume(state)) {
+      if (typeof state !== 'string' || state.length === 0 || state.length > 256) {
         throw new HttpError(403, 'SSO_STATE_INVALID', 'OAuth state is missing or expired');
+      }
+      if (!stateStore.consume(state, browserBinding)) {
+        throw new HttpError(
+          403,
+          'SSO_STATE_INVALID',
+          'OAuth state is missing, expired, already used, or not bound to this browser',
+        );
       }
 
       const tokenResponse = await oauthProvider.exchangeCode({
@@ -109,52 +204,79 @@ function createSsoService(deps) {
         callbackUrl: config.sso.callbackUrl,
         code,
       });
-      const accessToken = tokenResponse.access_token;
-      if (!accessToken) {
+      // Only the access token returned by THIS exchange is used. Any id_token is deliberately ignored:
+      // MJU has not confirmed OIDC, so nothing in it is validated and nothing in it may identify a user.
+      const accessToken = tokenResponse && tokenResponse.access_token;
+      if (typeof accessToken !== 'string' || accessToken.length === 0) {
         throw new HttpError(502, 'SSO_TOKEN_ERROR', 'Provider did not return an access token');
+      }
+      if (tokenResponse.token_type !== undefined && !/^bearer$/i.test(String(tokenResponse.token_type))) {
+        throw new HttpError(502, 'SSO_TOKEN_ERROR', 'Provider returned an unsupported token type');
       }
 
       const profile = await oauthProvider.fetchUserInfo({
         userInfoUrl: config.sso.userInfoUrl,
         accessToken,
       });
-      const email = profile.email || profile.mail || profile.preferred_username;
-      if (!email) {
-        throw new HttpError(403, 'SSO_USER_UNKNOWN', 'MJU profile did not include an email');
+      if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+        throw new HttpError(502, 'SSO_PROVIDER_ERROR', 'Provider returned an invalid userinfo document');
       }
 
-      const employee = await repositories.employees.findByEmail(String(email).toLowerCase());
-      if (!employee) {
-        throw new HttpError(403, 'SSO_USER_UNKNOWN', 'No employee matches the MJU identity');
-      }
-      if (employee.status && employee.status !== 'active') {
-        throw new HttpError(403, 'SSO_USER_DISABLED', 'Employee is not active');
-      }
-      if (employee.lockedUntil && new Date(employee.lockedUntil).getTime() > Date.now()) {
-        throw new HttpError(403, 'ACCOUNT_LOCKED', 'This account is locked');
+      if (config.sso.userinfoProbe) {
+        const userinfo = summarizeUserInfoProfile(profile);
+        const details = {
+          userinfo,
+          subjectClaimPresent: Boolean(profile.sub || profile.subject || profile.providerSubject),
+          configuredNationalIdClaims: String(config.sso.nationalIdClaims || '')
+            .split(',')
+            .map((part) => part.trim())
+            .filter(Boolean),
+        };
+        console.log(`sso_userinfo_probe ${JSON.stringify(details)}`);
+        throw new HttpError(
+          503,
+          'SSO_NOT_READY',
+          'MJU userinfo contract probe complete; session not issued',
+          details,
+        );
       }
 
-      assertJwtSecret(config);
-      const refreshToken = randomUUID();
-      const expiresAt = new Date(Date.now() + config.jwt.refreshTokenDays * 86400000).toISOString();
-      await repositories.refreshTokens.save({
-        token: refreshToken,
-        employeeUid: employee.employeeUid,
-        role: employee.role,
-        email: employee.email,
-        expiresAt,
-        revokedAt: null,
+      const session = await identityResolutionService.issueSessionFromOAuthProfile({
+        profile,
+        rawQuery,
       });
 
       return {
-        accessToken: signAccessToken(config, employee),
-        refreshToken,
-        employee: {
-          employeeUid: employee.employeeUid,
-          email: employee.email,
-          role: employee.role,
-        },
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        employee: session.employee,
       };
+    },
+
+    issueLoginHandoff(session) {
+      if (!session?.accessToken || !session?.refreshToken || !session?.employee) {
+        throw new HttpError(500, 'INTERNAL_ERROR', 'SSO session is incomplete');
+      }
+      return loginCodeStore.issue({
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        employee: session.employee,
+      });
+    },
+
+    exchangeLoginHandoff({ code }) {
+      disabledResponse();
+      if (!code || String(code).trim() === '') {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'code is required');
+      }
+      const result = loginCodeStore.consume(String(code).trim());
+      if (result.status === 'expired') {
+        throw new HttpError(401, 'SSO_HANDOFF_EXPIRED', 'Login code expired');
+      }
+      if (result.status !== 'ok') {
+        throw new HttpError(401, 'SSO_HANDOFF_INVALID', 'Login code is invalid or already used');
+      }
+      return result.payload;
     },
 
     async me(auth) {
@@ -186,4 +308,5 @@ function createSsoService(deps) {
   };
 }
 
-module.exports = { createSsoService, signAccessToken };
+module.exports = { createSsoService };
+module.exports.signAccessToken = signAccessToken;

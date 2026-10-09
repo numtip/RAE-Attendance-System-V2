@@ -41,7 +41,9 @@ function createFixtureIdentityLinkRepository() {
         source: input.source,
         enrichmentOutcome: input.enrichmentOutcome ?? null,
         approvedBy: input.approvedBy ?? null,
-        approvedAt: input.approvedAt ?? null,
+        approvedAt: input.approvedAt
+          ? (input.approvedAt instanceof Date ? input.approvedAt.toISOString() : input.approvedAt)
+          : null,
         createdAt: input.createdAt || new Date().toISOString(),
         updatedAt: input.updatedAt || new Date().toISOString(),
       };

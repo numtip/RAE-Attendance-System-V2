@@ -3,13 +3,7 @@ const { HttpError } = require('../utils/httpError');
 const { assertSsoGate } = require('./sso/ssoConfig');
 const { extractVerifiedSubject } = require('./sso/mjuSubjectAdapter');
 const { createIdentityResolutionService } = require('./identityResolutionService');
-const { signAccessToken } = require('./ssoService');
-
-function assertJwtSecret(config) {
-  if (!config.jwt.secret) {
-    throw new HttpError(503, 'CONFIG_ERROR', 'JWT_SECRET is not configured');
-  }
-}
+const { assertJwtSecret, signAccessToken } = require('./sso/ssoTokens');
 
 /**
  * Prepared SSO identity chain (not wired to the live HTTP callback).

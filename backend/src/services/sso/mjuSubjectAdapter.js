@@ -31,7 +31,7 @@ function isAcValue(value) {
 /**
  * Fail-closed MJU subject extraction. Does not call Person API or interpret callback `ac` as identity.
  *
- * @returns {{ status: 'verified'|'unknown'|'invalid', provider: string, subject: string|null, subjectType: string|null, evidence: string }}
+ * @returns {{ status: 'verified'|'candidate'|'unknown'|'invalid', provider: string, subject: string|null, subjectType: string|null, evidence: string }}
  */
 function extractVerifiedSubject(input = {}) {
   const query = normalizeQuery(input);
@@ -58,12 +58,29 @@ function extractVerifiedSubject(input = {}) {
   if (profile) {
     const claim = profile.sub || profile.subject || profile.providerSubject;
     const email = profile.email || profile.mail || profile.preferred_username;
+    if (claim && (isAcValue(claim) || (query.ac && String(claim) === String(query.ac)))) {
+      return result('invalid', { evidence: 'callback_ac_rejected' });
+    }
     if (!claim && email) {
       return result('invalid', { evidence: 'email_only_profile_rejected' });
     }
     if (claim && EMAIL_LIKE.test(String(claim)) && input.allowEmailShapedSubject !== true) {
       return result('invalid', { evidence: 'email_only_rejected' });
     }
+  }
+
+  // MJU token flow: the configured claim (humanID by default) is a candidate from the vendor sample.
+  // SSO_SUBJECT_CONTRACT_CONFIRMED must not relabel it as an MJU IT certification.
+  if (input.candidateSubjectOnly === true) {
+    const claim = profile && (profile.sub || profile.subject || profile.providerSubject);
+    if (!claim) {
+      return result('unknown', { evidence: 'candidate_subject_missing' });
+    }
+    return result('candidate', {
+      subject: String(claim),
+      subjectType: input.subjectType || 'candidate',
+      evidence: 'candidate_subject_claim_not_mju_certified',
+    });
   }
 
   if (input.subjectContractConfirmed !== true) {

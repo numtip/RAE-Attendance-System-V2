@@ -55,17 +55,28 @@ Every `create`, `decrypt`, `reindex`, `delete`, `key_rotation` writes an audit r
 - Version guard: 015 aborts before any DDL unless MariaDB >= 10.2.3 or MySQL >= 8.0.16 (CHECK is silently ignored on older servers). Verified on 10.3.39 and 10.11.9; MySQL 8 not tested.
 - Legacy plaintext: preflight counts them (no values); 015 then fails at the CHECK step by design (only the NULLable column remains), reindex, rerun.
 
-## Shared identifier contract (for `scripts/data-onboarding/idcardCsvLib.mjs` in the main workspace � not modified here)
-That file (uncommitted in main workspace) must adopt this PR's contract before it can feed batches:
-| Item | Main-workspace `idcardCsvLib.mjs` | Contract (this PR) |
-|---|---|---|
-| HMAC message | `employee-identifier:v1:<type>:<value>` | `rae-attendance-v2:identifier-lookup:v1\0<type>\0<value>` � **digests differ; mixing them breaks lookups** |
-| Key version | none | `EMPLOYEE_IDENTIFIER_HMAC_KEY_VERSION` stored in `lookup_key_version` + previous-key window |
-| Raw storage | `protectIdentifier()` always encrypts | disabled by default; needs `..._RAW_STORAGE_ENABLED=true` and `necessityApprovalRef` |
-| AES-GCM AAD | `employee-identifier:v1:<type>:<hmac>` | `rae-attendance-v2:identifier-secret:v1:<type>:<hmac>` |
-| Encryption key | always required | only when raw storage enabled |
-| Secret sources | env only | env or `<NAME>_FILE` |
-| Validation | 13 digits + Thai checksum | 13 digits (checksum may be added as a hold rule, not a lookup rule) |
-| Output | base64 strings | `Buffer`s for DB binary columns |
-| Scope | national_id + facescan_id | national_id only (facescan/personnel_id are stored as plain `id_value`) |
-Plan: delete the duplicate crypto in `idcardCsvLib.mjs` and import `identifierCrypto.mjs` after this PR merges (or copy the module verbatim until then); keep masking helpers.
+## Single National ID contract (`backend/src/security/nationalIdContract.js`)
+One implementation, consumed by the backend (`employeeIdentifier` domain, repositories, `employeeIdentityService`), the onboarding scripts (`scripts/data-onboarding/identifierCrypto.mjs` is a thin ESM re-export) and, via `docs/patches/main-workspace-idcard-shared-contract.patch`, `idcardCsvLib.mjs` / `export-employee-bundle.mjs`.
+
+| Decision | Contract |
+|---|---|
+| Lookup | `HMAC-SHA-256(key, "rae-attendance-v2:identifier-lookup:v1" \0 id_type \0 canonical)`; hex in `employee_identifier.id_value`, `lookup_key_version` beside it |
+| Canonical input | NFKC; Thai/full-width digits to ASCII; only whitespace/hyphen separators removed; exactly 13 digits; anything else (`ID:...`, letters, 12/14 digits) is invalid, never "best effort" digit-stripped. Thai checksum is a separate screening rule |
+| Keys | current + optional previous (own version); lookups try both (`buildLookupCandidates`); `<NAME>_FILE` supported; previous must differ from current; HMAC key must differ from encryption key |
+| Raw storage | off by default; AES-256-GCM only with `EMPLOYEE_IDENTIFIER_RAW_STORAGE_ENABLED=true` **and** a `necessityApprovalRef`; `employee_identifier_secret` stays empty otherwise |
+| Failure mode | fail closed: no key => `NATIONAL_ID_PROTECTION_UNAVAILABLE` (503), never a plaintext fallback; no name/e-mail-only auto-link anywhere |
+| Audit | `employee_identifier_access_audit`: actor, action, key version, result, ref; `buildAuditEvent` rejects free text and any 10+ digit run. `create` audit is mandatory in the write transaction (outage rolls the write back); lookup audit is best-effort |
+| Duplicates | `UNIQUE(id_type,id_value)` + `UNIQUE(national_id_owner_uid)` (generated; NULL for non-national so many other rows are allowed; a deactivated national row still blocks a second one, 409) + `GET_LOCK` + transaction + `FOR UPDATE` check across current and previous lookups |
+
+### Error mapping (API)
+`NATIONAL_ID_PROTECTION_UNAVAILABLE` 503, `NATIONAL_ID_WRITES_FROZEN` 503, `NATIONAL_ID_WRITE_BUSY` 503, `EMPLOYEE_ALREADY_HAS_NATIONAL_ID` 409, `DUPLICATE_IDENTIFIER` 409, invalid value 400 `VALIDATION_ERROR`. Messages never contain the identifier.
+
+### Rotation procedure (mandatory write freeze)
+A v1-only instance cannot see rows written under v2, so a mixed fleet can create cross-version duplicates that no index can catch. Therefore: (1) set `EMPLOYEE_IDENTIFIER_NATIONAL_WRITE_FREEZE=true` everywhere; (2) deploy current=v2 + previous=v1 on **all** instances; (3) run `planReindex` and re-key rows in place (needs a source of the original value, e.g. the approved private batch); (4) verify with `detectCrossVersionDuplicates`; (5) unfreeze; (6) retire v1 only after zero `lookup_key_version=1` rows remain. Tested on MariaDB 10.3.39 and 10.11.9 (including the documented v1-only hazard).
+
+### Behaviour changes / caller compatibility
+- `normalizeIdentifierValue('national_id', x)` returns canonical or `''` (previously digit-stripped fallback).
+- Repository `idValue` is `null` for national rows; list API shows `idValueMasked: "[protected]"` and `lookupKeyVersion`.
+- The MariaDB repository now selects `lookup_key_version`, so **migration 015 must be applied before the new backend is deployed**; the 015 down script keeps the column so older code remains readable.
+- `export-employee-bundle.mjs` (patch): no key needed; exports `lookup_hmac` + `lookup_key_version` for national rows and refuses (without echoing) if a non-HMAC value is found.
+- `idcardCsvLib.mjs` (patch): reconcile/classify take `{ keys }`; a plaintext 13-digit national_id in a snapshot throws `PLAINTEXT_NATIONAL_ID_IN_SNAPSHOT`; `facescan_id` stays a plain value. The patch applies to the CRLF originals in the main workspace (`git apply`), which this work deliberately did not modify.

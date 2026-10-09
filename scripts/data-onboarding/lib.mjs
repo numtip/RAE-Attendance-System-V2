@@ -199,12 +199,15 @@ export function buildImportBatchFromPersonRecords(records, manifest = {}, option
         employee_id: candidate.employee_id,
         id_type: 'facescan_id',
         id_value: candidate.facescan_id,
+        source_system: personSource,
         is_primary: 1,
       },
       {
         employee_id: candidate.employee_id,
         id_type: 'personnel_id',
         id_value: candidate.personnel_id,
+        // Only MJU-verified records reach this point (classifyPersonnelOnboarding), so this is the MJU source.
+        source_system: personSource,
         is_primary: 0,
       },
     ]),

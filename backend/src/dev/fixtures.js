@@ -88,6 +88,12 @@ const employeeIdentifiers = [
     idValue: 'FS-USER-001',
     sourceSystem: 'fixture',
   },
+  {
+    employeeUid: '22222222-2222-2222-2222-222222222222',
+    idType: 'national_id',
+    idValue: '9900000000001',
+    sourceSystem: 'fixture',
+  },
 ];
 
 const authorizationGrants = [];

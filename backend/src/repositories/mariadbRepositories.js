@@ -8,7 +8,8 @@ const { createRefreshTokenMariaDbRepository } = require('./mariadb/refreshTokenM
 const { createAuthorizationMariaDbRepository } = require('./mariadb/authorizationMariaDbRepository');
 const { createIdentityLinkMariaDbRepository } = require('./mariadb/identityLinkMariaDbRepository');
 const { createEmployeeIdentifierMariaDbRepository } = require('./mariadb/employeeIdentifierMariaDbRepository');
-const { createFacescanRawMariaDbRepository } = require('./mariadb/facescanRawMariaDbRepository');
+const { createFacescanIngestionMariaDbRepository } = require('./mariadb/facescanIngestionMariaDbRepository');
+const { createAttendanceEventMariaDbRepository } = require('./mariadb/attendanceEventMariaDbRepository');
 
 function blockedRepo() {
   const error = getDbUnavailableError();
@@ -29,7 +30,8 @@ function createMariaDbRepositories(database = config.database) {
       authorization: blockedRepo(),
       identityLinks: blockedRepo(),
       employeeIdentifiers: blockedRepo(),
-      facescanRaw: blockedRepo(),
+      facescanIngestion: blockedRepo(),
+      attendanceEvents: blockedRepo(),
     };
   }
 
@@ -43,7 +45,8 @@ function createMariaDbRepositories(database = config.database) {
     authorization: createAuthorizationMariaDbRepository(pool),
     identityLinks: createIdentityLinkMariaDbRepository(pool),
     employeeIdentifiers: createEmployeeIdentifierMariaDbRepository(pool),
-    facescanRaw: createFacescanRawMariaDbRepository(pool),
+    facescanIngestion: createFacescanIngestionMariaDbRepository(pool),
+    attendanceEvents: createAttendanceEventMariaDbRepository(pool),
   };
 }
 

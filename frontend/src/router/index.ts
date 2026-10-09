@@ -11,6 +11,12 @@ const router = createRouter({
       meta: { guest: true },
     },
     {
+      path: '/auth/sso/complete',
+      name: 'sso-complete',
+      component: () => import('../views/SsoCompleteView.vue'),
+      meta: { guest: true },
+    },
+    {
       path: '/',
       component: () => import('../layouts/AppLayout.vue'),
       meta: { requiresAuth: true },
