@@ -19,11 +19,30 @@ It contains no PII, secrets or real CSV content, and must stay that way.
 |---|---|
 | PR #30 `docs/mju-subject-evidence-pack` (head `0a5e492`) | OPEN, not merged, base `main` |
 | PR #33 `feat/facescan-ingestion-phase-a` (head `00b92c5`) | OPEN, not merged, base `main` |
-| PR #34 `integration/attendance-sso-hip` (head `0d966f1`) | **Draft**, OPEN, base `docs/mju-subject-evidence-pack`; CI all green (8 jobs) |
+| PR #34 `integration/attendance-sso-hip` (head `96835c1` on origin) | **Draft**, OPEN, base `docs/mju-subject-evidence-pack`; CI 8/8 green; keep Draft |
 | `origin/main` | `3244553` |
 
-* Pushed: `integration/attendance-sso-hip` (new branch, fast-forward only, no force). Nothing has been merged.
-* PR #34 range = 5 own commits + 2 FaceScan commits (the same ones as PR #33) + 1 merge commit. Suggested merge order: **#30 -> #33 -> #34**; after #33 lands, rebase/retarget #34 so the two FaceScan commits drop out of its diff.
+* Pushed: `integration/attendance-sso-hip` (fast-forward only, no force) up to `96835c1` (`AGENTS.md`). Nothing has been merged. Commits made after that stay local until the user approves a push.
+* PR #34 range = 5 own commits + 2 FaceScan commits (the same ones as PR #33) + 1 merge commit + docs commits. Merge order: **#30 -> #33 -> #34**.
+
+### Merge readiness (reviewed 2026-10-09)
+
+| PR | CI | Mergeable | Depends on | Verdict |
+|---|---|---|---|---|
+| #30 | 8/8 green | clean | main | Ready technically. Touches `.gitignore`, which #33 also touches. |
+| #33 | 8/8 green | clean vs main today | main (independent of #30) | Ready technically **but** after #30 merges it conflicts with main on `.gitignore` (proven with `git merge-tree 0a5e492 00b92c5`). #33 needs a small update (merge main, union the ignore rules) before merging second. Needs approval. |
+| #34 | 8/8 green | clean | #30 (base); contains #33's 2 commits | Draft; do not mark Ready until #30 and #33 are in main. |
+
+* #30 and #33 are otherwise file-disjoint (28 and 26 files, only `.gitignore` overlaps). The `fixtureRepositories.js` conflict only exists in #34 and is already resolved in `0d966f1`.
+* Repo allows merge commit, squash and rebase; main has no branch protection. Recent main history uses squash (`(#32)`), so assume squash and plan for it.
+
+### Plan to shrink PR #34's diff after #30 and #33 merge (needs approval at each step)
+
+1. After #30 and #33 are in `main`: `git fetch origin` then **`git merge origin/main`** into `integration/attendance-sso-hip` (a normal merge, no rebase, no force-push). Because the squash result of #30/#33 has the same file content as the commits already in this branch, Git should auto-resolve; re-check `.gitignore` and `fixtureRepositories.js`.
+2. `gh pr edit 34 --base main`. The PR diff then shows only the SSO / identifier work (roughly the 5 own commits plus docs), not #30 or #33.
+3. Fast-forward push; CI re-runs automatically on the new base and head. Wait for 8/8 green, re-run the QA table in section 7 and check the migration order test below.
+4. Only then consider marking Ready for Review (user decision).
+* If #30/#33 end up merged with merge commits instead of squash, step 1 is a trivial fast-forward of history.
 
 ## 3. Key commits and branch relationships
 
@@ -43,7 +62,7 @@ Merge conflicts resolved in `0d966f1`: `.gitignore` (union) and `backend/src/rep
 ## 4. Personnel scope (50 people)
 
 * Source: `database/IDCardRaecsv2027.csv` (local only, gitignored, **never commit, never edit, never print values**). 52 data rows, 2 exact duplicate lines, so **50 unique people** is the confirmed scope. The earlier "expected 34" figure is retired.
-* 50 unique rows is a confirmed *scope*, not "import ready": import stays gated (section 8).
+* **Employee scope = 50 unique: CONFIRMED. It is not a blocker.** It is still not "import ready": import stays gated by the other items in section 8.
 * CSV integrity baseline (SHA-256, recorded 2026-10-09): `65323DFF8D618834205E8BB07839CAA7133B1F8CF3C11E921EBE4C6546CF4443`. If it differs, someone edited the file; stop and report.
 * Identity kinds (`backend/src/domain/identityKind.js`, `docs/IDENTITY_KIND_MAPPING.md`): `MJU` (has MJU `personnel_id`), `HIP` (contractor; HIP attendance only), `UNRESOLVED`. No synthetic `personnel_id` for HIP people.
 * National ID: single contract in `backend/src/security/nationalIdContract.js` (HMAC-SHA-256 lookup + key version, strict canonicalization, raw storage off by default, masked output `****NNNN` only). Policy: `docs/NATIONAL_ID_PROTECTION_POLICY.md`.
@@ -55,6 +74,8 @@ Merge conflicts resolved in `0d966f1`: `.gitignore` (union) and `backend/src/rep
 * HIP attendance is separate: eligibility = an active `facescan_id` identifier. Contractors without an MJU account need **no** SSO and **no** fake SSO account. `Facescan Code` = HIP ID is documented but still unverified (`docs/HIP_ID_MAPPING_EVIDENCE.md`).
 * Controls kept: single-use state bound to a server-generated cookie binding, single-use 45 s handoff code, HS256-pinned session JWT with `jti`, `no-store` and `no-referrer` on callback, logout revokes the refresh token, production refuses the mock provider and non-https endpoints. Deliberately cut for MVP: PKCE, state-count cap, multi-instance infra, advanced audit, key-rotation automation.
 * Production detection reads `config.app.env` (use `isProduction(config)`).
+* **Policy S9 (confirmed by the user, 2026-10-09):** a candidate link, or any link, must **never be auto-approved without evidence that the identity matches**. Acceptable evidence = a verified provider subject *and* a protected national-ID lookup (HMAC) that resolves to the same `employee_uid` in the same login. Never from name, email, a CSV row, an admin import alone, or the callback `ac`. Review of the code on 2026-10-09: `linkProviderSubjectFromSsoLogin` is called only on the national-ID path (after the protected lookup), rejects `ac` as a subject, returns 409 when the subject belongs to another employee, and a candidate link alone is denied at session issuance. Remaining gaps to harden when code changes are approved: (a) add an explicit test "candidate link of employee A is not promoted when the national-ID match is employee B or absent"; (b) record the evidence type on the approval (today it is `approvedBy: system:sso`); (c) a national-ID-only session without a verified subject is still possible while the subject contract is unconfirmed; keep SSO off until MJU confirms the subject.
+* **Shortest MVP path (Login -> MJU -> Callback -> Identity Mapping -> Session -> Logout):** (1) get MJU's written answers (section 6) and a registered test callback; (2) set the confirmed values: endpoints, `SSO_NATIONAL_ID_CLAIMS`, `SSO_CALLBACK_CONFIRMED`, `SSO_PROTOCOL_CONTRACT_CONFIRMED`, `SSO_SUBJECT_CONTRACT_CONFIRMED`, with secrets supplied by their owners (never in git); (3) `npm run sso:preflight` must report ready; (4) staging only, one consenting test account: login -> callback -> mapping -> session -> `/me` -> logout; (5) check the failure cases (bad callback, replayed code, unknown subject) against the existing `backend/tests/ssoMvp.test.js` behaviour; (6) only then decide whether to enable for the 50-person scope. HIP people skip all of this.
 * Everything is fail-closed and OFF by default: `SSO_ENABLED`, `SSO_CALLBACK_CONFIRMED`, `SSO_PROTOCOL_CONTRACT_CONFIRMED`, `SSO_SUBJECT_CONTRACT_CONFIRMED`, and a non-empty `SSO_NATIONAL_ID_CLAIMS` for any non-mock provider. `npm run sso:preflight` prints a yes/no readiness check.
 
 ## 6. MJU protocol / callback `ac` (NOT confirmed)
@@ -67,7 +88,16 @@ Evidence matrix: `docs/SSO_PROTOCOL_EVIDENCE.md`. Do **not** assume OIDC.
 * Unknown: token and userinfo endpoints, client secret, state echo, PKCE support, subject claim, citizen-ID claim name, signature. The MJU IT question list is in the evidence doc.
 * No real MJU login has been attempted. A live probe needs MJU IT answers, a registered test callback, secrets from their owners and a consenting test account.
 
-## 7. QA (latest, 2026-10-09, on `0d966f1`)
+**What to ask MJU IT (only what is needed to accept the `ac` callback and fetch a verified identity):**
+1. What is `ac` exactly: a one-time authorization code or ticket? Its lifetime, single-use rule, and whether it is bound to the client id / redirect URI.
+2. How does our backend redeem or verify `ac` server-to-server: URL, HTTP method, authentication (client secret, IP allow-list, signature), request and response format, with a sample response for a synthetic or test user.
+3. What identity fields come back: the stable, never-reused subject identifier (name and format) and the citizen-ID claim name (and whether it is a plain 13-digit value). Is the response signed, or protected by TLS only?
+4. Is `state` echoed back unchanged, and is PKCE supported? (If not, we keep our own cookie binding.)
+5. Registered callback URLs including a staging/test URL; a consenting test account; error-callback format; logout URL and whether logout is local only.
+6. Written approval for releasing citizen ID to RAE (data-protection basis).
+The full 15-question list stays in `docs/SSO_PROTOCOL_EVIDENCE.md`; the six above are the minimum for the MVP.
+
+## 7. QA (latest, 2026-10-09; code unchanged since `0d966f1`, later commits are docs only)
 
 | Suite | Result |
 |---|---|
@@ -78,7 +108,8 @@ Evidence matrix: `docs/SSO_PROTOCOL_EVIDENCE.md`. Do **not** assume OIDC.
 | MariaDB QA (10.11.9 and 10.3.39, plain + binlog ROW/STATEMENT) | 34/34 pass |
 | All migrations + seed on a fresh 10.11.9 DB | applied cleanly in order |
 | DB integration (identifier, FaceScan, release1) on a fresh DB | 18/18 pass with `TZ=UTC` |
-| PR #34 CI | 8/8 jobs green |
+| PR #34 CI (head `96835c1`) | 8/8 jobs green |
+| PR #30 / #33 CI | 8/8 jobs green each |
 
 Known issues:
 * Two `facescanNormalization.mariadb.test.js` tests fail on a UTC+7 host (`15:00:00` vs `08:00:00`); the same failure exists at `00b92c5`; they pass with `TZ=UTC` (CI is UTC). Not caused by the SSO work.
@@ -88,19 +119,21 @@ Known issues:
 
 ## 8. Migrations 015 / 017 and production gates
 
-* Two files share the `015` prefix: `015_employee_identifier_secure_lookup.sql` (PR #30) and `015_facescan_hip_ingestion.sql` (PR #33). `scripts/migrate.mjs` keys the ledger (`schema_migrations`) on the full filename, sorts lexicographically, and has no checksum. Order is deterministic and there is no cross dependency. **Do not rename** either file: a database that already applied it would treat the renamed file as new. Any rename is a separate coordinated decision.
-* `013_personnel_identifier.sql` is a no-op stub kept for ledger stability.
+* Two files share the `015` prefix: `015_employee_identifier_secure_lookup.sql` (PR #30) and `015_facescan_hip_ingestion.sql` (PR #33). `scripts/migrate.mjs` keys the ledger (`schema_migrations`) on the full filename, sorts lexicographically, applies any file not in the ledger, and has no checksum. Order is deterministic and there is no cross dependency. **Do not rename** either file: a database that already applied it would treat the renamed file as new. Any rename is a separate coordinated decision.
+* Evidence (2026-10-09, disposable MariaDB 10.11.9, no real data): (a) fresh DB, all 19 files in order: OK; (b) DB at the #33 state (015_facescan, 016, seeded) then this branch's `013_personnel_identifier`, `015_employee_identifier_secure_lookup`, `017`: applied cleanly, seeded rows kept; (c) DB at the #30 state then `015_facescan`, `016`, `017`: applied cleanly. So either merge order works at the schema level. Not tested: a DB that already holds real production data.
+* Two `013_*` files: `013_employee_identifier_foundation.sql` is on `origin/main`; `013_personnel_identifier.sql` (PR #30 only, never on main) is a no-op `SELECT 1;` stub kept so a ledger that recorded the earlier DDL stays consistent.
+* The merge flow does not change migration files, so no ledger rewrite is needed.
 * `017_identifier_namespace_claim.sql` (claim table + triggers, `SIGNAL 45000 IDENTIFIER_NAMESPACE_COLLISION`; a value may not be `facescan_id` for one employee and `personnel_id` for another). Under binary logging the migration account needs `SUPER` or `log_bin_trust_function_creators=1` (TRIGGER alone fails with error 1419; missing TRIGGER gives 1142; triggers run as DEFINER). Details: `docs/MIGRATION_017_PRIVILEGES.md`. Run `database/preflight/015_preflight.sql` and `017_preflight.sql` read-only before any real DB; rollbacks live in `database/rollbacks/`.
-* **Production gates (all still BLOCKED, need explicit written approval):** MJU authoritative personnel source; employee scope; VPS gate; HIP ID evidence; DBA decision on migration 017 privileges; MJU IT answers on the SSO contract; policy S9 (candidate-link auto-approval, national-ID-only sessions while the subject contract is unconfirmed; see `docs/PR_REVIEW_SSO_INTEGRATION.md`).
+* **Production gates (still BLOCKED, need explicit written approval):** MJU authoritative personnel source; VPS gate; HIP ID evidence; DBA decision on migration 017 privileges; MJU IT answers on the SSO contract (`ac` handling and verified identity). **Not a blocker any more:** the 50-unique employee scope (CONFIRMED). Policy S9 is decided (section 5); only its hardening items remain as code work.
 * Never without approval: push to a protected line, merge a PR, SSH, production migration/import/deploy, create or rotate production secrets, edit the original CSV, force-push.
 
 ## 9. Suggested next steps
 
-1. Decide the merge order of PR #30 / #33 / #34; mark #34 ready for review when appropriate; rebase or retarget #34 after #33 merges.
-2. Decide on the duplicate `015` prefix (keep as is, or a coordinated rename before any DB applies both).
+1. Approve the merge order #30 -> #33 -> #34. #33 needs a small `.gitignore` update after #30 lands. Then follow "Plan to shrink PR #34's diff" (section 2). Keep #34 a Draft until then.
+2. Keep the duplicate `015` prefix as is (evidence in section 8); a rename needs a separate decision.
 3. Send the MJU IT question list (`docs/SSO_PROTOCOL_EVIDENCE.md`) and obtain the registered test callback, secrets and a consenting test account; then run a staging-only live probe to learn what `ac` actually is.
 4. DBA decision for migration 017 (`SUPER` or `log_bin_trust_function_creators=1`, stable definer).
-5. Resolve policy S9 and the HIP ID evidence; only then plan the controlled onboarding (`docs/CONTROLLED_EMPLOYEE_ONBOARDING.md`, `docs/PRODUCTION_DATA_ONBOARDING_PLAN.md`).
+5. Harden S9 in code (tests and evidence recording, section 5) when code changes are approved; resolve the HIP ID evidence; only then plan the controlled onboarding (`docs/CONTROLLED_EMPLOYEE_ONBOARDING.md`, `docs/PRODUCTION_DATA_ONBOARDING_PLAN.md`).
 6. Optional hygiene: fix the timezone assumption in the two FaceScan normalization tests; remove the stale `feat/attendance-core-service` local branch (its remote is gone) only after confirming nothing unique is on it.
 
 ## 10. Key documents
