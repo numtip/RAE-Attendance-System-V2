@@ -19,22 +19,33 @@ It contains no PII, secrets or real CSV content, and must stay that way.
 |---|---|
 | PR #30 `docs/mju-subject-evidence-pack` (head `0a5e492`) | OPEN, not merged, base `main` |
 | PR #33 `feat/facescan-ingestion-phase-a` (head `00b92c5`) | OPEN, not merged, base `main` |
-| PR #34 `integration/attendance-sso-hip` (head `e8a5890` on origin) | **Draft**, OPEN, base `docs/mju-subject-evidence-pack`; CI 8/8 green; keep Draft |
+| PR #34 `integration/attendance-sso-hip` (head `ae2375a` on origin) | **Draft**, OPEN, base `docs/mju-subject-evidence-pack`; CI 8/8 green; keep Draft |
 | `origin/main` | `3244553` |
 
-* Pushed: `integration/attendance-sso-hip` (fast-forward only, no force) up to `e8a5890` (docs and S9 tests; fast-forward). The S9 fix commit `966562b` is local only. Commits made after that stay local until the user approves a push. Nothing has been merged. Commits made after that stay local until the user approves a push.
+* Pushed: `integration/attendance-sso-hip` (fast-forward only, no force) up to `ae2375a` (includes the S9 fix `966562b`; fast-forward). Commits made after that stay local until the user approves a push. Nothing has been merged. Commits made after that stay local until the user approves a push.
 * PR #34 range = 5 own commits + 2 FaceScan commits (the same ones as PR #33) + 1 merge commit + docs commits. Merge order: **#30 -> #33 -> #34**.
 
 ### Merge readiness (reviewed 2026-10-09)
 
 | PR | CI | Mergeable | Depends on | Verdict |
 |---|---|---|---|---|
-| #30 | 8/8 green | clean | main | Ready technically (28 files, +2533/-11; 0 reviews/comments; 0 CSV-value hits, no forbidden files). Before merge: (1) **its title/body say "docs only; no runtime" but it also adds migration 015, onboarding scripts, `.env.example` and secret-scan changes: update the PR description** (needs approval); (2) migration 015 adds a CHECK that rejects plaintext `national_id` rows, and the HMAC protector code that writes them lives in #34, so **do not migrate any real DB from `main` after #30 alone**; apply 015 only together with the #34 backend and after `015_preflight.sql`; (3) touches `.gitignore`, which #33 also touches. |
+| #30 | 8/8 green | clean | main | Ready technically (28 files, +2533/-11; 0 reviews/comments; 0 CSV-value hits, no forbidden files). Before merge: (1) title and body were rewritten on 2026-10-09 to match reality (migration 015, onboarding scripts, security policy; no runtime code); (2) migration 015 adds a CHECK that rejects plaintext `national_id` rows, and the HMAC protector code that writes them lives in #34, so **do not migrate any real DB from `main` after #30 alone**; apply 015 only together with the #34 backend and after `015_preflight.sql`; (3) touches `.gitignore`, which #33 also touches. |
 | #33 | 8/8 green | clean vs main today | main (independent of #30) | Ready technically **but** after #30 merges it conflicts with main on `.gitignore` (proven with `git merge-tree 0a5e492 00b92c5`). #33 needs a small update before merging second: merge `main` into it and resolve `.gitignore` by **keeping every rule from #30 and appending #33's single new line `mju-person-enrich.zip`** (#33 adds nothing else to that file). Proven 2026-10-09 with a simulated `main` (squash of #30): the only conflict is `.gitignore`, and the union keeps 11/11 of #30's PII/CSV/local-data rules. Needs approval before touching #33. |
 | #34 | 8/8 green | clean | #30 (base); contains #33's 2 commits | Draft; do not mark Ready until #30 and #33 are in main. |
 
 * #30 and #33 are otherwise file-disjoint (28 and 26 files, only `.gitignore` overlaps). The `fixtureRepositories.js` conflict only exists in #34 and is already resolved in `0d966f1`.
 * Repo allows merge commit, squash and rebase; main has no branch protection. Recent main history uses squash (`(#32)`), so assume squash and plan for it.
+
+### Auto-deploy / auto-migrate check (2026-10-09, read-only)
+* Workflows: only `ci.yml` (runs on every PR and on push to `main`) and `pages.yml` (push to `main`). No deploy, SSH or production-DB step; no Actions secrets or variables exist; no repo webhooks; migrations in CI run only against a throw-away MariaDB service container. `scripts/migrate.mjs` is manual (`npm run db:migrate*`), defaults to `127.0.0.1`, and nothing in the repo invokes it against a real host.
+* Merging to `main` therefore triggers CI and a **public GitHub Pages deploy of the frontend in `VITE_REVIEW_MODE=fixture`** (synthetic data, no backend). The repo is **public**. #30 and #33 change no frontend files; #34 adds the SSO complete view and a router entry, which would be published in fixture mode.
+* Not verifiable from the repo (needs the VPS owner, no SSH was used): whether the legacy host pulls `main` by cron/hook. `deploy/README.md` states nothing is applied there without an approved cutover (GitHub-first / VPS-last). Ask the operator to confirm before the first merge.
+
+### `.gitignore` resolution for #33 (run only after #30 is merged and with approval)
+1. `git fetch origin`; `git switch feat/facescan-ingestion-phase-a` (clean tree first); `git merge origin/main`.
+2. Conflict is `.gitignore` only. Take main's file (which has all of #30's rules) and append one line: `mju-person-enrich.zip`. Do not delete any rule.
+3. Check before committing: `git diff origin/main -- .gitignore` shows only that added line; `git check-ignore -v database/IDCardRaecsv2027.csv database/local/x docs/IDCardRaecsv2027_IMPORT_PLAN.md` still reports each as ignored; the 11 #30 rules are still present: `.local/onboarding-snapshots/`, `.local/import-batches/`, `database/local/`, `**/IDCard*.csv`, `**/IDCard*.xlsx`, `**/IDCard*.xls`, `**/IDCardRaecsv*`, `**/*person-batch-input*.json`, `**/*person-batch-input*.csv`, `!database/preflight/*.sql`, `!database/rollbacks/*.sql`.
+4. Commit, push fast-forward, wait for CI 8/8. Never `git add -A`.
 
 ### Plan to shrink PR #34's diff after #30 and #33 merge (needs approval at each step)
 
@@ -75,7 +86,7 @@ Merge conflicts resolved in `0d966f1`: `.gitignore` (union) and `backend/src/rep
 * Controls kept: single-use state bound to a server-generated cookie binding, single-use 45 s handoff code, HS256-pinned session JWT with `jti`, `no-store` and `no-referrer` on callback, logout revokes the refresh token, production refuses the mock provider and non-https endpoints. Deliberately cut for MVP: PKCE, state-count cap, multi-instance infra, advanced audit, key-rotation automation.
 * Production detection reads `config.app.env` (use `isProduction(config)`).
 * **Policy S9 (confirmed by the user, 2026-10-09):** a candidate link, or any link, must **never be auto-approved without evidence that the identity matches**. Acceptable evidence = a verified provider subject *and* a protected national-ID lookup (HMAC) that resolves to the same `employee_uid` in the same login. Never from name, email, a CSV row, an admin import alone, or the callback `ac`. Code review and tests (2026-10-09): in the live SSO path a `candidate` link is **never promoted**: `identityResolution.resolve()` throws `IDENTITY_NOT_APPROVED` (403) before any approval code runs, whether the national ID matches the same employee, another employee, or is absent. Four regression tests in `backend/tests/ssoIdentityRuntime.test.js` (prefix `S9:`) lock this, and were verified to fail under a mutation that treats `IDENTITY_NOT_APPROVED` as unknown. `ac`, email-shaped subjects and email/name-only profiles create no link.
-* **S9 fix (commit `966562b`, local, not pushed):** `issueSessionFromOAuthProfile` now requires a verified MJU subject before any employee lookup: invalid proof (`ac`, email-shaped, email-only) -> 403 `SSO_SUBJECT_INVALID`; missing subject or unconfirmed subject contract -> 403 `SSO_SUBJECT_NOT_VERIFIED`. A citizen ID alone never opens a session (applies to every provider, including `mock`, so dev mock login needs `SSO_SUBJECT_CONTRACT_CONFIRMED=true`). `mjuSubjectAdapter` also rejects a profile subject equal to `ac`/the callback `ac`. The unreachable candidate-to-approved branch in `linkProviderSubjectFromSsoLogin` was deleted. Four new `S9:` tests; verified to fail (4 failures) without the fix. Still open (low): record the evidence type on approvals instead of only `approvedBy: system:sso`.
+* **S9 fix (commit `966562b`, pushed):** `issueSessionFromOAuthProfile` now requires a verified MJU subject before any employee lookup: invalid proof (`ac`, email-shaped, email-only) -> 403 `SSO_SUBJECT_INVALID`; missing subject or unconfirmed subject contract -> 403 `SSO_SUBJECT_NOT_VERIFIED`. A citizen ID alone never opens a session (applies to every provider, including `mock`, so dev mock login needs `SSO_SUBJECT_CONTRACT_CONFIRMED=true`). `mjuSubjectAdapter` also rejects a profile subject equal to `ac`/the callback `ac`. The unreachable candidate-to-approved branch in `linkProviderSubjectFromSsoLogin` was deleted. Four new `S9:` tests; verified to fail (4 failures) without the fix. Still open (low): record the evidence type on approvals instead of only `approvedBy: system:sso`.
 * **Shortest MVP path (Login -> MJU -> Callback -> Identity Mapping -> Session -> Logout):** (1) get MJU's written answers (section 6) and a registered test callback; (2) set the confirmed values: endpoints, `SSO_NATIONAL_ID_CLAIMS`, `SSO_CALLBACK_CONFIRMED`, `SSO_PROTOCOL_CONTRACT_CONFIRMED`, `SSO_SUBJECT_CONTRACT_CONFIRMED`, with secrets supplied by their owners (never in git); (3) `npm run sso:preflight` must report ready; (4) staging only, one consenting test account: login -> callback -> mapping -> session -> `/me` -> logout; (5) check the failure cases (bad callback, replayed code, unknown subject) against the existing `backend/tests/ssoMvp.test.js` behaviour; (6) only then decide whether to enable for the 50-person scope. HIP people skip all of this.
 * Everything is fail-closed and OFF by default: `SSO_ENABLED`, `SSO_CALLBACK_CONFIRMED`, `SSO_PROTOCOL_CONTRACT_CONFIRMED`, `SSO_SUBJECT_CONTRACT_CONFIRMED`, and a non-empty `SSO_NATIONAL_ID_CLAIMS` for any non-mock provider. `npm run sso:preflight` prints a yes/no readiness check.
 
@@ -103,13 +114,13 @@ The full 15-question list stays in `docs/SSO_PROTOCOL_EVIDENCE.md`; the six abov
 | Suite | Result |
 |---|---|
 | ESLint (backend) | clean |
-| Backend (no DB) | 174 tests: 168 pass, 0 fail, 6 skipped (DB opt-in); includes the `S9:` tests and the S9 fix (local commit `966562b`) |
+| Backend (no DB) | 174 tests: 168 pass, 0 fail, 6 skipped (DB opt-in); includes the `S9:` tests and the S9 fix (`966562b`, pushed) |
 | Scripts | 36/36 pass |
 | Secret scan (`node scripts/secret-scan.mjs`) | passed (287 files) |
 | MariaDB QA (10.11.9 and 10.3.39, plain + binlog ROW/STATEMENT) | 34/34 pass |
 | All migrations + seed on a fresh 10.11.9 DB | applied cleanly in order |
 | DB integration (identifier, FaceScan, release1) on a fresh DB | 18/18 pass with `TZ=UTC` |
-| PR #34 CI (head `2feb554`) | 8/8 jobs green (new S9 tests are local, not yet pushed) |
+| PR #34 CI (head `ae2375a`) | 8/8 jobs green |
 | PR #30 / #33 CI | 8/8 jobs green each |
 
 Known issues:
@@ -130,8 +141,7 @@ Known issues:
 
 ## 9. Suggested next steps
 
-0. **Approval gates, in order (each needs its own explicit approval; nothing is merged automatically):** (a) push the local S9 fix commit `966562b` (and this handoff update) to PR #34; (b) merge #30; (c) update #33 (merge main, resolve `.gitignore` as in section 2) and merge #33; (d) merge main into #34, retarget base to `main`, wait for CI, then decide on Ready for Review.
-1. Approve the merge order #30 -> #33 -> #34. #33 needs a small `.gitignore` update after #30 lands. Then follow "Plan to shrink PR #34's diff" (section 2). Keep #34 a Draft until then.
+0. **Approval gates, in order (each needs its own explicit approval; nothing is merged automatically):** (a) merge #30; (b) update #33 (merge main, resolve `.gitignore` as below) and merge #33; (c) merge main into #34, retarget base to `main`, wait for CI, then decide on Ready for Review.
 2. Keep the duplicate `015` prefix as is (evidence in section 8); a rename needs a separate decision.
 3. Send the MJU IT question list (`docs/SSO_PROTOCOL_EVIDENCE.md`) and obtain the registered test callback, secrets and a consenting test account; then run a staging-only live probe to learn what `ac` actually is.
 4. DBA decision for migration 017 (`SUPER` or `log_bin_trust_function_creators=1`, stable definer).
