@@ -14,13 +14,37 @@ const {
 } = require('../domain/employeeIdentifier');
 const { HttpError } = require('../utils/httpError');
 
+/** Maps contract/repository protection errors to HTTP errors without echoing any identifier. */
+function mapProtectionError(error) {
+  const code = String(error?.code || '');
+  if (code.startsWith('NOT_CONFIGURED')) {
+    return new HttpError(503, 'NATIONAL_ID_PROTECTION_UNAVAILABLE', 'National ID protection is not configured');
+  }
+  if (code === 'NATIONAL_ID_WRITES_FROZEN') {
+    return new HttpError(503, 'NATIONAL_ID_WRITES_FROZEN', 'National ID writes are frozen during key rotation');
+  }
+  if (code === 'INVALID_IDENTIFIER') {
+    return new HttpError(400, 'VALIDATION_ERROR', 'national_id must be 13 digits');
+  }
+  if (code === 'WRITE_LOCK_TIMEOUT') {
+    return new HttpError(503, 'NATIONAL_ID_WRITE_BUSY', 'National ID write is busy; retry');
+  }
+  if (code === 'EMPLOYEE_ALREADY_HAS_NATIONAL_ID') {
+    return new HttpError(409, 'EMPLOYEE_ALREADY_HAS_NATIONAL_ID', 'Employee already has a national_id linked');
+  }
+  return null;
+}
+
 function createEmployeeIdentityService({ repositories }) {
   const employeeIdentifiers = repositories.employeeIdentifiers;
   const employees = repositories.employees;
 
-  async function resolveToEmployee(idType, idValue) {
+  async function resolveToEmployee(idType, idValue, ctx = {}) {
     const normalized = normalizeIdentifierValue(idType, idValue);
     if (!normalized) {
+      if (idType === 'national_id') {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'national_id must be 13 digits');
+      }
       throw new HttpError(400, 'VALIDATION_ERROR', 'identifier value is required');
     }
 
@@ -33,7 +57,12 @@ function createEmployeeIdentityService({ repositories }) {
       }
     }
 
-    const link = await employeeIdentifiers.findActiveByTypeAndValue(idType, normalized);
+    let link;
+    try {
+      link = await employeeIdentifiers.findActiveByTypeAndValue(idType, normalized, ctx);
+    } catch (error) {
+      throw mapProtectionError(error) || error;
+    }
     if (!link) {
       throw new HttpError(404, 'EMPLOYEE_NOT_FOUND', notFoundMessage(idType));
     }
@@ -57,7 +86,8 @@ function createEmployeeIdentityService({ repositories }) {
       return employee;
     },
 
-    async resolve(identifierType, identifierValue) {
+    /** `ctx` ({ actor, reason }) is audit metadata only — never put identifiers in it. */
+    async resolve(identifierType, identifierValue, ctx = {}) {
       const idType = String(identifierType || '').trim();
       if (!isResolvableIdentifierType(idType)) {
         throw new HttpError(400, 'VALIDATION_ERROR', `Unsupported identifier type: ${idType}`);
@@ -65,11 +95,11 @@ function createEmployeeIdentityService({ repositories }) {
       if (identifierValue == null || String(identifierValue).trim() === '') {
         throw new HttpError(400, 'VALIDATION_ERROR', 'identifier value is required');
       }
-      return resolveToEmployee(idType, identifierValue);
+      return resolveToEmployee(idType, identifierValue, ctx);
     },
 
-    async resolveUid(identifierType, identifierValue) {
-      const employee = await this.resolve(identifierType, identifierValue);
+    async resolveUid(identifierType, identifierValue, ctx = {}) {
+      const employee = await this.resolve(identifierType, identifierValue, ctx);
       return employee.employeeUid;
     },
 
@@ -92,8 +122,11 @@ function createEmployeeIdentityService({ repositories }) {
       }
 
       const normalized = normalizeIdentifierValue(idType, idValue);
-      if (idType === 'national_id' && normalized.replace(/\D/g, '').length !== 13) {
+      if (idType === 'national_id' && !normalized) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'national_id must be 13 digits');
+      }
+      if (!normalized) {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'identifier value is required');
       }
 
       const employee = await employees.findByUid(employeeUid);
@@ -109,8 +142,12 @@ function createEmployeeIdentityService({ repositories }) {
           sourceSystem: input.sourceSystem ?? null,
           isPrimary: Boolean(input.isPrimary),
           verifiedAt: input.verifiedAt ?? null,
+          actor: input.actor,
+          reason: input.reason,
         });
       } catch (error) {
+        const mapped = mapProtectionError(error);
+        if (mapped) throw mapped;
         if (error.code === 'DUPLICATE_IDENTIFIER') {
           throw new HttpError(409, 'DUPLICATE_IDENTIFIER', 'Identifier already linked to another employee');
         }
@@ -142,7 +179,9 @@ function createEmployeeIdentityService({ repositories }) {
         employeeUid: row.employeeUid,
         idType: row.idType,
         idValue: row.idType === 'national_id' ? undefined : row.idValue,
-        idValueMasked: maskIdentifierForLog(row.idType, row.idValue),
+        // national_id is stored only as an HMAC lookup: no raw value (not even last 4) is recoverable.
+        idValueMasked: row.idType === 'national_id' ? '[protected]' : maskIdentifierForLog(row.idType, row.idValue),
+        lookupKeyVersion: row.idType === 'national_id' ? row.lookupKeyVersion ?? null : undefined,
         sourceSystem: row.sourceSystem,
         isPrimary: row.isPrimary,
         status: row.status,

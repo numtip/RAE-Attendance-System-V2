@@ -7,7 +7,7 @@ const { createFixtureIdentityLinkRepository } = require('./fixtureIdentityLinkRe
 const { createFixtureEmployeeIdentifierRepository } = require('./fixtureEmployeeIdentifierRepository');
 const { createFixtureFacescanRawRepository } = require('./fixtureFacescanRawRepository');
 
-function createFixtureRepositories() {
+function createFixtureRepositories({ nationalId = null } = {}) {
   const refreshTokens = new Map();
   return {
     employees: new EmployeeRepository(fixtures.employees),
@@ -44,7 +44,7 @@ function createFixtureRepositories() {
       },
     },
     identityLinks: createFixtureIdentityLinkRepository(),
-    employeeIdentifiers: createFixtureEmployeeIdentifierRepository(fixtures.employeeIdentifiers),
+    employeeIdentifiers: createFixtureEmployeeIdentifierRepository(fixtures.employeeIdentifiers, { nationalId }),
     facescanRaw: createFixtureFacescanRawRepository(),
   };
 }
