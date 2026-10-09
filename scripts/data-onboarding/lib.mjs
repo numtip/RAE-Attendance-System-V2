@@ -2,7 +2,8 @@
  * Synthetic-only onboarding helpers. These modules never open a database
  * and never read production credentials.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { buildLookup } from './identifierCrypto.mjs';
 
 export const TOOL_VERSION = '0.1.0';
 
@@ -26,16 +27,251 @@ export const ATTENDANCE_STATUSES = new Set(['present', 'late', 'absent', 'leave'
 export const ID_TYPES = new Set(['facescan_id', 'employee_id', 'personnel_id', 'national_id']);
 export const ACCESS_ROLES = new Set(['EXECUTIVE', 'MANAGER', 'EMPLOYEE', 'ADMIN']);
 export const SCOPE_TYPES = new Set(['self', 'org_unit', 'organization']);
+export const PERSONNEL_ID_SOURCE = 'mju_person_api';
+export const PERSONNEL_ID_VERIFIED = 'PERSONNEL_ID_VERIFIED_FROM_MJU';
+export const PERSONNEL_ID_HOLD = 'HOLD';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function sha256Text(text) {
   return createHash('sha256').update(text).digest('hex');
 }
 
-export function stableEmployeeUid(employeeId) {
-  const hash = createHash('sha256').update(`rae-attendance-v2:employee:${employeeId}`).digest('hex');
+export function attendanceEmployeeId(sequence) {
+  if (!Number.isSafeInteger(sequence) || sequence < 1 || sequence > 99_999_999) {
+    throw new Error('attendance employee sequence must be an integer from 1 to 99999999');
+  }
+  return `RAE-${String(sequence).padStart(8, '0')}`;
+}
+
+export function allocateEmployeeIdentity(sequence, { uuidFactory = randomUUID } = {}) {
+  const employeeUid = uuidFactory();
+  if (!UUID_RE.test(employeeUid)) {
+    throw new Error('uuidFactory must return a UUID');
+  }
+  return {
+    employee_uid: employeeUid,
+    employee_id: attendanceEmployeeId(sequence),
+  };
+}
+
+/** Deterministic UUID preview for approval packets only โ€” regenerate at import time. */
+export function previewEmployeeUid(sourceBatchId, sequence) {
+  const hash = createHash('sha256')
+    .update(`rae-attendance-v2:import-preview:${sourceBatchId}:${sequence}`)
+    .digest('hex');
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
+
+/** National ID lookup digest: HMAC-SHA-256 with versioned key, or null when no keys are configured. */
+export function nationalIdLookup(nationalId, identifierKeys) {
+  if (!identifierKeys) return null;
+  return buildLookup('national_id', nationalId, identifierKeys);
+}
+
+function readPersonField(row, names) {
+  for (const name of names) {
+    const value = row?.[name];
+    if (value != null && String(value).trim() !== '') return String(value).trim();
+  }
+  return '';
+}
+
+export function validateCandidateIdentifierUniqueness(candidates) {
+  const conflicts = [];
+  const track = (type, selector) => {
+    const seen = new Map();
+    candidates.forEach((candidate, index) => {
+      const value = selector(candidate);
+      if (!value) return;
+      if (seen.has(value)) {
+        conflicts.push({
+          type,
+          code: `DUPLICATE_${type.toUpperCase()}`,
+          indices: [seen.get(value), index],
+        });
+      } else {
+        seen.set(value, index);
+      }
+    });
+  };
+  track('employee_id', (c) => c.employee_id);
+  track('national_id', (c) => c.national_id);
+  track('facescan_id', (c) => c.facescan_id);
+  track('personnel_id', (c) => c.personnel_id);
+  return { ok: conflicts.length === 0, conflicts };
+}
+
+export function buildImportBatchFromPersonRecords(records, manifest = {}, options = {}) {
+  const identifierKeys = options.identifierKeys ?? null;
+  if (!Array.isArray(records)) {
+    throw new Error('records must be an array');
+  }
+  const sourceBatchId = manifest.source_batch_id || `batch-${Date.now()}`;
+  const personSource = manifest.person_source || PERSONNEL_ID_SOURCE;
+  const classification = classifyPersonnelOnboarding(records, { source: personSource });
+  const hold = [];
+  const ready = [];
+  let sequence = Number(manifest.sequence_start || 1);
+
+  records.forEach((row, index) => {
+    const cls = classification.classifications[index];
+    if (cls.status !== PERSONNEL_ID_VERIFIED) {
+      hold.push({ index, reason: cls.reason || cls.status });
+      return;
+    }
+
+    const national_id = readPersonField(row, ['nationalId', 'national_id']);
+    const facescan_id = readPersonField(row, ['facescanId', 'facescan_id']);
+    const personnel_id = readPersonField(row, ['personnelId', 'personnel_id']);
+    const email = readPersonField(row, ['email']).toLowerCase();
+    const missing = [];
+    if (!national_id) missing.push('NATIONAL_ID_MISSING');
+    if (!facescan_id) missing.push('FACESCAN_ID_MISSING');
+    if (!personnel_id) missing.push('PERSONNEL_ID_MISSING');
+    if (!readPersonField(row, ['first_name_th'])) missing.push('REQUIRED_FIRST_NAME_TH');
+    if (!readPersonField(row, ['last_name_th'])) missing.push('REQUIRED_LAST_NAME_TH');
+    if (!readPersonField(row, ['department'])) missing.push('REQUIRED_DEPARTMENT');
+    if (!email) missing.push('EMAIL_MISSING');
+    const employee_type = row.employee_type || row.employeeType || 'department';
+    const status = row.status || 'active';
+    if (!EMPLOYEE_TYPES.has(employee_type)) missing.push('INVALID_EMPLOYEE_TYPE');
+    if (!EMPLOYEE_STATUSES.has(status)) missing.push('INVALID_STATUS');
+    if (missing.length) {
+      hold.push({ index, reason: missing.join(',') });
+      return;
+    }
+
+    let national_id_lookup = null;
+    try {
+      national_id_lookup = nationalIdLookup(national_id, identifierKeys);
+    } catch {
+      hold.push({ index, reason: 'NATIONAL_ID_INVALID_FORMAT' });
+      return;
+    }
+
+    const employee_uid = previewEmployeeUid(sourceBatchId, sequence);
+    const employee_id = attendanceEmployeeId(sequence);
+    sequence += 1;
+    ready.push({
+      index,
+      employee_id,
+      employee_uid,
+      personnel_id,
+      facescan_id,
+      national_id,
+      national_id_lookup,
+      employee: {
+        employee_uid,
+        employee_id,
+        first_name_th: readPersonField(row, ['first_name_th']),
+        last_name_th: readPersonField(row, ['last_name_th']),
+        first_name_en: readPersonField(row, ['first_name_en']) || null,
+        last_name_en: readPersonField(row, ['last_name_en']) || null,
+        email,
+        department: readPersonField(row, ['department']),
+        position: readPersonField(row, ['position']) || null,
+        employee_type,
+        hire_date: row.hire_date ?? null,
+        status,
+        role: row.role ?? null,
+      },
+    });
+  });
+
+  const uniqueness = validateCandidateIdentifierUniqueness(ready);
+  const bundle = {
+    manifest: {
+      ...manifest,
+      source_batch_id: sourceBatchId,
+      person_source: personSource,
+      authority: manifest.authority || 'mju_person_api',
+      kind: 'import-batch-preview',
+      ready_count: ready.length,
+      hold_count: hold.length,
+      import_note:
+        'employee_uid previews are not final; approved import must allocate fresh UUIDs before INSERT',
+    },
+    employees: ready.map((candidate) => candidate.employee),
+    employee_identifier: ready.flatMap((candidate) => [
+      {
+        employee_id: candidate.employee_id,
+        id_type: 'facescan_id',
+        id_value: candidate.facescan_id,
+        source_system: personSource,
+        is_primary: 1,
+      },
+      {
+        employee_id: candidate.employee_id,
+        id_type: 'personnel_id',
+        id_value: candidate.personnel_id,
+        // Only MJU-verified records reach this point (classifyPersonnelOnboarding), so this is the MJU source.
+        source_system: personSource,
+        is_primary: 0,
+      },
+    ]),
+    identifier_audit: ready.map((candidate) => ({
+      employee_id: candidate.employee_id,
+      national_id_lookup_hmac: candidate.national_id_lookup?.lookup_hmac ?? null,
+      national_id_key_version: candidate.national_id_lookup?.key_version ?? null,
+    })),
+  };
+
+  return {
+    sourceBatchId,
+    readyCount: ready.length,
+    holdCount: hold.length,
+    hold,
+    ready: ready.map((candidate) => ({
+      index: candidate.index,
+      employee_id: candidate.employee_id,
+      employee_uid_preview: candidate.employee_uid,
+      national_id_key_version: candidate.national_id_lookup?.key_version ?? null,
+    })),
+    employeeIdRange:
+      ready.length > 0
+        ? { from: ready[0].employee_id, to: ready[ready.length - 1].employee_id }
+        : null,
+    uniqueness,
+    bundle,
+    transaction: {
+      atomicUnit: 'one employee row and two identifier rows (facescan_id, personnel_id)',
+      sqlPattern:
+        'BEGIN; INSERT INTO employees (...); INSERT INTO employee_identifier (... facescan ...); INSERT INTO employee_identifier (... personnel_id ...); COMMIT;',
+      nationalId:
+        'Uniqueness checked in memory plus HMAC-SHA-256 lookup (versioned key) in identifier_audit; raw national_id is never emitted or inserted by this dry-run bundle',
+      rollback:
+        'On failure ROLLBACK the transaction; after a bad partial load delete rows listed in dry-run rollbackKeys (employees + identifiers) in reverse order',
+    },
+  };
+}
+
+export function redactImportBatchSummary(batchResult, dryRunReport = null) {
+  const holdReasons = {};
+  for (const entry of batchResult.hold) {
+    const key = entry.reason || 'UNKNOWN';
+    holdReasons[key] = (holdReasons[key] || 0) + 1;
+  }
+  return {
+    source_batch_id: batchResult.sourceBatchId,
+    candidates_ready: batchResult.readyCount,
+    hold: batchResult.holdCount,
+    employee_id_range_preview: batchResult.employeeIdRange,
+    identifier_conflicts: batchResult.uniqueness.conflicts.length,
+    uniqueness_ok: batchResult.uniqueness.ok,
+    hold_reasons: holdReasons,
+    transaction_design: batchResult.transaction,
+    dry_run: dryRunReport
+      ? {
+          validation_ok: dryRunReport.validation.ok,
+          employees: dryRunReport.plan?.employees?.rows ?? 0,
+          identifiers: dryRunReport.plan?.employee_identifier?.rows ?? 0,
+          checksum: dryRunReport.checksum,
+          rollback_key_count: dryRunReport.rollbackKeys?.length ?? 0,
+        }
+      : null,
+  };
 }
 
 export function isIsoDate(value) {
@@ -47,6 +283,49 @@ export function isIsoDate(value) {
 
 export function rangesOverlap(aStart, aEnd, bStart, bEnd) {
   return aStart <= bEnd && bStart <= aEnd;
+}
+
+/**
+ * Classify MJU Person API records without creating an employee_uid or treating
+ * personnelId as employees.employee_id. Returned rows contain status/index
+ * metadata only so identifiers and other PII are not copied into reports.
+ */
+export function classifyPersonnelOnboarding(records, { source } = {}) {
+  if (!Array.isArray(records)) {
+    throw new Error('records must be an array');
+  }
+
+  const sourceAuthoritative = source === PERSONNEL_ID_SOURCE;
+  const normalized = records.map((row) => {
+    const value = row?.personnelId;
+    return value == null ? '' : String(value).trim();
+  });
+  const frequencies = new Map();
+  for (const value of normalized) {
+    if (value) frequencies.set(value, (frequencies.get(value) ?? 0) + 1);
+  }
+
+  const classifications = normalized.map((value, index) => {
+    if (!value) return { index, status: PERSONNEL_ID_HOLD, reason: 'PERSONNEL_ID_MISSING' };
+    if (!sourceAuthoritative) {
+      return { index, status: PERSONNEL_ID_HOLD, reason: 'SOURCE_NOT_AUTHORITATIVE' };
+    }
+    if (frequencies.get(value) > 1) {
+      return { index, status: PERSONNEL_ID_HOLD, reason: 'DUPLICATE_PERSONNEL_ID' };
+    }
+    return { index, status: PERSONNEL_ID_VERIFIED };
+  });
+
+  return {
+    source,
+    sourceAuthoritative,
+    total: records.length,
+    verified: classifications.filter((row) => row.status === PERSONNEL_ID_VERIFIED).length,
+    hold: classifications.filter((row) => row.status === PERSONNEL_ID_HOLD).length,
+    conflicts: classifications.filter((row) => row.reason === 'DUPLICATE_PERSONNEL_ID').length,
+    createsEmployeeUid: false,
+    classifications,
+  };
 }
 
 function asArray(bundle, key) {
@@ -113,8 +392,13 @@ export function validateSource(bundle) {
   const emails = new Map();
 
   employees.forEach((row, index) => {
+    const employeeUid = row?.employee_uid;
     const employeeId = row?.employee_id;
     const email = typeof row?.email === 'string' ? row.email.toLowerCase() : '';
+    if (!employeeUid) issue(errors, 'employees', index, 'REQUIRED', 'employee_uid is required');
+    else if (!UUID_RE.test(employeeUid)) {
+      issue(errors, 'employees', index, 'INVALID_UUID', 'employee_uid must be a generated UUID');
+    }
     if (!employeeId) issue(errors, 'employees', index, 'REQUIRED', 'employee_id is required');
     else if (employeeIds.has(employeeId)) {
       issue(errors, 'employees', index, 'DUPLICATE_EMPLOYEE_ID', `duplicate employee_id ${employeeId}`);
@@ -290,9 +574,11 @@ function uidFor(row, employeesById) {
 export function transformSource(bundle) {
   const now = '1970-01-01 00:00:00';
   const employees = asArray(bundle, 'employees').map((row) => {
-    const employeeUid = row.employee_uid || stableEmployeeUid(row.employee_id);
+    if (!row.employee_uid) {
+      throw new Error('employee_uid must be allocated before transform');
+    }
     return {
-      employee_uid: employeeUid,
+      employee_uid: row.employee_uid,
       employee_id: row.employee_id,
       first_name_th: row.first_name_th,
       last_name_th: row.last_name_th,

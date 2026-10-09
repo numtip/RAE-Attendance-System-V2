@@ -2,13 +2,21 @@ const {
   normalizeIdentifierValue,
   isStoredIdentifierType,
 } = require('../domain/employeeIdentifier');
+const { NAMESPACE_PAIR } = require('../domain/identityKind');
+const {
+  IdentifierCryptoError,
+  buildAuditEvent,
+  createNationalIdProtector,
+} = require('../security/nationalIdContract');
 
 function mapRecord(record) {
   return {
     id: record.id,
     employeeUid: record.employeeUid,
     idType: record.idType,
-    idValue: record.idValue,
+    // national_id rows hold only an HMAC lookup and never leave the repository.
+    idValue: record.idType === 'national_id' ? null : record.idValue,
+    lookupKeyVersion: record.idType === 'national_id' ? record.lookupKeyVersion ?? null : undefined,
     sourceSystem: record.sourceSystem,
     isPrimary: record.isPrimary,
     status: record.status,
@@ -18,8 +26,17 @@ function mapRecord(record) {
   };
 }
 
-function createFixtureEmployeeIdentifierRepository(initialRows = []) {
+function createFixtureEmployeeIdentifierRepository(initialRows = [], { nationalId = null } = {}) {
   let nextId = 1;
+  let protector = nationalId;
+  let seeded = false;
+  const getProtector = () => {
+    if (!protector) protector = createNationalIdProtector(process.env);
+    protectSeedNationalRows(protector);
+    return protector;
+  };
+  const auditLog = [];
+  const audit = (fields) => auditLog.push(buildAuditEvent({ actor: 'system:identity-service', ...fields }));
   const rows = initialRows.map((row) => ({
     id: nextId++,
     isPrimary: false,
@@ -31,7 +48,35 @@ function createFixtureEmployeeIdentifierRepository(initialRows = []) {
     ...row,
   }));
 
+  /**
+   * Seed fixtures may list a SYNTHETIC national_id in plain text for readability. It is converted to the HMAC
+   * lookup (current key) the first time protection is needed, so the repository never serves or compares plaintext.
+   * Unconfigured keys => NOT_CONFIGURED (fail closed), same as production.
+   */
+  function protectSeedNationalRows(p) {
+    if (seeded) return;
+    for (const row of rows) {
+      if (row.idType === 'national_id' && /^\d{13}$/.test(String(row.idValue))) {
+        const current = p.lookupCurrent(row.idValue);
+        row.idValue = current.lookup_hmac;
+        row.lookupKeyVersion = current.key_version;
+      }
+    }
+    seeded = true;
+  }
+
+  function findActiveNational(idValue) {
+    const candidates = getProtector().lookupCandidates(idValue).map((c) => c.lookup_hmac);
+    return rows.find(
+      (row) => row.status === 'active' && row.idType === 'national_id' && candidates.includes(row.idValue),
+    ) || null;
+  }
+
   function findActiveRow(idType, idValue) {
+    if (idType === 'national_id') {
+      if (!idValue) throw new IdentifierCryptoError('INVALID_IDENTIFIER');
+      return findActiveNational(idValue);
+    }
     const normalizedValue = normalizeIdentifierValue(idType, idValue);
     return rows.find(
       (row) => row.status === 'active'
@@ -41,9 +86,25 @@ function createFixtureEmployeeIdentifierRepository(initialRows = []) {
   }
 
   return {
-    async findActiveByTypeAndValue(idType, idValue) {
-      const row = findActiveRow(idType, idValue);
+    async findActiveByTypeAndValue(idType, idValue, ctx = {}) {
+      const normalized = idType === 'national_id' ? normalizeIdentifierValue(idType, idValue) : idValue;
+      const row = findActiveRow(idType, normalized);
+      if (idType === 'national_id') {
+        audit({
+          action: 'lookup',
+          actor: ctx.actor || 'system:identity-service',
+          reason: ctx.reason || (row ? 'resolve:hit' : 'resolve:miss'),
+          keyVersion: row?.lookupKeyVersion ?? null,
+          employeeUid: row?.employeeUid ?? null,
+          identifierId: row?.id ?? null,
+        });
+      }
       return row ? mapRecord(row) : null;
+    },
+
+    /** Test hook: metadata-only audit rows. */
+    listAudit() {
+      return auditLog.map((event) => ({ ...event }));
     },
 
     async listByEmployeeUid(employeeUid, { includeInactive = false } = {}) {
@@ -59,6 +120,49 @@ function createFixtureEmployeeIdentifierRepository(initialRows = []) {
         throw error;
       }
       const idValue = normalizeIdentifierValue(input.idType, input.idValue);
+      if (input.idType === 'national_id') {
+        if (!idValue) throw new IdentifierCryptoError('INVALID_IDENTIFIER');
+        const p = getProtector();
+        p.assertWritable();
+        const current = p.lookupCurrent(idValue);
+        const candidates = p.lookupCandidates(idValue).map((c) => c.lookup_hmac);
+        const sameValue = rows.find((row) => row.idType === 'national_id' && candidates.includes(row.idValue));
+        if (sameValue) {
+          if (sameValue.employeeUid === input.employeeUid && sameValue.status === 'active') return mapRecord(sameValue);
+          const error = new Error('DUPLICATE_IDENTIFIER');
+          error.code = 'DUPLICATE_IDENTIFIER';
+          throw error;
+        }
+        if (rows.some((row) => row.idType === 'national_id' && row.employeeUid === input.employeeUid)) {
+          const error = new Error('EMPLOYEE_ALREADY_HAS_NATIONAL_ID');
+          error.code = 'EMPLOYEE_ALREADY_HAS_NATIONAL_ID';
+          throw error;
+        }
+        const stamp = new Date().toISOString();
+        const record = {
+          id: nextId++,
+          employeeUid: input.employeeUid,
+          idType: 'national_id',
+          idValue: current.lookup_hmac,
+          lookupKeyVersion: current.key_version,
+          sourceSystem: input.sourceSystem ?? null,
+          isPrimary: Boolean(input.isPrimary),
+          status: 'active',
+          verifiedAt: input.verifiedAt ?? null,
+          createdAt: stamp,
+          updatedAt: stamp,
+        };
+        rows.push(record);
+        audit({
+          action: 'create',
+          actor: input.actor || 'system:identity-service',
+          reason: input.reason || 'link:national_id',
+          keyVersion: current.key_version,
+          employeeUid: input.employeeUid,
+          identifierId: record.id,
+        });
+        return mapRecord(record);
+      }
       const existing = findActiveRow(input.idType, idValue);
       if (existing) {
         if (existing.employeeUid === input.employeeUid) {
@@ -67,6 +171,16 @@ function createFixtureEmployeeIdentifierRepository(initialRows = []) {
         const error = new Error('DUPLICATE_IDENTIFIER');
         error.code = 'DUPLICATE_IDENTIFIER';
         throw error;
+      }
+      // Parity with migration 017: facescan_id/personnel_id text is owned by ONE employee across both types.
+      if (NAMESPACE_PAIR[input.idType]) {
+        const clash = rows.some((row) => row.idType === NAMESPACE_PAIR[input.idType]
+          && row.idValue === idValue && row.employeeUid !== input.employeeUid);
+        if (clash) {
+          const error = new Error('IDENTIFIER_NAMESPACE_COLLISION');
+          error.code = 'IDENTIFIER_NAMESPACE_COLLISION';
+          throw error;
+        }
       }
       const now = new Date().toISOString();
       const record = {

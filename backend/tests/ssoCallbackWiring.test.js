@@ -1,3 +1,4 @@
+require('./helpers/syntheticIdentifierKeys');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const test = require('node:test');
@@ -10,11 +11,10 @@ test('default config keeps SSO and subject contract gates off', () => {
   assert.equal(config.sso.subjectContractConfirmed, false);
 });
 
-test('HTTP ssoService callback does not reference identity chain', () => {
+test('HTTP ssoService callback uses locked identity resolution service', () => {
   const src = fs.readFileSync(require.resolve('../src/services/ssoService.js'), 'utf8');
-  assert.doesNotMatch(src, /ssoIdentityChainService/);
-  assert.doesNotMatch(src, /extractVerifiedSubject/);
-  assert.doesNotMatch(src, /createIdentityResolutionService/);
+  assert.match(src, /createSsoIdentityResolutionService/);
+  assert.match(src, /issueSessionFromOAuthProfile/);
 });
 
 test('identity chain is isolated in ssoIdentityChainService', () => {

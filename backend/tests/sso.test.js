@@ -1,3 +1,5 @@
+require('./helpers/syntheticIdentifierKeys');
+const { TEST_BINDING } = require('./helpers/ssoTestBinding');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const test = require('node:test');
@@ -18,6 +20,9 @@ const { createFixtureRepositories } = require('../src/repositories/fixtureReposi
 const baseSsoConfig = {
   enabled: true,
   callbackConfirmed: true,
+  protocolContractConfirmed: true,
+  nationalIdClaims: 'citizenID',
+  subjectContractConfirmed: true,
   provider: 'mock',
   scopes: 'openid email',
   authorizationUrl: 'https://sso.example.test/oauth/authorize',
@@ -41,10 +46,11 @@ function listen(app) {
   });
 }
 
-async function rawGet(port, path) {
-  const response = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual' });
+async function rawGet(port, path, headers = {}) {
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual', headers });
   return {
     status: response.status,
+    cookie: response.headers.getSetCookie().map((c) => c.split(';')[0]).join('; '),
     location: response.headers.get('location'),
     body: response.headers.get('content-type')?.includes('json') ? await response.json() : null,
   };
@@ -65,38 +71,41 @@ function createEnabledSsoService(overrides = {}) {
 
 test('contract: SSO_DISABLED when enabled flag is false', async () => {
   const ssoService = createEnabledSsoService({ ssoConfig: { enabled: false } });
-  await assert.rejects(() => ssoService.beginLogin(), (err) => err.code === 'SSO_DISABLED');
+  await assert.rejects(() => ssoService.beginLogin({ browserBinding: TEST_BINDING }), (err) => err.code === 'SSO_DISABLED');
 });
 
 test('contract: SSO_NOT_READY when callback is not confirmed', async () => {
   const ssoService = createEnabledSsoService({ ssoConfig: { callbackConfirmed: false } });
-  await assert.rejects(() => ssoService.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
+  await assert.rejects(() => ssoService.beginLogin({ browserBinding: TEST_BINDING }), (err) => err.code === 'SSO_NOT_READY');
 });
 
 test('contract: SSO_NOT_READY when required env fields are missing', async () => {
   const ssoService = createEnabledSsoService({
     ssoConfig: { tokenUrl: '', clientSecret: '' },
   });
-  await assert.rejects(() => ssoService.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
+  await assert.rejects(() => ssoService.beginLogin({ browserBinding: TEST_BINDING }), (err) => err.code === 'SSO_NOT_READY');
 });
 
 test('contract: mock provider success flow (login, callback, me, logout)', async () => {
   const stateStore = createSsoStateStore();
   const ssoService = createEnabledSsoService({ stateStore });
 
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const parsed = new URL(loginUrl);
   assert.match(parsed.hostname, /sso\.example\.test/);
   const state = parsed.searchParams.get('state');
   assert.ok(state);
 
-  const session = await ssoService.handleCallback({ code: 'mock-auth-code', state });
+  const session = await ssoService.handleCallback({ code: 'mock-auth-code', state, browserBinding: TEST_BINDING });
   assert.ok(session.accessToken);
   assert.ok(session.refreshToken);
   assert.equal(session.employee.email, 'user@example.test');
 
   const payload = JSON.parse(Buffer.from(session.accessToken.split('.')[1], 'base64url').toString());
   assert.equal(payload.authMethod, 'sso');
+  assert.equal(payload.sub, session.employee.employeeUid);
+  assert.equal(payload.national_id, undefined);
+  assert.equal(payload.citizenID, undefined);
 
   const profile = await ssoService.me({
     employeeUid: session.employee.employeeUid,
@@ -122,12 +131,12 @@ test('contract: SSO_STATE_INVALID for missing, wrong, or reused state', async ()
     (err) => err.code === 'SSO_STATE_INVALID',
   );
 
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(loginUrl).searchParams.get('state');
-  await ssoService.handleCallback({ code: 'mock-auth-code', state });
+  await ssoService.handleCallback({ code: 'mock-auth-code', state, browserBinding: TEST_BINDING });
 
   await assert.rejects(
-    () => ssoService.handleCallback({ code: 'mock-auth-code', state }),
+    () => ssoService.handleCallback({ code: 'mock-auth-code', state, browserBinding: TEST_BINDING }),
     (err) => err.code === 'SSO_STATE_INVALID',
   );
 });
@@ -160,11 +169,11 @@ test('contract: SSO_PROVIDER_TIMEOUT when token endpoint does not respond', asyn
     stateStore,
   });
 
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(loginUrl).searchParams.get('state');
 
   await assert.rejects(
-    () => ssoService.handleCallback({ code: 'any-code', state }),
+    () => ssoService.handleCallback({ code: 'any-code', state, browserBinding: TEST_BINDING }),
     (err) => err.code === 'SSO_PROVIDER_TIMEOUT',
   );
 });
@@ -183,11 +192,11 @@ test('contract: SSO_PROVIDER_ERROR when token endpoint returns HTTP error', asyn
     stateStore,
   });
 
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(loginUrl).searchParams.get('state');
 
   await assert.rejects(
-    () => ssoService.handleCallback({ code: 'any-code', state }),
+    () => ssoService.handleCallback({ code: 'any-code', state, browserBinding: TEST_BINDING }),
     (err) => err.code === 'SSO_PROVIDER_ERROR',
   );
 });
@@ -199,7 +208,7 @@ test('SSO gates: disabled, unconfirmed callback, and incomplete config', async (
     repositories: repos,
     oauthProvider: createMockOAuthProvider(),
   });
-  await assert.rejects(() => disabled.beginLogin(), (err) => err.code === 'SSO_DISABLED');
+  await assert.rejects(() => disabled.beginLogin({ browserBinding: TEST_BINDING }), (err) => err.code === 'SSO_DISABLED');
 
   const unconfirmed = createSsoService({
     config: {
@@ -209,7 +218,7 @@ test('SSO gates: disabled, unconfirmed callback, and incomplete config', async (
     repositories: repos,
     oauthProvider: createMockOAuthProvider(),
   });
-  await assert.rejects(() => unconfirmed.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
+  await assert.rejects(() => unconfirmed.beginLogin({ browserBinding: TEST_BINDING }), (err) => err.code === 'SSO_NOT_READY');
 });
 
 test('SSO HTTP routes stay closed by default', async () => {
@@ -254,15 +263,15 @@ async function callbackWithFetch(responses, repositories) {
     oauthProvider: httpProvider,
     stateStore,
   });
-  const loginUrl = await ssoService.beginLogin();
+  const loginUrl = await ssoService.beginLogin({ browserBinding: TEST_BINDING });
   const state = new URL(loginUrl).searchParams.get('state');
-  return ssoService.handleCallback({ code: 'any-code', state });
+  return ssoService.handleCallback({ code: 'any-code', state, browserBinding: TEST_BINDING });
 }
 
 test('contract: valid callback issues tokens for a known active employee', async () => {
   const session = await callbackWithFetch([
     { body: { access_token: 'provider-token', token_type: 'Bearer' } },
-    { body: { email: 'user@example.test' } },
+    { body: { email: 'user@example.test', citizenID: '9900000000001', sub: 'http-subject-001' } },
   ]);
   assert.equal(session.employee.email, 'user@example.test');
   assert.ok(session.accessToken);
@@ -274,7 +283,7 @@ test('contract: missing claims reject the callback', async () => {
       { body: { access_token: 'provider-token' } },
       { body: { sub: 'only-a-subject' } },
     ]),
-    (err) => err.code === 'SSO_USER_UNKNOWN',
+    (err) => err.code === 'SSO_NATIONAL_ID_MISSING',
   );
 });
 
@@ -282,7 +291,7 @@ test('contract: unknown employee rejects the callback', async () => {
   await assert.rejects(
     () => callbackWithFetch([
       { body: { access_token: 'provider-token' } },
-      { body: { email: 'nobody@example.test' } },
+      { body: { email: 'nobody@example.test', citizenID: '9900000000099', sub: 'unknown-subject' } },
     ]),
     (err) => err.code === 'SSO_USER_UNKNOWN',
   );
@@ -292,9 +301,9 @@ test('contract: missing employee mapping does not fall back to employee_id', asy
   await assert.rejects(
     () => callbackWithFetch([
       { body: { access_token: 'provider-token' } },
-      { body: { employee_id: 'E-USER' } },
+      { body: { employee_id: 'E-USER', sub: 'no-national-id' } },
     ]),
-    (err) => err.code === 'SSO_USER_UNKNOWN',
+    (err) => err.code === 'SSO_NATIONAL_ID_MISSING',
   );
 });
 
@@ -316,7 +325,7 @@ test('MJU signin and signout use only the cid parameter', async () => {
     config: { jwt: baseJwtConfig, sso: ssoConfig },
     repositories,
   });
-  const loginUrl = new URL(await ssoService.beginLogin());
+  const loginUrl = new URL(await ssoService.beginLogin({ browserBinding: TEST_BINDING }));
   assert.equal(`${loginUrl.origin}${loginUrl.pathname}`, 'https://sso.mju.ac.th/signin.aspx');
   assert.deepEqual([...loginUrl.searchParams.keys()], ['cid']);
   assert.equal(loginUrl.searchParams.get('cid'), clientId);
@@ -346,23 +355,31 @@ test('MJU signin and signout use only the cid parameter', async () => {
 
 test('contract: disabled employee rejects the callback', async () => {
   const repositories = createFixtureRepositories();
-  const previous = repositories.employees.findByEmail.bind(repositories.employees);
-  repositories.employees.findByEmail = async (email) => {
-    if (email === 'inactive@example.test') {
-      return {
-        employeeUid: '44444444-4444-4444-4444-444444444444',
-        email,
-        role: 'user',
-        status: 'inactive',
-        lockedUntil: null,
-      };
-    }
-    return previous(email);
-  };
+  const inactiveUid = '44444444-4444-4444-4444-444444444444';
+  repositories.employees.rows.push({
+    employeeUid: inactiveUid,
+    employeeId: 'E-INACTIVE',
+    firstNameTh: 'ไม่ใช้',
+    lastNameTh: 'งาน',
+    email: 'inactive@example.test',
+    passwordHash: 'x',
+    department: 'ภาควิชา',
+    position: 'เจ้าหน้าที่',
+    employeeType: 'department',
+    status: 'inactive',
+    role: 'user',
+    lockedUntil: null,
+  });
+  await repositories.employeeIdentifiers.insert({
+    employeeUid: inactiveUid,
+    idType: 'national_id',
+    idValue: '9900000000002',
+    sourceSystem: 'fixture',
+  });
   await assert.rejects(
     () => callbackWithFetch([
       { body: { access_token: 'provider-token' } },
-      { body: { email: 'inactive@example.test' } },
+      { body: { email: 'inactive@example.test', citizenID: '9900000000002', sub: 'inactive-subject' } },
     ], repositories),
     (err) => err.code === 'SSO_USER_DISABLED',
   );
@@ -391,6 +408,7 @@ test('SSO login redirect when enabled with mock provider env', async () => {
   const previous = {
     enabled: config.sso.enabled,
     callbackConfirmed: config.sso.callbackConfirmed,
+    subjectContractConfirmed: config.sso.subjectContractConfirmed,
     provider: config.sso.provider,
     authorizationUrl: config.sso.authorizationUrl,
     tokenUrl: config.sso.tokenUrl,
@@ -413,9 +431,12 @@ test('SSO login redirect when enabled with mock provider env', async () => {
     const callback = await rawGet(
       port,
       `/api/v1/auth/sso/callback?code=mock-auth-code&state=${encodeURIComponent(state)}`,
+      { cookie: login.cookie },
     );
     assert.equal(callback.status, 302);
-    assert.ok(callback.location.includes('sso=success'));
+    assert.ok(callback.location.includes('/auth/sso/complete'));
+    assert.ok(callback.location.includes('code='));
+    assert.equal(callback.location.includes('eyJ'), false);
   } finally {
     Object.assign(config.sso, previous);
     delete process.env.SSO_PROVIDER;
@@ -513,7 +534,7 @@ test('diagnostic login redirects while callback confirmation stays false', async
       clientSecret: '',
     },
   });
-  const loginUrl = new URL(await ssoService.beginLogin());
+  const loginUrl = new URL(await ssoService.beginLogin({ browserBinding: TEST_BINDING }));
   assert.equal(`${loginUrl.origin}${loginUrl.pathname}`, 'https://sso.mju.ac.th/signin.aspx');
   assert.deepEqual([...loginUrl.searchParams.keys()], ['cid']);
   await assert.rejects(

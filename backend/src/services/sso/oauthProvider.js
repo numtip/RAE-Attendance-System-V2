@@ -28,6 +28,7 @@ function createMockOAuthProvider() {
       return {
         email: 'user@example.test',
         sub: 'mock-mju-subject',
+        citizenID: '9900000000001',
       };
     },
   };

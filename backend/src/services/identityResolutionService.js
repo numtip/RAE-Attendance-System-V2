@@ -189,6 +189,73 @@ function createIdentityResolutionService(deps) {
         approvedAt: new Date(),
       });
     },
+
+    /**
+     * First SSO login after national_id resolution: attach opaque provider subject to employee_uid.
+     * Fails closed on cross-employee subject reuse.
+     */
+    async linkProviderSubjectFromSsoLogin(input) {
+      const {
+        providerKey,
+        providerSubject,
+        employeeUid,
+        subjectType,
+        emailSnapshot,
+        source = 'sso_national_id_resolution',
+      } = input;
+
+      if (!providerKey || !providerSubject || !employeeUid) {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'providerKey, providerSubject, and employeeUid are required');
+      }
+      if (String(providerSubject).trim() === 'ac') {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'Callback ac must not be stored or used as identity');
+      }
+
+      const provider = await requireProvider(providerKey);
+      const existing = await identityLinks.findByProviderSubject(providerKey, providerSubject);
+      if (existing) {
+        if (existing.employeeUid !== employeeUid) {
+          throw new HttpError(
+            409,
+            'IDENTITY_SUBJECT_CONFLICT',
+            'Provider subject is linked to another employee',
+          );
+        }
+        if (existing.status === LINK_STATUS.CANDIDATE) {
+          return identityLinks.updateLink(existing.id, {
+            status: LINK_STATUS.APPROVED,
+            approvedBy: 'system:sso',
+            approvedAt: new Date(),
+          });
+        }
+        if (!isAuthenticatableStatus(existing.status)) {
+          throw new HttpError(403, 'IDENTITY_NOT_APPROVED', 'Identity link is not approved for sign-in');
+        }
+        return existing;
+      }
+
+      const approvedForEmployee = await identityLinks.findApprovedForEmployee(employeeUid, provider.id);
+      if (approvedForEmployee && approvedForEmployee.providerSubject !== providerSubject) {
+        throw new HttpError(409, 'IDENTITY_CONFLICT', 'Employee already has an approved link for this provider');
+      }
+      if (approvedForEmployee) {
+        return approvedForEmployee;
+      }
+
+      const approvedAt = new Date();
+      return identityLinks.insertLink({
+        employeeUid,
+        providerId: provider.id,
+        providerSubject,
+        subjectType: subjectType || 'opaque',
+        emailSnapshot: normalizeEmail(emailSnapshot),
+        status: LINK_STATUS.APPROVED,
+        confidence: 'high',
+        source,
+        approvedBy: 'system:sso',
+        approvedAt,
+      });
+    },
   };
 }
 

@@ -89,6 +89,8 @@ Do **not** reuse `/attendance/api/...` or the legacy client.
 
 **MJU subject contract is still UNKNOWN; adapter default behavior is fail-closed (`unknown`).** No Person API, no `ac` identity, no email-as-subject.
 
+Evidence and outreach: [`MJU_SSO_SUBJECT_EVIDENCE_PACK.md`](./MJU_SSO_SUBJECT_EVIDENCE_PACK.md), [`MJU_SSO_ADMIN_REQUEST.md`](./MJU_SSO_ADMIN_REQUEST.md), [`MJU_SSO_SUBJECT_CONTRACT_RESPONSE_TEMPLATE.md`](./MJU_SSO_SUBJECT_CONTRACT_RESPONSE_TEMPLATE.md).
+
 Prepared chain (tests only, not HTTP): `ssoIdentityChainService.issueSessionFromVerifiedInput` → `IdentityResolutionService.resolve` → tokens. RBAC/data scope still apply on API calls after login.
 
 ## Identity link prep (schema only)
@@ -120,7 +122,7 @@ Prepared chain (tests only, not HTTP): `ssoIdentityChainService.issueSessionFrom
 
 ## Blockers
 
-- The V2 callback URL is registered. The query shape is `GET` `ac` (length 32). What `ac` means, and how it becomes an identity, is **unknown**. See `docs/SSO_CONTRACT_CONFIRMATION.md` and **`docs/SSO_SUBJECT_CONTRACT_INTEGRATION_CHECKLIST.md`** (facts still required from MJU).
+- The V2 callback URL is registered. The query shape is `GET` `ac` (length 32). What `ac` means, and how it becomes an identity, is **unknown**. See [`SSO_CONTRACT_CONFIRMATION.md`](./SSO_CONTRACT_CONFIRMATION.md), [`SSO_SUBJECT_CONTRACT_INTEGRATION_CHECKLIST.md`](./SSO_SUBJECT_CONTRACT_INTEGRATION_CHECKLIST.md), and [`MJU_SSO_SUBJECT_EVIDENCE_PACK.md`](./MJU_SSO_SUBJECT_EVIDENCE_PACK.md).
 - Split URL env vars vs donor `SSO_ENDPOINT` contract is **unknown**.
 - Until confirmed: runtime returns `SSO_DISABLED` or `SSO_NOT_READY`; HTTP provider must not be used against production MJU in CI.
 

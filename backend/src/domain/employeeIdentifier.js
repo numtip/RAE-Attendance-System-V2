@@ -1,3 +1,5 @@
+const { canonicalizeNationalId, maskNationalId } = require('../security/nationalIdContract');
+
 const STORED_IDENTIFIER_TYPES = Object.freeze([
   'employee_id',
   'personnel_id',
@@ -13,8 +15,8 @@ function normalizeIdentifierValue(idType, idValue) {
   const raw = String(idValue ?? '').trim();
   if (!raw) return '';
   if (idType === 'national_id') {
-    const digits = raw.replace(/\D/g, '');
-    return digits.length === 13 ? digits : raw;
+    // Single contract: canonical 13 digits or '' (invalid). Never falls back to the raw text.
+    return canonicalizeNationalId(raw);
   }
   if (idType === 'employee_id' || idType === 'personnel_id' || idType === 'facescan_id') {
     return raw;
@@ -24,11 +26,8 @@ function normalizeIdentifierValue(idType, idValue) {
 
 function maskIdentifierForLog(idType, idValue) {
   if (idType === 'national_id') {
-    const digits = String(idValue || '').replace(/\D/g, '');
-    if (digits.length >= 4) {
-      return `****${digits.slice(-4)}`;
-    }
-    return '[redacted-national-id]';
+    // idValue here is raw user input only (never the stored HMAC); stored rows are masked by the repository.
+    return maskNationalId(idValue) === '[redacted]' ? '[redacted-national-id]' : maskNationalId(idValue);
   }
   const text = String(idValue || '');
   if (text.length <= 4) return '…';
