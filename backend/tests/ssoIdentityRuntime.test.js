@@ -206,3 +206,74 @@ test('national_id adapter test file uses anonymized fake IDs only', async () => 
   assert.equal(out.normalized, fakeCitizenId);
   assert.match(out.masked, /\*\*\*\*/);
 });
+
+// ---- S9 regression: a candidate link is never auto-approved without identity-match evidence ----
+// Policy (docs/SESSION_HANDOFF.md section 5): approval needs a verified subject AND a protected national-ID
+// match to the same employee_uid in the same login. Name, email, an existing candidate row or `ac` are not evidence.
+
+async function seedCandidate(repositories, { subject, employeeUid }) {
+  const identity = createIdentityResolutionService({ repositories });
+  return identity.createCandidate({
+    providerKey: PROVIDER_MJU_SSO,
+    providerSubject: subject,
+    employeeUid,
+    emailSnapshot: 'candidate@example.test',
+    source: 'operator_review',
+  });
+}
+
+test('S9: a candidate link stays candidate and denies login even when the national ID matches the same employee', async () => {
+  const repositories = createFixtureRepositories();
+  const subject = 's9-candidate-same-employee';
+  await seedCandidate(repositories, { subject, employeeUid: userUid });
+
+  await assert.rejects(
+    () => runtime(repositories).issueSessionFromOAuthProfile({ profile: { citizenID: fakeCitizenId, sub: subject } }),
+    (err) => err.status === 403 && err.code === 'IDENTITY_NOT_APPROVED',
+  );
+  const link = await repositories.identityLinks.findByProviderSubject(PROVIDER_MJU_SSO, subject);
+  assert.equal(link.status, 'candidate');
+  assert.equal(link.approvedBy ?? null, null);
+});
+
+test('S9: a candidate link of another employee is neither promoted nor re-pointed by a national-ID match', async () => {
+  const repositories = createFixtureRepositories();
+  const subject = 's9-candidate-other-employee';
+  const otherUid = '11111111-1111-1111-1111-111111111111';
+  await seedCandidate(repositories, { subject, employeeUid: otherUid });
+
+  await assert.rejects(
+    () => runtime(repositories).issueSessionFromOAuthProfile({ profile: { citizenID: fakeCitizenId, sub: subject } }),
+    (err) => err.status === 403,
+  );
+  const link = await repositories.identityLinks.findByProviderSubject(PROVIDER_MJU_SSO, subject);
+  assert.equal(link.status, 'candidate');
+  assert.equal(link.employeeUid, otherUid);
+});
+
+test('S9: a candidate link with no national ID in the profile (subject only) is denied', async () => {
+  const repositories = createFixtureRepositories();
+  const subject = 's9-candidate-subject-only';
+  await seedCandidate(repositories, { subject, employeeUid: userUid });
+
+  await assert.rejects(
+    () => runtime(repositories).issueSessionFromOAuthProfile({ profile: { sub: subject } }),
+    (err) => err.status === 403 && err.code === 'IDENTITY_NOT_APPROVED',
+  );
+  const link = await repositories.identityLinks.findByProviderSubject(PROVIDER_MJU_SSO, subject);
+  assert.equal(link.status, 'candidate');
+});
+
+test('S9: name/email-only profiles and the callback ac value never create or approve a link', async () => {
+  const repositories = createFixtureRepositories();
+  for (const profile of [
+    { email: 'user@example.test', name: 'Synthetic User' },
+    { sub: 'user@example.test' },
+    { sub: 'ac' },
+  ]) {
+    await assert.rejects(() => runtime(repositories).issueSessionFromOAuthProfile({ profile }));
+  }
+  for (const subject of ['user@example.test', 'ac']) {
+    assert.equal(await repositories.identityLinks.findByProviderSubject(PROVIDER_MJU_SSO, subject), null);
+  }
+});
