@@ -19,10 +19,10 @@ It contains no PII, secrets or real CSV content, and must stay that way.
 |---|---|
 | PR #30 `docs/mju-subject-evidence-pack` (head `0a5e492`) | OPEN, not merged, base `main` |
 | PR #33 `feat/facescan-ingestion-phase-a` (head `00b92c5`) | OPEN, not merged, base `main` |
-| PR #34 `integration/attendance-sso-hip` (head `ae2375a` on origin) | **Draft**, OPEN, base `docs/mju-subject-evidence-pack`; CI 8/8 green; keep Draft |
+| PR #34 `integration/attendance-sso-hip` (head `b8ba918` on origin) | **Draft**, OPEN, base `docs/mju-subject-evidence-pack`; CI 8/8 green on `b8ba918`; keep Draft |
 | `origin/main` | `3244553` |
 
-* Pushed: `integration/attendance-sso-hip` (fast-forward only, no force) up to `ae2375a` (includes the S9 fix `966562b`; fast-forward). Commits made after that stay local until the user approves a push. Nothing has been merged. Commits made after that stay local until the user approves a push.
+* Pushed: `integration/attendance-sso-hip` (fast-forward only, no force) up to `b8ba918` (includes the S9 fix `966562b`). Commits made after that stay local until the user approves a push. Nothing has been merged.
 * PR #34 range = 5 own commits + 2 FaceScan commits (the same ones as PR #33) + 1 merge commit + docs commits. Merge order: **#30 -> #33 -> #34**.
 
 ### Merge readiness (reviewed 2026-10-09)
@@ -98,6 +98,14 @@ Evidence matrix: `docs/SSO_PROTOCOL_EVIDENCE.md`. Do **not** assume OIDC.
 * Recorded but not independently observed: callback `GET ?ac=<32 chars>`. The meaning of `ac` (code? ticket? token?) is **unknown**.
 * Inferred only (from donor code): OAuth2 code exchange, `openid` scope default.
 * Unknown: token and userinfo endpoints, client secret, state echo, PKCE support, subject claim, citizen-ID claim name, signature. The MJU IT question list is in the evidence doc.
+* **MJU SSO adapter flow:** `signin.aspx?cid=` -> callback with `ac` -> backend POSTs to `token.aspx` -> the response must be validated **before** any session is created. The code enforces the last part: no session without a verified subject (S9: `SSO_SUBJECT_INVALID` / `SSO_SUBJECT_NOT_VERIFIED`), and `ac` itself is never accepted as an identity.
+* **Facts read literally from the vendor sample `docs/sampleCallback.aspx` + `docs/sampleCallback.aspx.vb` (ASP.NET VB, dated 2025-04-08; the files are untracked and must stay uncommitted because they hold a registered client id):**
+  * Sign-in URL: `https://sso.mju.ac.th/signin.aspx?cid=<clientID>`; token URL: `https://sso.mju.ac.th/token.aspx`.
+  * The callback reads `Request.QueryString("ac")` and sends it as `code`. Request: HTTP `POST`, `Content-Type: application/json`, body = JSON of `{ clientID, code }` (properties `clientID`, `code`). **No client secret, no `Authorization` header, no `state`, no PKCE** appear in the sample.
+  * Only `HTTP 200` is treated as success; the body is deserialized as JSON into a model with these property names: `citizenID`, `name`, `pictureUrl`, `humanID`, `personID`, `studentID`, `studentCode`, `nationID`, `titleName`, `firstName`, `lastName`, `titleNameEn`, `firstNameEn`, `lastNameEn`, `position`, `e_mail`, `personnelPhoto`.
+  * The sample stores `citizenID`, `humanID`, `pictureUrl`, `name`, `personID` (if numeric), `studentID` (if numeric) in its session and redirects by `personID` / `studentID`; on any error or empty `ac` it redirects back to `signin.aspx`. It performs **no** signature check, no non-empty check on `citizenID`, and no `state`/replay check: our implementation must not copy those weaknesses.
+  * **Not in the sample (still UNKNOWN):** whether `ac` is single-use and its lifetime, the error response format, which field is the stable never-reused subject (`humanID` vs `personID` vs `citizenID`), whether the response is signed, and whether the sample's client id may be used from our environment.
+  * **Gap to close before any live probe:** the current `backend/src/services/sso/oauthProvider.js` sends an OAuth2-style form body (`grant_type=authorization_code`, `application/x-www-form-urlencoded`) and `ssoConfig` does not know `humanID` / `personID`; the sample shows a JSON `{clientID, code}` POST. The existing adapter (`mjuNationalIdAdapter.js`) already lists `citizenID` as a national-ID claim. Aligning the token request and subject-claim mapping to the sample is a code change that has **not** been made (needs approval and MJU IT confirmation); the sample is vendor evidence, not a signed contract, so keep `SSO_PROTOCOL_CONTRACT_CONFIRMED` off until MJU confirms in writing.
 * No real MJU login has been attempted. A live probe needs MJU IT answers, a registered test callback, secrets from their owners and a consenting test account.
 
 **What to ask MJU IT (only what is needed to accept the `ac` callback and fetch a verified identity):**
@@ -120,7 +128,7 @@ The full 15-question list stays in `docs/SSO_PROTOCOL_EVIDENCE.md`; the six abov
 | MariaDB QA (10.11.9 and 10.3.39, plain + binlog ROW/STATEMENT) | 34/34 pass |
 | All migrations + seed on a fresh 10.11.9 DB | applied cleanly in order |
 | DB integration (identifier, FaceScan, release1) on a fresh DB | 18/18 pass with `TZ=UTC` |
-| PR #34 CI (head `ae2375a`) | 8/8 jobs green |
+| PR #34 CI (head `b8ba918`) | 8/8 jobs green |
 | PR #30 / #33 CI | 8/8 jobs green each |
 
 Known issues:
@@ -138,6 +146,20 @@ Known issues:
 * `017_identifier_namespace_claim.sql` (claim table + triggers, `SIGNAL 45000 IDENTIFIER_NAMESPACE_COLLISION`; a value may not be `facescan_id` for one employee and `personnel_id` for another). Under binary logging the migration account needs `SUPER` or `log_bin_trust_function_creators=1` (TRIGGER alone fails with error 1419; missing TRIGGER gives 1142; triggers run as DEFINER). Details: `docs/MIGRATION_017_PRIVILEGES.md`. Run `database/preflight/015_preflight.sql` and `017_preflight.sql` read-only before any real DB; rollbacks live in `database/rollbacks/`.
 * **Production gates (still BLOCKED, need explicit written approval):** MJU authoritative personnel source; VPS gate; HIP ID evidence; DBA decision on migration 017 privileges; MJU IT answers on the SSO contract (`ac` handling and verified identity). **Not a blocker any more:** the 50-unique employee scope (CONFIRMED). Policy S9 is decided (section 5); only its hardening items remain as code work.
 * Never without approval: push to a protected line, merge a PR, SSH, production migration/import/deploy, create or rotate production secrets, edit the original CSV, force-push.
+
+### VPS read-only verification checklist (for the VPS administrator; agents must not SSH)
+
+Purpose: before the first merge to `main`, confirm that nothing on the legacy host pulls `main`, runs migrations, or serves a branch that could break. Run **only read-only commands**; do not edit, restart, pull, migrate or deploy anything. Send back the output with secrets, passwords, tokens and personal data redacted. Paths below are examples; use the real deployment directory.
+
+1. **Host and runtime identity:** `hostname; whoami; date -u; uname -a; cat /etc/os-release | head -3`; `docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}'` (or `systemctl list-units --type=service --state=running | grep -i -E 'rae|node|pm2|nginx'`, `pm2 list` if PM2 is used). Record which process serves the attendance app and on which port.
+2. **Active branch and commit (read-only):** `cd <deploy dir>; git rev-parse --abbrev-ref HEAD; git rev-parse HEAD; git status --short | head; git remote -v` (remove any credentials from the URL before replying); `git log -1 --format='%H %cd %s'`; `git fetch --dry-run 2>&1 | head` is optional and only if the admin accepts a network read.
+3. **Auto-pull:** `crontab -l; sudo crontab -l -u <deploy user>; ls /etc/cron.d /etc/cron.daily /etc/cron.hourly; systemctl list-timers --all | head -30`; search them for `git pull`, `git fetch`, `deploy`, `rae`. Also check webhook receivers: `ps aux | grep -i -E 'webhook|adnanh|hooks|deploy' | grep -v grep`, `docker ps | grep -i -E 'watchtower|webhook'`, and `ls ~/.config 2>/dev/null` for CI runners (`ps aux | grep -i runner`). Answer plainly: **does anything on this host pull or deploy `main` automatically? yes/no, how, how often.**
+4. **Auto-migrate:** `grep -R -n -i -E 'db:migrate|migrate\.mjs|schema_migrations|npm run db' <deploy dir>/package.json <deploy dir>/deploy /etc/systemd/system 2>/dev/null | head`; check the container entrypoint or compose `command:` for migration steps (`docker inspect <container> --format '{{.Config.Cmd}} {{.Config.Entrypoint}}'`). Answer: **is any migration run at start-up, by cron, or by the deploy script? yes/no.**
+5. **Database state (read-only, no data):** with a read-only account, `SELECT version FROM schema_migrations ORDER BY version;` (names only, no row data) and `SELECT VERSION();`, `SHOW VARIABLES LIKE 'log_bin%';`. This tells which of `013`, `015` (two files), `016`, `017` are already applied. Do not run `SELECT` on employee or identifier tables.
+6. **Exposure:** `ss -tlnp | head -30` and the reverse-proxy site config (names only, no secrets) to confirm what is public.
+7. **Reply format:** a short yes/no table: auto-pull (yes/no), auto-migrate (yes/no), active branch, active commit, runtime host (container/PM2/systemd), last applied migration name, DB `log_bin` on/off. Anything unexpected = stop and report; do not change it.
+
+Decision rule: if the answer to 3 or 4 is "yes", or the active branch is `main`, **BLOCK the first merge** until the admin disables the automation or confirms that the merged content is safe (the docs-only #30 still adds migration files that an auto-migrate would apply).
 
 ## 9. Suggested next steps
 
