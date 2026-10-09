@@ -1,6 +1,7 @@
 const { randomBytes } = require('node:crypto');
 const { success } = require('../utils/response');
 const { asyncRoute } = require('../utils/asyncRoute');
+const { isProduction } = require('../services/sso/ssoConfig');
 
 const BINDING_COOKIE = 'rae_sso_bind';
 const BINDING_COOKIE_PATH = '/api/v1/auth/sso';
@@ -25,7 +26,7 @@ function cookieNames(req) {
 }
 
 function createSsoController(ssoService, { config }) {
-  const secure = config.env === 'production';
+  const secure = isProduction(config);
   // SameSite=Lax: the IdP returns to the callback with a top-level GET, which Lax cookies accompany.
   const cookieOptions = { httpOnly: true, sameSite: 'lax', secure, path: BINDING_COOKIE_PATH };
 

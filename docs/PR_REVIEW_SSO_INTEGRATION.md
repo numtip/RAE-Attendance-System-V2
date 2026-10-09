@@ -34,8 +34,9 @@ origin/main 3244553  (Identity foundation + FaceScan raw ingestion Phase A, #32)
 | S3 | Medium | Live provider fell back to Person-API claim names (`citizenID`) as the citizen-ID source | **Fixed**: explicit `SSO_NATIONAL_ID_CLAIMS` required for non-mock providers |
 | S4 | Medium | Token response/userinfo shape not validated; `id_token` implicitly possible | **Fixed**: string `access_token`, Bearer `token_type`, JSON-object userinfo; `id_token` ignored |
 | S5 | Medium | Session JWT algorithm not pinned on verify, no `jti` | **Fixed**: HS256 pinned, unique `jti` |
+| S15 | High | Production detection read `config.env`, which does not exist (the real value is `config.app.env`): the production-only guards (no mock provider, https-only endpoints, `Secure` cookie) would never have fired | **Fixed** (`isProduction`), covered by a test on the real config shape |
 | S6 | Low | Handoff code in redirect URL could leak via Referer/cache | **Fixed**: `Referrer-Policy: no-referrer`, `Cache-Control: no-store` |
-| S7 | Low | Unbounded in-memory state store | **Fixed**: cap 10 000 (eviction can still be abused: see S8) |
+| S7 | Low | In-memory state store is single-instance and unbounded | Accepted for the MVP (no custom multi-instance infrastructure); rate limit at the proxy (S8) |
 | S8 | Medium | **No rate limiting anywhere** (`/auth/sso/login`, `/callback`, `/exchange`) | **Open**: enforce at the reverse proxy before any live probe |
 | S9 | Medium (policy) | While the subject contract is unconfirmed a session rests on the provider's citizen-ID claim alone; a CANDIDATE link is promoted to APPROVED by `system:sso` on a verified login, which differs from the earlier "candidate cannot authenticate" rule | **Open - owner decision**: accept national-ID-only sessions until the subject contract is confirmed, or require `SSO_SUBJECT_CONTRACT_CONFIRMED` for sessions |
 | S10 | Low | Logout revokes the refresh token only; the access JWT lives up to 15 min | Accepted / document |
@@ -48,7 +49,7 @@ origin/main 3244553  (Identity foundation + FaceScan raw ingestion Phase A, #32)
 
 * `ssoStateStore.create/consume` changed (`consume` returns `{codeVerifier}|null`, takes a binding); `ssoService.beginLogin({browserBinding})` is mandatory for the OAuth path. All callers (controller, tests) updated. Portal and diagnostic modes are unchanged.
 * `authenticate` pins HS256: tokens from `authService` and `ssoTokens` are HS256 (library default), so existing tokens remain valid. Tests for both paths pass.
-* `.env.example` gains `SSO_PROTOCOL_CONTRACT_CONFIRMED=false` and `SSO_PKCE_METHOD=`; existing deployments keep SSO off, so nothing changes until an operator sets them.
+* `.env.example` gains `SSO_PROTOCOL_CONTRACT_CONFIRMED=false`; existing deployments keep SSO off, so nothing changes until an operator sets them.
 * Backend suite is green (see report); the 4 skipped tests need a seeded MariaDB (unchanged).
 
 ## 4. Migration 017 review

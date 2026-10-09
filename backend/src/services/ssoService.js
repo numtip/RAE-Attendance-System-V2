@@ -1,4 +1,3 @@
-const { createHash, randomBytes } = require('node:crypto');
 const { HttpError } = require('../utils/httpError');
 const { signAccessToken } = require('./sso/ssoTokens');
 const {
@@ -55,20 +54,13 @@ function createSsoService(deps) {
       if (typeof browserBinding !== 'string' || browserBinding.length < 16) {
         throw new HttpError(500, 'SSO_STATE_BINDING_REQUIRED', 'Login state must be bound to the browser');
       }
-      let codeVerifier;
-      let codeChallenge;
-      if (config.sso.pkceMethod === 'S256') {
-        codeVerifier = randomBytes(32).toString('base64url');
-        codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
-      }
-      const state = stateStore.create({ binding: browserBinding, codeVerifier });
+      const state = stateStore.create({ binding: browserBinding });
       return oauthProvider.buildAuthorizationUrl({
         authorizationUrl: config.sso.authorizationUrl,
         clientId: config.sso.clientId,
         callbackUrl: config.sso.callbackUrl,
         scopes: config.sso.scopes,
         state,
-        codeChallenge,
       });
     },
 
@@ -117,8 +109,7 @@ function createSsoService(deps) {
       if (typeof state !== 'string' || state.length === 0 || state.length > 256) {
         throw new HttpError(403, 'SSO_STATE_INVALID', 'OAuth state is missing or expired');
       }
-      const pendingLogin = stateStore.consume(state, browserBinding);
-      if (!pendingLogin) {
+      if (!stateStore.consume(state, browserBinding)) {
         throw new HttpError(
           403,
           'SSO_STATE_INVALID',
@@ -132,7 +123,6 @@ function createSsoService(deps) {
         clientSecret: config.sso.clientSecret,
         callbackUrl: config.sso.callbackUrl,
         code,
-        codeVerifier: pendingLogin.codeVerifier || undefined,
       });
       // Only the access token returned by THIS exchange is used. Any id_token is deliberately ignored:
       // MJU has not confirmed OIDC, so nothing in it is validated and nothing in it may identify a user.

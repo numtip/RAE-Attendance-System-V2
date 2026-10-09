@@ -20,8 +20,13 @@ const SSO_ENDPOINT_FIELDS = ['authorizationUrl', 'tokenUrl', 'userInfoUrl', 'cal
  *  - the mock provider (fixed fake identity) must never run in production;
  *  - every configured SSO endpoint must be https in production (tokens and the citizen ID travel over them).
  */
+function isProduction(config) {
+  // The real config exposes the environment as config.app.env.
+  return (config.app?.env ?? config.env) === 'production';
+}
+
 function assertProductionSafeSso(config) {
-  if (config.env !== 'production') return;
+  if (!isProduction(config)) return;
   if (config.sso.provider === 'mock') {
     throw new HttpError(503, 'CONFIG_ERROR', 'SSO_PROVIDER=mock is not allowed in production');
   }
@@ -30,8 +35,6 @@ function assertProductionSafeSso(config) {
     throw new HttpError(503, 'CONFIG_ERROR', `SSO endpoints must use https in production: ${insecure.join(', ')}`);
   }
 }
-const SUPPORTED_PKCE_METHODS = ['', 'S256'];
-
 /**
  * The MJU token / userinfo protocol is UNCONFIRMED (docs/SSO_PROTOCOL_EVIDENCE.md): the only confirmed
  * transport is the portal sign-in (`signin.aspx?cid=`) and a GET callback carrying an opaque `ac` value.
@@ -42,9 +45,6 @@ function assertProtocolConfirmed(config) {
   if (config.sso.provider === 'mock') return;
   if (config.sso.protocolContractConfirmed !== true) {
     throw new HttpError(503, 'SSO_NOT_READY', 'MJU token/userinfo protocol contract is not confirmed');
-  }
-  if (!SUPPORTED_PKCE_METHODS.includes(String(config.sso.pkceMethod || ''))) {
-    throw new HttpError(503, 'CONFIG_ERROR', 'SSO_PKCE_METHOD must be empty or S256');
   }
 }
 
@@ -72,4 +72,5 @@ module.exports = {
   isSsoOperational,
   requiredConfig,
   portalConfigReady,
+  isProduction,
 };

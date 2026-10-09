@@ -44,8 +44,6 @@ module.exports = {
     subjectContractConfirmed: process.env.SSO_SUBJECT_CONTRACT_CONFIRMED === 'true',
     /** MJU's written confirmation of the token/userinfo exchange. Off => OAuth code path fails closed. */
     protocolContractConfirmed: process.env.SSO_PROTOCOL_CONTRACT_CONFIRMED === 'true',
-    /** '' (off, default) or 'S256'. Enable only after MJU confirms PKCE support. */
-    pkceMethod: process.env.SSO_PKCE_METHOD || '',
     loginHandoffTtlMs: Number(process.env.SSO_LOGIN_HANDOFF_TTL_MS || 45_000),
     /** Comma-separated OAuth userinfo claim names for Thai citizen ID (see docs/SSO_IDENTITY_FLOW.md). */
     nationalIdClaims: process.env.SSO_NATIONAL_ID_CLAIMS || '',

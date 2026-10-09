@@ -1,7 +1,6 @@
 const { randomBytes, createHash, timingSafeEqual } = require('node:crypto');
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
-const DEFAULT_MAX_PENDING = 10_000;
 
 function digest(value) {
   return createHash('sha256').update(String(value)).digest();
@@ -17,7 +16,7 @@ function digest(value) {
  * In-memory: states do not survive a restart and are not shared between instances. Use a shared store before
  * running more than one backend instance.
  */
-function createSsoStateStore({ ttlMs = DEFAULT_TTL_MS, now = () => Date.now(), maxPending = DEFAULT_MAX_PENDING } = {}) {
+function createSsoStateStore({ ttlMs = DEFAULT_TTL_MS, now = () => Date.now() } = {}) {
   const pending = new Map();
 
   function prune() {
@@ -27,41 +26,35 @@ function createSsoStateStore({ ttlMs = DEFAULT_TTL_MS, now = () => Date.now(), m
         pending.delete(key);
       }
     }
-    // Bound memory for unauthenticated /login traffic: drop the oldest states first.
-    while (pending.size >= maxPending) {
-      pending.delete(pending.keys().next().value);
-    }
   }
 
   return {
-    /** @param {{ binding?: string, codeVerifier?: string }} [options] */
-    create({ binding, codeVerifier } = {}) {
+    /** @param {{ binding?: string }} [options] */
+    create({ binding } = {}) {
       prune();
       const state = randomBytes(24).toString('hex');
       pending.set(state, {
         expiresAt: now() + ttlMs,
         bindingDigest: binding ? digest(binding) : null,
-        codeVerifier: codeVerifier || null,
       });
       return state;
     },
     /**
-     * @returns {{ codeVerifier: string|null }|null} null when the state is unknown, expired, already used,
-     * or not bound to the presenting browser.
+     * @returns {boolean} false when the state is unknown, expired, already used, or not bound to the presenting browser.
      */
     consume(state, binding) {
       prune();
       if (typeof state !== 'string' || !pending.has(state)) {
-        return null;
+        return false;
       }
       const entry = pending.get(state);
       pending.delete(state);
       if (entry.bindingDigest) {
         if (!binding || !timingSafeEqual(entry.bindingDigest, digest(binding))) {
-          return null;
+          return false;
         }
       }
-      return { codeVerifier: entry.codeVerifier };
+      return true;
     },
   };
 }

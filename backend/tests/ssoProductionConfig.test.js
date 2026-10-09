@@ -7,7 +7,7 @@ const { TEST_BINDING: BINDING } = require('./helpers/ssoTestBinding');
 
 function build(configOverrides = {}) {
   const config = {
-    env: 'production',
+    app: { env: 'production' },
     jwt: { secret: 'test-only-secret', expiresIn: '15m', refreshTokenDays: 14 },
     sso: {
       enabled: true,
@@ -40,7 +40,7 @@ test('production refuses non-https SSO endpoints and names only the field, never
 
 test('production with https endpoints and a real provider passes the config gate; non-production is unchanged', async () => {
   assert.match(await build().beginLogin({ browserBinding: BINDING }), /^https:/);
-  const dev = build({ root: { env: 'development' }, sso: { callbackUrl: 'http://127.0.0.1:3210/cb' } });
+  const dev = build({ root: { app: { env: 'development' } }, sso: { callbackUrl: 'http://127.0.0.1:3210/cb' } });
   assert.match(await dev.beginLogin({ browserBinding: BINDING }), /^https:/);
 });
 
@@ -48,5 +48,4 @@ test('OAuth path fails closed until the MJU protocol contract is confirmed (call
   const sso = build({ sso: { protocolContractConfirmed: false } });
   await assert.rejects(() => sso.beginLogin({ browserBinding: BINDING }), (e) => e.status === 503 && e.code === 'SSO_NOT_READY' && /protocol contract/.test(e.message));
   await assert.rejects(() => sso.handleCallback({ code: 'x', state: 'y', browserBinding: BINDING }), (e) => e.status === 503 && e.code === 'SSO_NOT_READY');
-  await assert.rejects(() => build({ sso: { pkceMethod: 'plain' } }).beginLogin({ browserBinding: BINDING }), (e) => e.code === 'CONFIG_ERROR' && /PKCE/.test(e.message));
 });
