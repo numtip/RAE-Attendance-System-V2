@@ -90,8 +90,9 @@ async function start({ reply = (body) => ({ body: body.code === GOOD_AC ? identi
     sso: {
       enabled: true,
       callbackConfirmed: true,
-      protocolContractConfirmed: true,
-      subjectContractConfirmed: true,
+      // Vendor-sample evidence only. These flags mean "MJU IT certified" and must stay false on this path.
+      protocolContractConfirmed: false,
+      subjectContractConfirmed: false,
       mjuTokenFlow: true,
       subjectClaim: 'humanID',
       provider: 'http',
@@ -168,6 +169,9 @@ test('valid login: signin?cid= -> ?ac= -> POST token.aspx {clientID, code} -> ma
     assert.equal(signin.searchParams.get('cid'), 'synthetic-client');
     assert.match(login.setCookie[0], /HttpOnly/i);
     assert.match(login.setCookie[0], /SameSite=Lax/i);
+    assert.match(login.setCookie[0], /Path=\/api\/v1\/auth\/sso/);
+    assert.doesNotMatch(login.setCookie[0], /;\s*Secure/i);
+    assert.doesNotMatch(login.setCookie[0], /Domain=/i);
 
     // step 2: exactly one POST to token.aspx, JSON {clientID, code}, no secret, no OAuth fields, no auth header
     assert.equal(t.mju.requests.length, 1);
@@ -190,6 +194,10 @@ test('valid login: signin?cid= -> ?ac= -> POST token.aspx {clientID, code} -> ma
     const link = await t.linkFor('H-100234');
     assert.equal(link.employeeUid, MJU_UID);
     assert.equal(link.status, 'approved');
+    assert.equal(link.source, 'mju_token_candidate_subject');
+    assert.equal(link.subjectType, 'candidate:humanID');
+    assert.equal(link.confidence, 'medium');
+    assert.equal(link.emailSnapshot ?? null, null);
     assert.equal(await t.linkFor(GOOD_AC), null);
     assert.equal(await t.linkFor(MJU_NATIONAL), null);
     assert.equal(JSON.stringify(link).includes(MJU_NATIONAL), false, 'no raw citizen ID stored on the link');
@@ -344,6 +352,7 @@ test('unusable subject: ac, the citizen ID, or an e-mail can never be the subjec
     ['humanID equals citizenID', identityDoc({ humanID: MJU_NATIONAL })],
     ['humanID contains the citizenID digits', identityDoc({ humanID: `H${MJU_NATIONAL}` })],
     ['humanID is an e-mail', identityDoc({ humanID: SYNTHETIC_EMAIL })],
+    ['humanID equals the name', identityDoc({ humanID: 'Synthetic', firstName: 'Synthetic' })],
     ['humanID has spaces', identityDoc({ humanID: 'H 1' })],
     ['humanID is too long', identityDoc({ humanID: 'H'.repeat(200) })],
   ]) {
@@ -466,7 +475,9 @@ test('browser binding: a callback without this browser\'s login cookie is refuse
     const victim = await t.begin();
     assert.equal((await t.call(`/auth/sso/callback?ac=${GOOD_AC}`)).status, 403, 'no cookie');
     assert.equal(errorCode(await t.call(`/auth/sso/callback?ac=${GOOD_AC}`, { cookie: 'rae_sso_bind=forged-value-0123456789abcdef' })), 'SSO_STATE_INVALID', 'forged cookie');
-    assert.equal((await t.call(`/auth/sso/callback?ac=${GOOD_AC}`, { cookie: attacker.cookie })).status, 302, 'the binding that started a login is accepted once');
+    // Residual (MJU does not echo state): any unused ac is accepted with a live binding, including one
+    // that was not issued for this login. The cookie is still single-use.
+    assert.equal((await t.call(`/auth/sso/callback?ac=${GOOD_AC}`, { cookie: attacker.cookie })).status, 302, 'live binding accepts an ac that was not tied to it');
     assert.equal((await t.call(`/auth/sso/callback?ac=fedcba9876543210fedcba9876543210`, { cookie: attacker.cookie })).status, 403, 'and only once');
     assert.equal(t.mju.requests.length, 1);
     assert.ok(victim.cookie);
@@ -515,12 +526,19 @@ test('guard: bindings expire and codes are tracked as digests', () => {
   assert.equal(guard.claimCode('code-1'), true);
   assert.equal(guard.claimCode('code-1'), false);
   clock += 501;
-  assert.equal(guard.claimCode('code-1'), true, 'forgotten after the TTL (MJU\'s own rule applies then)');
+  assert.equal(guard.claimCode('code-1'), true, 'forgotten after the TTL (in-memory only; MJU single-use is still unknown)');
+});
+
+test('guard: the oldest code digest is dropped after the in-memory cap', () => {
+  const guard = createMjuPortalGuard();
+  assert.equal(guard.claimCode('first-code'), true);
+  for (let i = 0; i < 10001; i += 1) guard.claimCode(`code-${i}`);
+  assert.equal(guard.claimCode('first-code'), true, 'evicted; not a durable cross-process store');
 });
 
 // ----------------------------------------------------------------------------------------- fail closed
 
-test('fail closed: flag off, protocol or subject contract unconfirmed, SSO off - no session, and MJU is not called when avoidable', async () => {
+test('gates: token flow off or SSO disabled refuses; contract flags do not certify or block the candidate subject', async () => {
   const off = await start({ sso: { mjuTokenFlow: false } });
   try {
     const { login, callback } = await off.signIn();
@@ -531,11 +549,15 @@ test('fail closed: flag off, protocol or subject contract unconfirmed, SSO off -
     off.close();
   }
 
-  const noProtocol = await start({ sso: { protocolContractConfirmed: false } });
+  // Written-confirmation flags stay false. The token flow still runs; the subject stays a candidate.
+  const noProtocol = await start({ sso: { protocolContractConfirmed: false, subjectContractConfirmed: true } });
   try {
-    const login = await noProtocol.call('/auth/sso/login');
-    assert.equal(login.status, 503);
-    assert.equal(noProtocol.mju.requests.length, 0);
+    const { callback } = await noProtocol.signIn();
+    assert.equal(callback.status, 302);
+    const link = await noProtocol.linkFor('H-100234');
+    assert.equal(link.subjectType, 'candidate:humanID');
+    assert.equal(link.source, 'mju_token_candidate_subject');
+    assert.equal(link.confidence, 'medium');
   } finally {
     noProtocol.close();
   }
@@ -556,27 +578,52 @@ test('fail closed: flag off, protocol or subject contract unconfirmed, SSO off -
     noToken.close();
   }
 
-  // MJU has not confirmed the subject field: the exchange may run, but no session is ever opened (S9)
-  const unconfirmed = await start({ sso: { subjectContractConfirmed: false } });
+  // Missing configured claim does not fall back to personID, name, or e-mail (covered above).
+  // A disagreeing multi-value subject is ambiguous and creates no link.
+  const ambiguous = await start({
+    reply: () => ({ body: identityDoc({ humanID: ['H-100234', 'H-999999'] }) }),
+  });
   try {
-    const { callback } = await unconfirmed.signIn();
+    const { callback } = await ambiguous.signIn();
     assert.equal(callback.status, 403);
-    assert.equal(errorCode(callback), 'SSO_SUBJECT_NOT_VERIFIED');
-    assert.equal(await unconfirmed.linkFor('H-100234'), null);
+    assert.equal(errorCode(callback), 'SSO_SUBJECT_AMBIGUOUS');
+    assert.equal(await ambiguous.linkFor('H-100234'), null);
+    assert.equal(await ambiguous.linkFor('H-999999'), null);
   } finally {
-    unconfirmed.close();
+    ambiguous.close();
   }
 });
 
-test('production: token.aspx must be https', async () => {
-  const t = await start({ env: 'production', sso: { signinUrl: 'https://sso.mju.ac.th/signin.aspx', callbackUrl: 'https://rae.example.test/cb', signoutUrl: 'https://sso.mju.ac.th/signout.aspx' } });
+test('production: token.aspx must be https, and a https login cookie is Secure', async () => {
+  const insecure = await start({ env: 'production', sso: { signinUrl: 'https://sso.mju.ac.th/signin.aspx', callbackUrl: 'https://rae.example.test/cb', signoutUrl: 'https://sso.mju.ac.th/signout.aspx' } });
   try {
-    const login = await t.call('/auth/sso/login');
+    const login = await insecure.call('/auth/sso/login');
     assert.equal(login.status, 503);
     assert.equal(errorCode(login), 'CONFIG_ERROR');
-    assert.equal(t.mju.requests.length, 0);
+    assert.equal(insecure.mju.requests.length, 0);
   } finally {
-    t.close();
+    insecure.close();
+  }
+
+  const secure = await start({
+    env: 'production',
+    sso: {
+      signinUrl: 'https://sso.mju.ac.th/signin.aspx',
+      signoutUrl: 'https://sso.mju.ac.th/signout.aspx',
+      callbackUrl: 'https://rae.example.test/api/v1/auth/sso/callback',
+      tokenUrl: 'https://sso.mju.ac.th/token.aspx',
+    },
+  });
+  try {
+    const login = await secure.call('/auth/sso/login');
+    assert.equal(login.status, 302);
+    assert.match(login.setCookie[0], /HttpOnly/i);
+    assert.match(login.setCookie[0], /SameSite=Lax/i);
+    assert.match(login.setCookie[0], /Path=\/api\/v1\/auth\/sso/);
+    assert.match(login.setCookie[0], /;\s*Secure/i);
+    assert.equal(secure.mju.requests.length, 0);
+  } finally {
+    secure.close();
   }
 });
 
@@ -592,4 +639,13 @@ test('normalizeMjuIdentityResponse keeps only the subject and the citizen ID', (
   assert.equal(normalizeMjuIdentityResponse({ citizenID: MJU_NATIONAL, personID: 100234 }, { subjectClaim: 'personID' }).sub, '100234');
   assert.throws(() => normalizeMjuIdentityResponse(identityDoc(), { subjectClaim: 'citizenID' }), (err) => err.code === 'SSO_NOT_READY');
   assert.throws(() => normalizeMjuIdentityResponse(null, {}), (err) => err.code === 'SSO_CODE_INVALID');
+  assert.throws(
+    () => normalizeMjuIdentityResponse(identityDoc({ humanID: ['H-1', 'H-2'] }), { subjectClaim: 'humanID' }),
+    (err) => err.code === 'SSO_SUBJECT_AMBIGUOUS',
+  );
+  // personID is present and different; it is ignored, not substituted
+  assert.equal(
+    normalizeMjuIdentityResponse(identityDoc({ humanID: 'H-100234', personID: '999' }), { subjectClaim: 'humanID' }).sub,
+    'H-100234',
+  );
 });

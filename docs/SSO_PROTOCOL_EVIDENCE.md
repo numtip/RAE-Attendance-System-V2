@@ -51,11 +51,11 @@ An ASP.NET VB callback page that MJU supplies as an example for client developer
 | `ac` replay guard | each `ac` is tried once per process (stored as SHA-256 digest, 1 h); a repeat => `403 SSO_CODE_REPLAY` before any call. In-memory: use a shared store for more than one instance |
 | Validate before session | non-2xx / not JSON / not an object / empty => no session. Subject **and** `citizenID` required: nothing usable => `401 SSO_CODE_INVALID`; one missing => `502 SSO_RESPONSE_INCOMPLETE`; subject = `ac`, = the citizen ID, containing its digits, e-mail-shaped or malformed => `403 SSO_SUBJECT_INVALID`; malformed citizen ID => `403 SSO_NATIONAL_ID_INVALID` (a linked subject never falls back to subject-only) |
 | Identity mapping | `citizenID` is looked up through the protected HMAC (`national_id` -> `employee_uid`); the raw ID is never stored, logged, returned or used as a subject. Name, `e_mail`, photo, `personID`/`studentID` never select an employee (the e-mail is not even stored as a link snapshot) |
-| S9 | a session still needs the verified subject (`SSO_SUBJECT_CONTRACT_CONFIRMED=true`), and a first-login link is created only when subject and citizen ID resolve in the same login; subject linked to another employee => `409 IDENTITY_SUBJECT_CONFLICT` |
+| S9 | a citizen ID alone never opens a session. OAuth still needs `SSO_SUBJECT_CONTRACT_CONFIRMED=true`. The token path accepts only a **candidate** subject (`candidate:<claim>`, source `mju_token_candidate_subject`, confidence `medium`) plus the HMAC citizen-ID match in the same login. A missing, ambiguous, or colliding subject fails closed. Subject linked to another employee => `409 IDENTITY_SUBJECT_CONFLICT` |
 
-**Which field is the subject.** The sample does not say. Default is `humanID` (present for staff and students in the model, so most likely person-level); `personID` is selectable; `citizenID` is refused as a subject on purpose (it would put a National ID into the links table). The choice must be confirmed by MJU before `SSO_SUBJECT_CONTRACT_CONFIRMED=true`.
+**Which field is the subject.** The sample does not say, and MJU IT has not certified one. Owner decision 2026-10-09: skip the written-confirmation phase and use `humanID` as the **candidate** subject (config default `SSO_SUBJECT_CLAIM`). `personID` is accepted only when the operator sets that claim. `citizenID`, e-mail and name are never a subject and are never a fallback. Setting `SSO_SUBJECT_CONTRACT_CONFIRMED` does **not** relabel a token-flow subject as certified. Disagreeing values inside the configured claim => `403 SSO_SUBJECT_AMBIGUOUS`.
 
-**Still not confirmed by the sample (UNKNOWN)** and gated by `SSO_PROTOCOL_CONTRACT_CONFIRMED` / `SSO_SUBJECT_CONTRACT_CONFIRMED`: see section 4a.
+**Still UNKNOWN** (lifetime and single-use of `ac` at MJU, error format, response signing, whether `humanID` is stable and never reused): see section 4a. Those gaps are residual risk. They are not closed by turning `SSO_PROTOCOL_CONTRACT_CONFIRMED` on.
 
 ## 2. Fail-closed gates now in code (all default OFF)
 
@@ -63,11 +63,11 @@ An ASP.NET VB callback page that MJU supplies as an example for client developer
 |---|---|---|
 | SSO enabled | `SSO_ENABLED` | `403 SSO_DISABLED` |
 | Callback registered | `SSO_CALLBACK_CONFIRMED` | `503 SSO_NOT_READY` |
-| **Protocol (token/userinfo) contract** | `SSO_PROTOCOL_CONTRACT_CONFIRMED` | `503 SSO_NOT_READY` on login and callback (mock provider exempt, refused in production) |
-| **Citizen-ID claim name** | `SSO_NATIONAL_ID_CLAIMS` (non-empty) | `503 SSO_NOT_READY` before any identity lookup |
-| Subject contract | `SSO_SUBJECT_CONTRACT_CONFIRMED` | subject unknown: no provider link is created or used |
+| **Protocol (OAuth token/userinfo) contract** | `SSO_PROTOCOL_CONTRACT_CONFIRMED` | `503 SSO_NOT_READY` on the OAuth path (mock provider exempt, refused in production). Not required for `SSO_MJU_TOKEN_FLOW` |
+| **MJU token flow** | `SSO_MJU_TOKEN_FLOW` | portal callback stays unconfirmed (`503`) until this is true, with sign-in URL, token URL and client id |
+| **Citizen-ID claim name** | `SSO_NATIONAL_ID_CLAIMS` (non-empty) | `503 SSO_NOT_READY` on the OAuth path before any identity lookup. Token flow reads `citizenID` only |
+| Subject contract | `SSO_SUBJECT_CONTRACT_CONFIRMED` | OAuth subject unknown: no provider link is created or used. Token flow does not read this flag |
 | Production safety | `NODE_ENV=production` | mock provider and non-https endpoints refused |
-| MJU portal flow (section 1a) | `SSO_MJU_TOKEN_FLOW` (+ `SSO_TOKEN_URL`, `SSO_PROTOCOL_CONTRACT_CONFIRMED`, `SSO_SUBJECT_CONTRACT_CONFIRMED`, `SSO_SUBJECT_CLAIM`) | flag off: portal callback stays `503 SSO_NOT_READY`; flag on without the two confirmations: `503` on login / `403 SSO_SUBJECT_NOT_VERIFIED` after exchange |
 
 ## 3. Controls implemented for the OAuth path (only reachable after the gates above)
 
@@ -98,9 +98,9 @@ The sample answers the *shape* of questions 1-2, 4 and part of 7 in section 4 (f
 6. Is a staging callback URL and a consenting test account available?
 7. Does `signout.aspx?cid=` accept a return URL? (unchanged from section 4, question 11)
 
-Until 1-4 are answered in writing, keep `SSO_PROTOCOL_CONTRACT_CONFIRMED` and `SSO_SUBJECT_CONTRACT_CONFIRMED` off in any shared environment; set them only for a controlled, single-account staging probe with the owner's approval.
+Until those answers exist, keep both confirmation flags **false**. Owner decision 2026-10-09 allows a staging pilot of the token flow without them. Do not set the flags to record a certification that MJU IT has not given.
 
-## 4. Questions for MJU IT (send before any staging probe)
+## 4. Questions for MJU IT (not required for the staging pilot; still open)
 
 Client: RAE Attendance System V2 (registered client; id is in `.env.example`).
 

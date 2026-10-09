@@ -202,6 +202,7 @@ function createIdentityResolutionService(deps) {
         subjectType,
         emailSnapshot,
         source = 'sso_national_id_resolution',
+        confidence = 'high',
       } = input;
 
       if (!providerKey || !providerSubject || !employeeUid) {
@@ -244,7 +245,7 @@ function createIdentityResolutionService(deps) {
         subjectType: subjectType || 'opaque',
         emailSnapshot: normalizeEmail(emailSnapshot),
         status: LINK_STATUS.APPROVED,
-        confidence: 'high',
+        confidence,
         source,
         approvedBy: 'system:sso',
         approvedAt,

@@ -1,6 +1,6 @@
 # Session Handoff
 
-Last updated: 2026-10-09 (MJU token-flow adapter added locally; remote head is 8ba918). Read this file **before** starting any work.
+Last updated: 2026-10-09 (candidate subject committed for Draft PR #34; do not merge). Read this file **before** starting any work.
 It contains no PII, secrets or real CSV content, and must stay that way.
 
 ## 1. Repo and working branch
@@ -22,7 +22,7 @@ It contains no PII, secrets or real CSV content, and must stay that way.
 | PR #34 `integration/attendance-sso-hip` (head `b8ba918` on origin) | **Draft**, OPEN, base `docs/mju-subject-evidence-pack`; CI 8/8 green on `b8ba918`; keep Draft |
 | `origin/main` | `3244553` |
 
-* Pushed: `integration/attendance-sso-hip` (fast-forward only, no force) up to `b8ba918` (includes the S9 fix `966562b`). Commits made after that (the handoff update and the MJU token-flow adapter) are **local only** until the user approves a push. Nothing has been merged.
+* Fast-forward push to `integration/attendance-sso-hip` is the approved Draft PR #34 update (no force). It does not merge and does not update `main`. Commits after `b8ba918`: handoff/VPS checklist, MJU token flow, then the candidate-subject commit. PR #34 stays Draft.
 * PR #34 range = 5 own commits + 2 FaceScan commits (the same ones as PR #33) + 1 merge commit + docs commits. Merge order: **#30 -> #33 -> #34**.
 
 ### Merge readiness (reviewed 2026-10-09)
@@ -87,8 +87,8 @@ Merge conflicts resolved in `0d966f1`: `.gitignore` (union) and `backend/src/rep
 * Production detection reads `config.app.env` (use `isProduction(config)`).
 * **Policy S9 (confirmed by the user, 2026-10-09):** a candidate link, or any link, must **never be auto-approved without evidence that the identity matches**. Acceptable evidence = a verified provider subject *and* a protected national-ID lookup (HMAC) that resolves to the same `employee_uid` in the same login. Never from name, email, a CSV row, an admin import alone, or the callback `ac`. Code review and tests (2026-10-09): in the live SSO path a `candidate` link is **never promoted**: `identityResolution.resolve()` throws `IDENTITY_NOT_APPROVED` (403) before any approval code runs, whether the national ID matches the same employee, another employee, or is absent. Four regression tests in `backend/tests/ssoIdentityRuntime.test.js` (prefix `S9:`) lock this, and were verified to fail under a mutation that treats `IDENTITY_NOT_APPROVED` as unknown. `ac`, email-shaped subjects and email/name-only profiles create no link.
 * **S9 fix (commit `966562b`, pushed):** `issueSessionFromOAuthProfile` now requires a verified MJU subject before any employee lookup: invalid proof (`ac`, email-shaped, email-only) -> 403 `SSO_SUBJECT_INVALID`; missing subject or unconfirmed subject contract -> 403 `SSO_SUBJECT_NOT_VERIFIED`. A citizen ID alone never opens a session (applies to every provider, including `mock`, so dev mock login needs `SSO_SUBJECT_CONTRACT_CONFIRMED=true`). `mjuSubjectAdapter` also rejects a profile subject equal to `ac`/the callback `ac`. The unreachable candidate-to-approved branch in `linkProviderSubjectFromSsoLogin` was deleted. Four new `S9:` tests; verified to fail (4 failures) without the fix. Still open (low): record the evidence type on approvals instead of only `approvedBy: system:sso`.
-* **Shortest MVP path (Login -> MJU -> Callback -> Identity Mapping -> Session -> Logout):** (1) get MJU's written answers (section 6) and a registered test callback; (2) set (outside git) `SSO_ENABLED`, `SSO_CALLBACK_CONFIRMED`, `SSO_MJU_TOKEN_FLOW=true`, `SSO_TOKEN_URL` (token.aspx as MJU confirms it), `SSO_SUBJECT_CLAIM`, `SSO_PROTOCOL_CONTRACT_CONFIRMED` and `SSO_SUBJECT_CONTRACT_CONFIRMED` (the last two only for the approved single-account probe); no client secret is used in this flow; (3) `npm run sso:preflight` must report ready (mode `mju token flow`); (4) staging only, one consenting test account: login -> callback -> mapping -> session -> `/me` -> logout; (5) check the failure cases (bad callback, replayed code, unknown subject) against the existing `backend/tests/ssoMvp.test.js` behaviour; (6) only then decide whether to enable for the 50-person scope. HIP people skip all of this.
-* Everything is fail-closed and OFF by default: `SSO_ENABLED`, `SSO_CALLBACK_CONFIRMED`, `SSO_PROTOCOL_CONTRACT_CONFIRMED`, `SSO_SUBJECT_CONTRACT_CONFIRMED`, and a non-empty `SSO_NATIONAL_ID_CLAIMS` for any non-mock provider. `npm run sso:preflight` prints a yes/no readiness check.
+* **Shortest staging path (Login -> MJU -> Callback -> Identity Mapping -> Session -> Logout):** (1) set, outside git, `SSO_ENABLED`, `SSO_CALLBACK_CONFIRMED`, `SSO_MJU_TOKEN_FLOW=true`, `SSO_SIGNIN_URL`, `SSO_TOKEN_URL`, `SSO_SUBJECT_CLAIM=humanID` (or `personID` only if the operator chooses that candidate). Leave `SSO_PROTOCOL_CONTRACT_CONFIRMED` and `SSO_SUBJECT_CONTRACT_CONFIRMED` **false**. No client secret. (2) `npm run sso:preflight` must exit 0 in mode `mju token flow` and list the residual risks. (3) one consenting staging account: login -> callback -> mapping -> session -> `/me` -> logout. (4) failure cases: missing `ac`, replayed `ac`, missing `humanID`, ambiguous `humanID`, subject equal to citizen ID / e-mail / name, unknown citizen ID, subject linked to another employee. (5) only then decide whether to enable for the 50-person scope. HIP people skip all of this.
+* Everything is fail-closed and OFF by default: `SSO_ENABLED`, `SSO_CALLBACK_CONFIRMED`, `SSO_MJU_TOKEN_FLOW`, `SSO_PROTOCOL_CONTRACT_CONFIRMED`, `SSO_SUBJECT_CONTRACT_CONFIRMED`. `npm run sso:preflight` prints a yes/no readiness check. The two `*_CONTRACT_CONFIRMED` flags are OAuth-only and must not be turned on to describe the token flow as MJU-certified.
 
 ## 6. MJU protocol / callback `ac` (NOT confirmed)
 
@@ -98,11 +98,34 @@ Evidence matrix: `docs/SSO_PROTOCOL_EVIDENCE.md`. Do **not** assume OIDC.
 * Recorded but not independently observed: callback `GET ?ac=<32 chars>`. The meaning of `ac` (code? ticket? token?) is **unknown**.
 * Inferred only (from donor code): OAuth2 code exchange, `openid` scope default.
 * Unknown: token and userinfo endpoints, client secret, state echo, PKCE support, subject claim, citizen-ID claim name, signature. The MJU IT question list is in the evidence doc.
-* **MJU SSO adapter flow (implemented locally, behind `SSO_MJU_TOKEN_FLOW=true`, default OFF):** `GET /auth/sso/login` -> `signin.aspx?cid=` -> callback `?ac=` -> backend `POST token.aspx` with JSON `{clientID, code}` -> validate the JSON identity (needs `humanID` or `personID` as subject **and** `citizenID`) -> HMAC lookup of the citizen ID -> subject link (S9) -> Attendance session. No OAuth/OIDC step, no client secret, no userinfo call. Code: `backend/src/services/sso/mjuTokenClient.js`, `mjuPortalGuard.js`, `ssoService.js` (`handleMjuPortalCallback`), `ssoIdentityResolutionService.js` (`source: 'mju_token'`). Tests: `backend/tests/ssoMjuTokenFlow.test.js` (17, mock `token.aspx` over HTTP).
-* **Vendor sample `docs/sampleCallback.aspx(.vb)`** (MJU example ASP.NET page, dated 2025-04-08; the files are untracked and must stay uncommitted): the facts read from it, what our adapter adds (browser binding, `ac` replay guard, validate-before-session, HMAC mapping) and what stays UNKNOWN are in `docs/SSO_PROTOCOL_EVIDENCE.md` sections 1a and 4a. Short version: the sample is vendor evidence, **not** a signed contract; the subject field (`humanID` default vs `personID`), the lifetime/single-use of `ac`, the error format, signing and the citizen-ID release approval are still open, so `SSO_PROTOCOL_CONTRACT_CONFIRMED` and `SSO_SUBJECT_CONTRACT_CONFIRMED` stay off outside a controlled, owner-approved staging probe.
-* No real MJU login has been attempted. A live probe needs MJU IT answers, a registered test callback, secrets from their owners and a consenting test account.
+* **MJU SSO adapter flow** (`SSO_MJU_TOKEN_FLOW=true`, default OFF): `GET /auth/sso/login` -> `signin.aspx?cid=` -> callback `?ac=` -> backend `POST token.aspx` with JSON `{clientID, code}` -> candidate subject from `SSO_SUBJECT_CLAIM` (default `humanID`) **and** `citizenID` -> HMAC lookup -> Attendance session. No OAuth/OIDC step, no client secret, no userinfo call. `SSO_PROTOCOL_CONTRACT_CONFIRMED` and `SSO_SUBJECT_CONTRACT_CONFIRMED` are **not** required and must stay false: they mean MJU IT certified the contract, which has not happened. A missing claim, a disagreeing multi-value claim (`SSO_SUBJECT_AMBIGUOUS`), or a subject that collides with `ac`, the citizen ID, an e-mail or a name fails closed with no fallback. First-login links are stored as `source=mju_token_candidate_subject`, `subjectType=candidate:<claim>`, `confidence=medium`. Code: `backend/src/services/sso/mjuTokenClient.js`, `mjuPortalGuard.js`, `ssoService.js` (`handleMjuPortalCallback`), `ssoIdentityResolutionService.js` (`source: 'mju_token'`). Tests: `backend/tests/ssoMjuTokenFlow.test.js`.
+* **Owner decision 2026-10-09:** Phase B (MJU IT written confirmation) is skipped. Vendor-sample evidence may be used for a staging pilot. That decision does not certify `humanID`, `ac` lifetime, single-use at MJU, response signing, or citizen-ID release. Residual risks and staging gates are in section 6.
+* **Vendor sample `docs/sampleCallback.aspx(.vb)`** stays untracked and must not be committed. It is vendor evidence, not a signed contract.
+* No real MJU login has been attempted.
 
-**What to ask MJU IT (only what is needed to accept the `ac` callback and fetch a verified identity):**
+### Residual risks (Phase B skipped) and staging pilot gates
+
+Residual, accepted until a later written answer exists:
+
+1. `ac` lifetime, single-use at MJU, and binding to client id / redirect URI are unknown. Local replay protection is in-memory, per process, and does not survive a restart.
+2. MJU does not echo `state`. The HttpOnly `SameSite=Lax` cookie binds the callback to a browser that started login here. It does not prove this `ac` belongs to that login (login-CSRF window = binding TTL, 10 minutes).
+3. `humanID` is a candidate. It may not be stable or unique for every person. A collision with an existing link fails closed (`409`). It is not certified by MJU IT.
+4. The token response is trusted over TLS only. It is not signed. A wrong `token.aspx` URL would be trusted.
+5. Citizen-ID release to RAE has no written data-protection basis yet. The pilot must use one consenting account.
+6. More than one backend instance does not share the replay/binding store.
+
+Staging pilot gates (all must pass before any wider enablement; none of these are a production deploy):
+
+| Gate | Pass condition |
+|---|---|
+| Flags | `SSO_MJU_TOKEN_FLOW=true`; both `*_CONTRACT_CONFIRMED` flags false; preflight exit 0 |
+| Account | one consenting person, staging callback only |
+| Success | login, callback, HMAC map, `/me`, logout, refresh token revoked |
+| Fail closed | replayed `ac`, missing cookie, missing/ambiguous subject, subject = citizen ID or name or e-mail, unknown citizen ID, cross-employee subject: no session and no new link |
+| Audit | new link row is `candidate:humanID` (or `candidate:personID`), source `mju_token_candidate_subject`, confidence `medium` |
+| Rollback | set `SSO_ENABLED=false` or `SSO_MJU_TOKEN_FLOW=false` and restart; no migration is required for this pilot |
+
+**What remains useful to ask MJU IT later** (not a blocker for the staging pilot):
 1. What is `ac` exactly: a one-time authorization code or ticket? Its lifetime, single-use rule, and whether it is bound to the client id / redirect URI.
 2. How does our backend redeem or verify `ac` server-to-server: URL, HTTP method, authentication (client secret, IP allow-list, signature), request and response format, with a sample response for a synthetic or test user.
 3. What identity fields come back: the stable, never-reused subject identifier (name and format) and the citizen-ID claim name (and whether it is a plain 13-digit value). Is the response signed, or protected by TLS only?
@@ -111,19 +134,18 @@ Evidence matrix: `docs/SSO_PROTOCOL_EVIDENCE.md`. Do **not** assume OIDC.
 6. Written approval for releasing citizen ID to RAE (data-protection basis).
 The full 15-question list stays in `docs/SSO_PROTOCOL_EVIDENCE.md`; the six above are the minimum for the MVP.
 
-## 7. QA (latest, 2026-10-09; production code unchanged since `0d966f1`; later commits are docs and tests)
+## 7. QA (latest, 2026-10-09, after the candidate-subject change; not committed)
 
 | Suite | Result |
 |---|---|
-| ESLint (backend) | clean |
-| Backend (no DB) | 174 tests: 168 pass, 0 fail, 6 skipped (DB opt-in); includes the `S9:` tests and the S9 fix (`966562b`, pushed) |
-| Scripts | 36/36 pass |
-| Secret scan (`node scripts/secret-scan.mjs`) | passed (287 files) |
-| MariaDB QA (10.11.9 and 10.3.39, plain + binlog ROW/STATEMENT) | 34/34 pass |
-| All migrations + seed on a fresh 10.11.9 DB | applied cleanly in order |
-| DB integration (identifier, FaceScan, release1) on a fresh DB | 18/18 pass with `TZ=UTC` |
-| PR #34 CI (head `b8ba918`) | 8/8 jobs green |
-| PR #30 / #33 CI | 8/8 jobs green each |
+| ESLint (changed SSO files) | clean |
+| Backend `npm test` (no DB) | 185 pass, 0 fail, 6 skipped, then token-flow cookie Path/`Secure`, cap-eviction and the renamed gate test were added (`ssoMjuTokenFlow.test.js` 18/18) |
+| Secret scan | passed (292 tracked files). `docs/sampleCallback.aspx(.vb)` stayed untracked |
+| `sso:preflight` with empty env | exit 1 (SSO off) |
+| `sso:preflight` with synthetic token-flow flags, both contract flags false | exit 0, mode `mju token flow`, residual risks listed |
+| Mutation | blanking the ambiguous-subject throw failed `ssoMjuTokenFlow` (2 tests); throw restored; those 2 tests pass again |
+| MariaDB / DB integration | not re-run (no schema change; suites stay opt-in). Previous result on 2026-10-09: MariaDB QA 34/34, fresh migrate+seed OK, DB integration 18/18 with `TZ=UTC` |
+| PR CI | #30, #33, and #34 at `b8ba918` were 8/8 green. Local commits after `b8ba918` are not on the PR yet |
 
 Known issues:
 * Two `facescanNormalization.mariadb.test.js` tests fail on a UTC+7 host (`15:00:00` vs `08:00:00`); the same failure exists at `00b92c5`; they pass with `TZ=UTC` (CI is UTC). Not caused by the SSO work.

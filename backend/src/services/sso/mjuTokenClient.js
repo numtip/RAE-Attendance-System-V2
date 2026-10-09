@@ -8,8 +8,9 @@ const { HttpError } = require('../../utils/httpError');
  *   MJU     -> 200 + JSON identity document (citizenID, humanID, personID, ...)
  *
  * This is NOT OAuth/OIDC: no client secret, no grant_type, no redirect_uri, no userinfo call, no `state` echo.
- * The response shape is vendor-sample evidence only; MJU has not confirmed it in writing, so the whole path stays behind
- * SSO_PROTOCOL_CONTRACT_CONFIRMED and SSO_SUBJECT_CONTRACT_CONFIRMED.
+ * The response shape is vendor-sample evidence only. Owner decision 2026-10-09: that evidence may be used without
+ * written MJU IT confirmation. humanID (or SSO_SUBJECT_CLAIM) is a candidate subject, never a certified contract.
+ * SSO_PROTOCOL_CONTRACT_CONFIRMED and SSO_SUBJECT_CONTRACT_CONFIRMED stay off and do not upgrade this path.
  */
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -19,11 +20,28 @@ const MAX_RESPONSE_BYTES = 64 * 1024;
 const ALLOWED_SUBJECT_CLAIMS = Object.freeze(['humanID', 'personID']);
 const DEFAULT_SUBJECT_CLAIM = 'humanID';
 const SUBJECT_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+/** Identity-looking fields that must never be stored as the subject, even if copied into humanID/personID. */
+const REJECTED_SUBJECT_FIELDS = Object.freeze([
+  'name', 'e_mail', 'email', 'firstName', 'lastName', 'firstNameEn', 'lastNameEn', 'titleName', 'titleNameEn',
+]);
 
 function nonEmptyString(value) {
   if (typeof value === 'string') return value.trim();
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return '';
+}
+
+/**
+ * One configured claim. An array of disagreeing values is ambiguous (fail closed).
+ * Objects and empty values are absent — never filled from another field.
+ */
+function readClaim(value) {
+  if (Array.isArray(value)) {
+    const unique = [...new Set(value.map(nonEmptyString).filter(Boolean))];
+    if (unique.length > 1) return { ambiguous: true, value: '' };
+    return { ambiguous: false, value: unique[0] || '' };
+  }
+  return { ambiguous: false, value: nonEmptyString(value) };
 }
 
 function createMjuTokenClient({ fetchImpl = global.fetch, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
@@ -88,16 +106,22 @@ function createMjuTokenClient({ fetchImpl = global.fetch, timeoutMs = DEFAULT_TI
  *
  * Failure classes:
  *  - nothing usable (no subject and no citizenID)  -> 401 SSO_CODE_INVALID (the code did not yield an identity)
- *  - one of the two missing                        -> 502 SSO_RESPONSE_INCOMPLETE
- *  - subject unusable (ac, citizenID, bad shape)   -> 403 SSO_SUBJECT_INVALID
+ *  - one of the two missing                        -> 502 SSO_RESPONSE_INCOMPLETE (no fallback to the other claim)
+ *  - configured claim has disagreeing values       -> 403 SSO_SUBJECT_AMBIGUOUS
+ *  - subject unusable (ac, citizenID, name, email) -> 403 SSO_SUBJECT_INVALID
  */
 function normalizeMjuIdentityResponse(response, { subjectClaim = DEFAULT_SUBJECT_CLAIM, ac } = {}) {
   if (!ALLOWED_SUBJECT_CLAIMS.includes(subjectClaim)) {
     throw new HttpError(503, 'SSO_NOT_READY', 'SSO_SUBJECT_CLAIM must be humanID or personID');
   }
   const doc = response && typeof response === 'object' && !Array.isArray(response) ? response : {};
-  const subject = nonEmptyString(doc[subjectClaim]);
+  const selected = readClaim(doc[subjectClaim]);
   const citizenID = nonEmptyString(doc.citizenID);
+
+  if (selected.ambiguous) {
+    throw new HttpError(403, 'SSO_SUBJECT_AMBIGUOUS', 'MJU subject field has disagreeing values');
+  }
+  const subject = selected.value;
 
   if (!subject && !citizenID) {
     throw new HttpError(401, 'SSO_CODE_INVALID', 'MJU returned no identity for this login code');
@@ -108,10 +132,15 @@ function normalizeMjuIdentityResponse(response, { subjectClaim = DEFAULT_SUBJECT
   if (!SUBJECT_PATTERN.test(subject)) {
     throw new HttpError(403, 'SSO_SUBJECT_INVALID', 'MJU subject is not a valid identity proof');
   }
-  // The subject is stored in employee_identity_links, so it must never be the callback code or a National ID.
+  // The subject is stored in employee_identity_links, so it must never be the callback code, a National ID,
+  // or a name/e-mail copied into the configured claim. The other allowed claim is not a fallback.
   const subjectDigits = subject.replace(/\D/g, '');
   const sameDigits = subjectDigits.length > 0 && subjectDigits === citizenID.replace(/\D/g, '');
-  if (subject === String(ac ?? '') || subject === citizenID || sameDigits) {
+  const collidesWithName = REJECTED_SUBJECT_FIELDS.some((field) => {
+    const other = nonEmptyString(doc[field]);
+    return other.length > 0 && other === subject;
+  });
+  if (subject === String(ac ?? '') || subject === citizenID || sameDigits || collidesWithName) {
     throw new HttpError(403, 'SSO_SUBJECT_INVALID', 'MJU subject is not a valid identity proof');
   }
 

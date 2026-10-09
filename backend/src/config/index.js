@@ -46,10 +46,14 @@ module.exports = {
     protocolContractConfirmed: process.env.SSO_PROTOCOL_CONTRACT_CONFIRMED === 'true',
     /**
      * MJU portal flow from the vendor sample: signin.aspx?cid= -> callback ?ac= -> POST token.aspx {clientID, code}.
-     * Off by default (fail closed); also needs SSO_PROTOCOL_CONTRACT_CONFIRMED and SSO_SUBJECT_CONTRACT_CONFIRMED.
+     * Off by default (fail closed). Uses vendor-sample evidence. Does not require
+     * SSO_PROTOCOL_CONTRACT_CONFIRMED or SSO_SUBJECT_CONTRACT_CONFIRMED (those stay the OAuth gates).
      */
     mjuTokenFlow: process.env.SSO_MJU_TOKEN_FLOW === 'true',
-    /** Which token.aspx field is the stable MJU subject: humanID (default) or personID. Never citizenID. */
+    /**
+     * Candidate subject field for token.aspx. Default humanID is vendor-sample evidence, not an MJU IT certification.
+     * personID is the only other allowed value. citizenID, e-mail and name are never accepted.
+     */
     subjectClaim: process.env.SSO_SUBJECT_CLAIM || 'humanID',
     loginHandoffTtlMs: Number(process.env.SSO_LOGIN_HANDOFF_TTL_MS || 45_000),
     /** Comma-separated OAuth userinfo claim names for Thai citizen ID (see docs/SSO_IDENTITY_FLOW.md). */

@@ -90,16 +90,23 @@ function createSsoIdentityResolutionService(deps) {
       const subjectExtraction = extractVerifiedSubject({
         profile,
         rawQuery,
-        subjectContractConfirmed: config.sso.subjectContractConfirmed === true,
+        // The token path never treats the subject as MJU-IT certified, even if that flag is set.
+        subjectContractConfirmed: fromMjuToken ? false : config.sso.subjectContractConfirmed === true,
+        candidateSubjectOnly: fromMjuToken,
+        subjectType: fromMjuToken ? `candidate:${config.sso.subjectClaim}` : undefined,
       });
 
-      // S9: a citizen ID alone is never enough to open a session. A session needs a verified MJU subject
-      // (provider contract confirmed, not `ac`, not an email-shaped or missing subject). Checked before any
-      // employee lookup so an unverified login learns nothing about who exists.
+      // S9: a citizen ID alone is never enough to open a session. OAuth needs a contract-confirmed subject.
+      // The MJU token path accepts only a candidate subject from the configured claim (default humanID).
+      // Checked before any employee lookup so a bad login learns nothing about who exists.
       if (subjectExtraction.status === 'invalid') {
         throw new HttpError(403, 'SSO_SUBJECT_INVALID', 'MJU subject is not a valid identity proof');
       }
-      if (subjectExtraction.status !== 'verified' || !subjectExtraction.subject) {
+      const subjectAccepted = fromMjuToken
+        ? subjectExtraction.status === 'candidate'
+          && subjectExtraction.evidence === 'candidate_subject_claim_not_mju_certified'
+        : subjectExtraction.status === 'verified';
+      if (!subjectAccepted || !subjectExtraction.subject) {
         throw new HttpError(403, 'SSO_SUBJECT_NOT_VERIFIED', 'MJU subject is not verified');
       }
 
@@ -148,8 +155,10 @@ function createSsoIdentityResolutionService(deps) {
           providerKey: PROVIDER_MJU_SSO,
           providerSubject: subjectExtraction.subject,
           employeeUid: employee.employeeUid,
-          emailSnapshot: profile.email || profile.mail || profile.preferred_username,
+          emailSnapshot: fromMjuToken ? null : (profile.email || profile.mail || profile.preferred_username),
           subjectType: subjectExtraction.subjectType || 'opaque',
+          source: fromMjuToken ? 'mju_token_candidate_subject' : undefined,
+          confidence: fromMjuToken ? 'medium' : undefined,
         });
         await logSsoIdentityEvent(repositories, {
           eventType: 'sso_provider_link',

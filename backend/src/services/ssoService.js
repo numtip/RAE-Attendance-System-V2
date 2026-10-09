@@ -36,11 +36,12 @@ function createSsoService(deps) {
     assertSsoGate(config);
   }
 
-  /** The MJU portal flow never runs on the mock provider's exemption: it needs MJU's written protocol contract. */
+  /**
+   * Portal token flow opt-in. SSO_MJU_TOKEN_FLOW (default off) is the operator switch.
+   * SSO_PROTOCOL_CONTRACT_CONFIRMED is the OAuth written-confirmation gate and is not consulted here:
+   * this path uses vendor-sample evidence only and must not be described as MJU IT certified.
+   */
   function assertMjuTokenFlowReady() {
-    if (config.sso.protocolContractConfirmed !== true) {
-      throw new HttpError(503, 'SSO_NOT_READY', 'MJU token/userinfo protocol contract is not confirmed');
-    }
     if (!config.sso.tokenUrl || !config.sso.clientId) {
       throw new HttpError(503, 'SSO_NOT_READY', 'SSO environment configuration is incomplete');
     }
