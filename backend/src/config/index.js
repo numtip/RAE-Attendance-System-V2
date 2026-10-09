@@ -43,4 +43,8 @@ module.exports = {
     httpTimeoutMs: Number(process.env.SSO_HTTP_TIMEOUT_MS || 15_000),
   },
   corsOrigin: process.env.CORS_ORIGIN || 'http://127.0.0.1:5173',
+  attendanceCore: {
+    url: process.env.ATTENDANCE_CORE_URL || '',
+    timeoutMs: Number(process.env.ATTENDANCE_CORE_TIMEOUT_MS || 8000),
+  },
 };

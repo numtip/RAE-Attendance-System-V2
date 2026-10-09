@@ -45,7 +45,7 @@ No second employee master is named in the repo. Do not assume `employee_id` from
 |---|---|---|---|---|---|---|
 | `employee_id` or `employee_uid` | `employee_uid` | Resolve through the employee plan | Required | `UNKNOWN_EMPLOYEE` otherwise | n/a | No default |
 | `id_type` | `id_type` | Copy | Required | `facescan_id` or `employee_id` | n/a | No default |
-| `id_type=national_id` | — | **Drop the row** | Forbidden | `SENSITIVE_ID` | n/a | Omitted |
+| `id_type=national_id` | `id_value` | Normalize 13 digits | Optional | `INVALID_FORMAT` if not 13 digits | Unique `(id_type, id_value)` | SSO identity resolution only; not attendance |
 | `id_value` | `id_value` | Copy | Required | Non-empty | Unique `(id_type, id_value)` in the file | No default |
 | `is_primary` | `is_primary` | `1` or `0` | Optional | None | n/a | `0` |
 

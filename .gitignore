@@ -23,3 +23,5 @@ database/local/
 logs/
 .DS_Store
 *.log
+!database/preflight/*.sql
+!database/rollbacks/*.sql

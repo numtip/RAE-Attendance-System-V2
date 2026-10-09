@@ -72,7 +72,7 @@ Applied manually to **`rae-v2-mariadb` / `attendance_v2`**: enum includes **`per
 ## Blockers
 
 1. Authoritative real deduped MJU + IDCard batch on VPS with owner, timestamp, and `input_sha256`.
-2. **National ID storage policy** — batch validates uniqueness via `national_id_sha256` audit; raw `national_id` rows are not in the standard dry-run insert bundle until approved.
+2. **National ID storage policy** — superseded: lookups now use HMAC-SHA-256 with key version (`national_id_lookup_hmac`); see `docs/NATIONAL_ID_PROTECTION_POLICY.md`. Raw `national_id` rows are not in the dry-run insert bundle.
 3. Approved import window + fresh UUID allocation at insert time.
 4. SSO: MJU subject contract, userinfo/token endpoints, and browser token handoff.
 

@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { loadIdentifierKeys } from './identifierCrypto.mjs';
 import {
   buildImportBatchFromPersonRecords,
   dryRun,
@@ -10,12 +11,23 @@ import {
 const inputPath = process.argv[2];
 if (!inputPath) {
   console.error(
-    'usage: node scripts/data-onboarding/prepare-import-batch.mjs <person-batch.json> [--write-local]',
+    'usage: node scripts/data-onboarding/prepare-import-batch.mjs <person-batch.json> [--write-local] [--require-keys]',
   );
   process.exit(2);
 }
 
 const writeLocal = process.argv.includes('--write-local');
+const requireKeys = process.argv.includes('--require-keys');
+let identifierKeys = null;
+if (requireKeys || process.env.EMPLOYEE_IDENTIFIER_HMAC_KEY || process.env.EMPLOYEE_IDENTIFIER_HMAC_KEY_FILE) {
+  try {
+    identifierKeys = loadIdentifierKeys(process.env);
+  } catch (error) {
+    // error.code only; key material is never included
+    console.error(`identifier key configuration invalid: ${error.code || 'UNKNOWN'}`);
+    process.exit(2);
+  }
+}
 const raw = await readFile(inputPath, 'utf8');
 const parsed = JSON.parse(raw);
 const records = Array.isArray(parsed) ? parsed : parsed.persons ?? parsed.records;
@@ -33,7 +45,7 @@ const manifest = {
   sequence_start: Number(parsed.manifest?.sequence_start || 1),
 };
 
-const batch = buildImportBatchFromPersonRecords(records, manifest);
+const batch = buildImportBatchFromPersonRecords(records, manifest, { identifierKeys });
 if (!batch.uniqueness.ok) {
   console.error(JSON.stringify(redactImportBatchSummary(batch), null, 2));
   process.exit(1);

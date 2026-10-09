@@ -3,6 +3,7 @@
  * and never read production credentials.
  */
 import { createHash, randomUUID } from 'node:crypto';
+import { buildLookup } from './identifierCrypto.mjs';
 
 export const TOOL_VERSION = '0.1.0';
 
@@ -23,7 +24,7 @@ export const BALANCE_TYPES = new Set(['sick', 'personal', 'vacation', 'maternity
 export const EMPLOYEE_TYPES = new Set(['university', 'department', 'contract']);
 export const EMPLOYEE_STATUSES = new Set(['active', 'inactive', 'resigned']);
 export const ATTENDANCE_STATUSES = new Set(['present', 'late', 'absent', 'leave', 'holiday']);
-export const ID_TYPES = new Set(['facescan_id', 'national_id', 'employee_id', 'personnel_id']);
+export const ID_TYPES = new Set(['facescan_id', 'employee_id', 'personnel_id', 'national_id']);
 export const ACCESS_ROLES = new Set(['EXECUTIVE', 'MANAGER', 'EMPLOYEE', 'ADMIN']);
 export const SCOPE_TYPES = new Set(['self', 'org_unit', 'organization']);
 export const PERSONNEL_ID_SOURCE = 'mju_person_api';
@@ -55,7 +56,7 @@ export function allocateEmployeeIdentity(sequence, { uuidFactory = randomUUID } 
   };
 }
 
-/** Deterministic UUID preview for approval packets only — regenerate at import time. */
+/** Deterministic UUID preview for approval packets only โ€” regenerate at import time. */
 export function previewEmployeeUid(sourceBatchId, sequence) {
   const hash = createHash('sha256')
     .update(`rae-attendance-v2:import-preview:${sourceBatchId}:${sequence}`)
@@ -63,10 +64,10 @@ export function previewEmployeeUid(sourceBatchId, sequence) {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
-export function hashIdentifierValue(value) {
-  const text = value == null ? '' : String(value).trim();
-  if (!text) return null;
-  return sha256Text(`rae-attendance-v2:identifier:${text}`);
+/** National ID lookup digest: HMAC-SHA-256 with versioned key, or null when no keys are configured. */
+export function nationalIdLookup(nationalId, identifierKeys) {
+  if (!identifierKeys) return null;
+  return buildLookup('national_id', nationalId, identifierKeys);
 }
 
 function readPersonField(row, names) {
@@ -102,7 +103,8 @@ export function validateCandidateIdentifierUniqueness(candidates) {
   return { ok: conflicts.length === 0, conflicts };
 }
 
-export function buildImportBatchFromPersonRecords(records, manifest = {}) {
+export function buildImportBatchFromPersonRecords(records, manifest = {}, options = {}) {
+  const identifierKeys = options.identifierKeys ?? null;
   if (!Array.isArray(records)) {
     throw new Error('records must be an array');
   }
@@ -141,6 +143,14 @@ export function buildImportBatchFromPersonRecords(records, manifest = {}) {
       return;
     }
 
+    let national_id_lookup = null;
+    try {
+      national_id_lookup = nationalIdLookup(national_id, identifierKeys);
+    } catch {
+      hold.push({ index, reason: 'NATIONAL_ID_INVALID_FORMAT' });
+      return;
+    }
+
     const employee_uid = previewEmployeeUid(sourceBatchId, sequence);
     const employee_id = attendanceEmployeeId(sequence);
     sequence += 1;
@@ -151,7 +161,7 @@ export function buildImportBatchFromPersonRecords(records, manifest = {}) {
       personnel_id,
       facescan_id,
       national_id,
-      national_id_sha256: hashIdentifierValue(national_id),
+      national_id_lookup,
       employee: {
         employee_uid,
         employee_id,
@@ -200,7 +210,8 @@ export function buildImportBatchFromPersonRecords(records, manifest = {}) {
     ]),
     identifier_audit: ready.map((candidate) => ({
       employee_id: candidate.employee_id,
-      national_id_sha256: candidate.national_id_sha256,
+      national_id_lookup_hmac: candidate.national_id_lookup?.lookup_hmac ?? null,
+      national_id_key_version: candidate.national_id_lookup?.key_version ?? null,
     })),
   };
 
@@ -213,9 +224,7 @@ export function buildImportBatchFromPersonRecords(records, manifest = {}) {
       index: candidate.index,
       employee_id: candidate.employee_id,
       employee_uid_preview: candidate.employee_uid,
-      national_id_sha256: candidate.national_id_sha256,
-      facescan_id_sha256: hashIdentifierValue(candidate.facescan_id),
-      personnel_id_sha256: hashIdentifierValue(candidate.personnel_id),
+      national_id_key_version: candidate.national_id_lookup?.key_version ?? null,
     })),
     employeeIdRange:
       ready.length > 0
@@ -228,7 +237,7 @@ export function buildImportBatchFromPersonRecords(records, manifest = {}) {
       sqlPattern:
         'BEGIN; INSERT INTO employees (...); INSERT INTO employee_identifier (... facescan ...); INSERT INTO employee_identifier (... personnel_id ...); COMMIT;',
       nationalId:
-        'Uniqueness checked via national_id_sha256 audit; raw national_id is not inserted by this dry-run bundle',
+        'Uniqueness checked in memory plus HMAC-SHA-256 lookup (versioned key) in identifier_audit; raw national_id is never emitted or inserted by this dry-run bundle',
       rollback:
         'On failure ROLLBACK the transaction; after a bad partial load delete rows listed in dry-run rollbackKeys (employees + identifiers) in reverse order',
     },
@@ -418,8 +427,11 @@ export function validateSource(bundle) {
       issue(errors, 'employee_identifier', index, 'UNKNOWN_EMPLOYEE', 'identifier does not map to an employee');
     }
     if (!ID_TYPES.has(row?.id_type)) issue(errors, 'employee_identifier', index, 'INVALID_ENUM', 'id_type is invalid');
-    if (row?.id_type === 'national_id') {
-      issue(errors, 'employee_identifier', index, 'SENSITIVE_ID', 'national_id values are out of scope for this importer');
+    if (row?.id_type === 'national_id' && row?.id_value) {
+      const digits = String(row.id_value).replace(/\D/g, '');
+      if (digits.length !== 13) {
+        issue(errors, 'employee_identifier', index, 'INVALID_FORMAT', 'national_id must be 13 digits');
+      }
     }
     if (!row?.id_value) issue(errors, 'employee_identifier', index, 'REQUIRED', 'id_value is required');
   });
@@ -588,7 +600,6 @@ export function transformSource(bundle) {
   const employeesById = new Map(employees.map((row) => [row.employee_id, row]));
 
   const employeeIdentifier = asArray(bundle, 'employee_identifier')
-    .filter((row) => row.id_type !== 'national_id')
     .map((row) => ({
       employee_uid: uidFor(row, employeesById),
       id_type: row.id_type,
@@ -682,7 +693,7 @@ export function transformSource(bundle) {
       auth_logs: 'start empty; do not copy legacy auth events',
       system_logs: 'not imported',
       password_hash: 'forced null',
-      national_id: 'dropped',
+      national_id: 'allowed for SSO identity rows only; handle with care',
     },
   };
 }

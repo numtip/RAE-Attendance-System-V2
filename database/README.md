@@ -49,7 +49,7 @@ Seeded login password: **`valid-pass`** (bcrypt cost 8). Regenerate hash with `n
 - `system_logs` (minimal; optional diagnostics)
 - `schema_migrations` (runner bookkeeping)
 
-Staging/import tables (`staging_leave`, facescan staging, views) are **not** in this bootstrap. They belong to a later release or legacy import hooks.
+FaceScan **raw** staging (`facescan_import_batches`, `staging_facescan_raw`) is added in migration `014` (Phase A). Legacy catalog names `staging_facescan` / CSV daily flow remain separate. `staging_leave` and views are still out of bootstrap.
 
 ## Future legacy import hook strategy
 

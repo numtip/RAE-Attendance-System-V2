@@ -37,7 +37,7 @@ BEGIN;
 COMMIT;
 ```
 
-National ID: validated for uniqueness via `identifier_audit.national_id_sha256` in the preview bundle. Raw `national_id` rows are **not** part of the standard import dry-run until a separate storage policy is approved.
+National ID: validated for uniqueness in memory and via `identifier_audit.national_id_lookup_hmac` + `national_id_key_version` (HMAC-SHA-256, versioned key; no plain SHA) in the preview bundle. Raw `national_id` is never emitted; storage follows `docs/NATIONAL_ID_PROTECTION_POLICY.md`.
 
 On error: `ROLLBACK`. If a partial load occurred outside this pattern, delete using `rollbackKeys` from the approved dry-run report (employees and identifiers, reverse dependency order).
 

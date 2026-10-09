@@ -12,7 +12,7 @@ Dry-run checks implemented in `scripts/data-onboarding/lib.mjs`. They run on a J
 | `INVALID_ENUM` | employees, identifiers, attendance, leave, balances | Value outside the V2 enum |
 | `INVALID_DATE` | employees, attendance, monthly, leave | Impossible or non-ISO date, or month/year out of range |
 | `SECRET_PRESENT` | employees, staging_leave | `password_hash`, `national_id_encrypted`, or `raw_data` included |
-| `SENSITIVE_ID` | employee_identifier | `id_type = national_id` |
+| `INVALID_FORMAT` | employee_identifier | `national_id` not 13 digits |
 | `UNKNOWN_EMPLOYEE` | identifier, monthly, leave, balance | No matching employee in the same file |
 | `ORPHAN_ATTENDANCE` | daily_attendance | `employee_id` not in the employee set |
 | `DUPLICATE_IDENTIFIER` | employee_identifier | Same `id_type` + `id_value` |

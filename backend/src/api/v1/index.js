@@ -11,18 +11,22 @@ const { createEmployeeService } = require('../../services/employeeService');
 const { createAttendanceService } = require('../../services/attendanceService');
 const { createLeaveService } = require('../../services/leaveService');
 const { createSsoService } = require('../../services/ssoService');
+const { createAttendanceComputeService } = require('../../services/attendanceComputeService');
+const { createAttendanceComputeController } = require('../../controllers/attendanceComputeController');
 
 function createV1Router(container) {
   const authService = createAuthService(container);
   const employeeService = createEmployeeService(container);
   const attendanceService = createAttendanceService(container);
   const leaveService = createLeaveService(container);
+  const attendanceComputeService = createAttendanceComputeService(container);
   const ssoService = createSsoService(container);
   const auth = createAuthController(authService);
   const sso = createSsoController(ssoService, container);
   const employees = createEmployeeController(employeeService, attendanceService);
   const attendance = createAttendanceController(attendanceService);
   const leave = createLeaveController(leaveService);
+  const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
 
   const router = express.Router();
   router.use('/health', healthRoutes);
@@ -43,6 +47,9 @@ function createV1Router(container) {
 
   router.get('/attendance/daily/:date', authenticate, attendance.daily);
   router.get('/attendance/monthly/:employeeUid/:year/:month', authenticate, attendance.monthly);
+  router.post('/attendance/evaluate-day', authenticate, attendanceCompute.evaluateDay);
+  router.post('/attendance/evaluate-period', authenticate, attendanceCompute.evaluatePeriod);
+  router.post('/attendance/explain', authenticate, attendanceCompute.explainResult);
 
   router.get('/leave', authenticate, leave.list);
   router.get('/leave/balance/:employeeUid', authenticate, leave.balance);
