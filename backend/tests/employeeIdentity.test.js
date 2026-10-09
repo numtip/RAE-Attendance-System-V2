@@ -48,12 +48,12 @@ test('resolve national_id -> employee_uid', async () => {
   const { service } = createService();
   const plain = '1180200015351';
   await service.linkIdentifier({
-    employeeUid: '22222222-2222-2222-2222-222222222222',
+    employeeUid: '33333333-3333-3333-3333-333333333333',
     idType: 'national_id',
     idValue: plain,
   });
   const uid = await service.resolveUid('national_id', plain);
-  assert.equal(uid, '22222222-2222-2222-2222-222222222222');
+  assert.equal(uid, '33333333-3333-3333-3333-333333333333');
 });
 
 test('unknown identifier returns not found', async () => {
@@ -198,7 +198,7 @@ test('national_id protection fails closed when keys are missing (no plaintext fa
 
 test('national_id input is canonicalized strictly; names and malformed values are never accepted or linked', async () => {
   const { service } = createService();
-  const uid = '22222222-2222-2222-2222-222222222222';
+  const uid = '33333333-3333-3333-3333-333333333333';
   for (const bad of ['Somchai Jaidee', 'abc1180200015351', '118020001535', '11802000153511', '1180200015351x']) {
     await assert.rejects(
       () => service.resolve('national_id', bad),

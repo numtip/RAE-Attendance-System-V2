@@ -14,7 +14,7 @@ function createSsoController(ssoService, { config }) {
       res.redirect(302, url);
     }),
     callback: asyncRoute(async (req, res) => {
-      await ssoService.handleCallback({
+      const session = await ssoService.handleCallback({
         code: req.query.code,
         state: req.query.state,
         error: req.query.error,
@@ -24,10 +24,15 @@ function createSsoController(ssoService, { config }) {
         rawBody: req.body,
         cookieNames: cookieNames(req),
       });
+      const handoffCode = ssoService.issueLoginHandoff(session);
       const redirectBase = config.app.url.replace(/\/$/, '');
-      const target = new URL(`${redirectBase}/`);
-      target.searchParams.set('sso', 'success');
+      const target = new URL(`${redirectBase}/auth/sso/complete`);
+      target.searchParams.set('code', handoffCode);
       res.redirect(302, target.toString());
+    }),
+    exchange: asyncRoute(async (req, res) => {
+      const data = await ssoService.exchangeLoginHandoff({ code: req.body?.code });
+      success(res, data, 'เข้าสู่ระบบ SSO สำเร็จ');
     }),
     me: asyncRoute(async (req, res) => {
       const data = await ssoService.me(req.auth);

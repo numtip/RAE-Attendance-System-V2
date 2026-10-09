@@ -39,7 +39,12 @@ module.exports = {
     signoutUrl: process.env.SSO_SIGNOUT_URL || '',
     afterSignoutUrl: process.env.SSO_AFTER_SIGNOUT_URL || '',
     callbackDiagnostic: process.env.SSO_CALLBACK_DIAGNOSTIC === 'true',
+    /** Read-only OAuth userinfo field manifest (no session). Requires live token/userinfo URLs. */
+    userinfoProbe: process.env.SSO_USERINFO_PROBE === 'true',
     subjectContractConfirmed: process.env.SSO_SUBJECT_CONTRACT_CONFIRMED === 'true',
+    loginHandoffTtlMs: Number(process.env.SSO_LOGIN_HANDOFF_TTL_MS || 45_000),
+    /** Comma-separated OAuth userinfo claim names for Thai citizen ID (see docs/SSO_IDENTITY_FLOW.md). */
+    nationalIdClaims: process.env.SSO_NATIONAL_ID_CLAIMS || '',
     httpTimeoutMs: Number(process.env.SSO_HTTP_TIMEOUT_MS || 15_000),
   },
   corsOrigin: process.env.CORS_ORIGIN || 'http://127.0.0.1:5173',

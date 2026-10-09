@@ -25,3 +25,6 @@ logs/
 *.log
 !database/preflight/*.sql
 !database/rollbacks/*.sql
+database/IDCard*.csv
+database/local/
+mju-person-enrich.zip

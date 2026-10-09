@@ -7,7 +7,9 @@
  *   --mju-source <file.json>   { "authoritative": true|false, "records": [{ "personnelId", "nationalId" }] } (private, not in Git)
  *   --existing <file.json>     employee_identifier snapshot ([{ employeeUid, idType, idValue|lookupHmac, status }])
  *   --hip-approval-ref <ref>   approval reference that allows HIP classification
+ *   --hip-id-evidence-ref <ref> evidence that CSV 'Facescan Code' = HIP USERID (docs/HIP_ID_MAPPING_EVIDENCE.md); required for HIP/attendance
  *   --accept-unverified-mju-absence   operator confirms contractors have no MJU account (recorded in the report)
+ *   --confirmed-scope <n>      human-confirmed unique employees (default 50 for IDCardRaecsv2027); mismatch => exit code 2
  *   --summary                  counts only (no per-row items)
  *   --ephemeral-key            use a throw-away in-memory HMAC key when none is configured (counts only; nothing persisted)
  *
@@ -94,8 +96,10 @@ async function main() {
     keys,
     mjuSource: args['mju-source'] ? await readJson(args['mju-source']) : null,
     existingIdentifiers: args.existing ? await readJson(args.existing) : [],
+    confirmedScope: Number(args['confirmed-scope'] ?? 50),
     hipPolicy: {
       approvalRef: args['hip-approval-ref'],
+      hipIdFieldEvidenceRef: args['hip-id-evidence-ref'],
       acceptUnverifiedMjuAbsence: args.flags.has('accept-unverified-mju-absence'),
     },
   });
@@ -103,6 +107,10 @@ async function main() {
   const output = { ...report, keySource };
   if (args.flags.has('summary')) delete output.items;
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+  if (report.scope.matchesConfirmedScope === false) {
+    console.error('map-idcard-identity-kinds: unique rows do not match the confirmed scope');
+    process.exitCode = 2;
+  }
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop());

@@ -22,16 +22,34 @@ const HIP_BATCH_SOURCE = 'IDCardRaecsv2027';
 /** The two value namespaces that must not collide across different employees. */
 const NAMESPACE_PAIR = Object.freeze({ facescan_id: 'personnel_id', personnel_id: 'facescan_id' });
 
-/** SSO policy per kind: MJU SSO is never forced, and no subject is ever created by import/onboarding. */
+/**
+ * SSO eligibility is INDEPENDENT of attendance eligibility.
+ *   MJU         eligible on first verified MJU login (subject is linked then, never created by us)
+ *   HIP         NOT_REQUIRED: no MJU account needed. If an MJU account exists later, a verified login whose
+ *               protected National ID matches may link the subject to the same employee_uid (upgrade path).
+ *   UNRESOLVED  NOT_ELIGIBLE until classified
+ * Nothing here creates an SSO subject or forces MJU SSO.
+ */
 function ssoPolicyForKind(kind) {
+  const eligibility = {
+    [IDENTITY_KIND.MJU]: 'ELIGIBLE_ON_FIRST_MJU_LOGIN',
+    [IDENTITY_KIND.HIP]: 'NOT_REQUIRED',
+  }[kind] || 'NOT_ELIGIBLE';
   return Object.freeze({
     required: false,
-    // Only an MJU-verified login callback may create an identity link; kinds with no MJU account stay unlinked.
+    eligibility,
+    // Only an MJU-verified login callback may create an identity link; no import/onboarding path may.
     linkAllowedFrom: kind === IDENTITY_KIND.UNRESOLVED ? 'none' : 'verified_sso_callback_only',
     createSubject: false,
   });
 }
 
+/** Attendance (FaceScan/HIP) eligibility depends only on an active, non-empty facescan_id: never on SSO or MJU. */
+function attendanceEligibility(identifiers = []) {
+  const active = identifiers.filter((row) => !row.status || row.status === 'active');
+  const facescan = active.find((row) => (row.idType ?? row.id_type) === 'facescan_id');
+  return Object.freeze({ eligible: Boolean(facescan), via: facescan ? 'facescan_id' : null, requiresMjuSso: false });
+}
 function isActive(row) {
   return !row.status || row.status === 'active';
 }
@@ -66,5 +84,6 @@ module.exports = {
   HIP_BATCH_SOURCE,
   NAMESPACE_PAIR,
   ssoPolicyForKind,
+  attendanceEligibility,
   deriveIdentityKind,
 };

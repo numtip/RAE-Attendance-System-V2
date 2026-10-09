@@ -2,6 +2,7 @@ const {
   normalizeIdentifierValue,
   isStoredIdentifierType,
 } = require('../domain/employeeIdentifier');
+const { NAMESPACE_PAIR } = require('../domain/identityKind');
 const {
   IdentifierCryptoError,
   buildAuditEvent,
@@ -28,8 +29,10 @@ function mapRecord(record) {
 function createFixtureEmployeeIdentifierRepository(initialRows = [], { nationalId = null } = {}) {
   let nextId = 1;
   let protector = nationalId;
+  let seeded = false;
   const getProtector = () => {
     if (!protector) protector = createNationalIdProtector(process.env);
+    protectSeedNationalRows(protector);
     return protector;
   };
   const auditLog = [];
@@ -44,6 +47,23 @@ function createFixtureEmployeeIdentifierRepository(initialRows = [], { nationalI
     updatedAt: new Date().toISOString(),
     ...row,
   }));
+
+  /**
+   * Seed fixtures may list a SYNTHETIC national_id in plain text for readability. It is converted to the HMAC
+   * lookup (current key) the first time protection is needed, so the repository never serves or compares plaintext.
+   * Unconfigured keys => NOT_CONFIGURED (fail closed), same as production.
+   */
+  function protectSeedNationalRows(p) {
+    if (seeded) return;
+    for (const row of rows) {
+      if (row.idType === 'national_id' && /^\d{13}$/.test(String(row.idValue))) {
+        const current = p.lookupCurrent(row.idValue);
+        row.idValue = current.lookup_hmac;
+        row.lookupKeyVersion = current.key_version;
+      }
+    }
+    seeded = true;
+  }
 
   function findActiveNational(idValue) {
     const candidates = getProtector().lookupCandidates(idValue).map((c) => c.lookup_hmac);
@@ -151,6 +171,16 @@ function createFixtureEmployeeIdentifierRepository(initialRows = [], { nationalI
         const error = new Error('DUPLICATE_IDENTIFIER');
         error.code = 'DUPLICATE_IDENTIFIER';
         throw error;
+      }
+      // Parity with migration 017: facescan_id/personnel_id text is owned by ONE employee across both types.
+      if (NAMESPACE_PAIR[input.idType]) {
+        const clash = rows.some((row) => row.idType === NAMESPACE_PAIR[input.idType]
+          && row.idValue === idValue && row.employeeUid !== input.employeeUid);
+        if (clash) {
+          const error = new Error('IDENTIFIER_NAMESPACE_COLLISION');
+          error.code = 'IDENTIFIER_NAMESPACE_COLLISION';
+          throw error;
+        }
       }
       const now = new Date().toISOString();
       const record = {

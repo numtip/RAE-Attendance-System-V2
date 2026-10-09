@@ -28,4 +28,4 @@ function summarizeCallbackFields(query) {
   }));
 }
 
-module.exports = { summarizeCallbackFields };
+module.exports = { summarizeCallbackFields, valueKind, valueLength };

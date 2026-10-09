@@ -53,6 +53,23 @@ function auditValues(event) {
 const AUDIT_SQL = `INSERT INTO employee_identifier_access_audit
   (identifier_id, employee_uid, action, key_version, actor, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`;
 
+/**
+ * InnoDB may pick a deadlock victim when several writers race for the same (type,value) unique key (for example
+ * when a migration-017 namespace collision rolls the winner back). The victim statement is fully rolled back, so a
+ * bounded retry is safe: the retry then reports the real outcome (success / duplicate / namespace collision).
+ */
+async function withDeadlockRetry(fn, attempts = 5) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      const retryable = error && (error.errno === 1213 || error.code === 'ER_LOCK_DEADLOCK');
+      if (!retryable || attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 10 + Math.floor(Math.random() * 30) * attempt));
+    }
+  }
+}
+
 function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } = {}) {
   let protector = nationalId;
   const getProtector = () => {
@@ -202,7 +219,7 @@ function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } =
       }
       const now = new Date();
       try {
-        const [result] = await pool.query(
+        const [result] = await withDeadlockRetry(() => pool.query(
           `INSERT INTO employee_identifier (
              employee_uid, id_type, id_value, source_system, is_primary, status, verified_at, created_at, updated_at
            ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
@@ -216,7 +233,7 @@ function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } =
             now,
             now,
           ],
-        );
+        ));
         const [rows] = await pool.query(
           `SELECT ${COLUMNS} FROM employee_identifier WHERE id = ? LIMIT 1`,
           [result.insertId],
@@ -232,6 +249,10 @@ function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } =
         }
         if (error.code === 'ER_NO_REFERENCED_ROW_2') {
           throw codedError('UNKNOWN_EMPLOYEE');
+        }
+        // Migration 017 trigger: same facescan_id/personnel_id text owned by another employee (atomic, DB-level).
+        if (error.sqlState === '45000' && String(error.sqlMessage || error.message).includes('IDENTIFIER_NAMESPACE_COLLISION')) {
+          throw codedError('IDENTIFIER_NAMESPACE_COLLISION');
         }
         throw error;
       }

@@ -46,6 +46,7 @@ export const UNRESOLVED_REASONS = Object.freeze([
   'MJU_PERSONNEL_ID_DUPLICATE',
   'MJU_SOURCE_NOT_AUTHORITATIVE',
   'HIP_POLICY_NOT_APPROVED',
+  'HIP_ID_FIELD_UNVERIFIED',
   'MJU_ABSENCE_NOT_VERIFIED',
 ]);
 
@@ -126,6 +127,7 @@ export function buildIdentityKindMapping(rows, {
   mjuSource = null,
   hipPolicy = {},
   existingIdentifiers = [],
+  confirmedScope = null,
 } = {}) {
   if (!Array.isArray(rows)) throw new Error('rows must be an array');
   if (!keys) throw new Error('HMAC key is required to build identity mapping');
@@ -133,6 +135,9 @@ export function buildIdentityKindMapping(rows, {
   const mju = indexMjuSource(mjuSource, keys);
   const existing = indexExisting(existingIdentifiers, keys);
   const hipApproved = Boolean(String(hipPolicy?.approvalRef ?? '').trim());
+  // Evidence that CSV 'Facescan Code' really is the HIP USERID (docs/HIP_ID_MAPPING_EVIDENCE.md). Required before the
+  // HIP id is used as identity reference or attached as an attendance source.
+  const hipIdEvidence = Boolean(String(hipPolicy?.hipIdFieldEvidenceRef ?? '').trim());
   const hipBasis = mju.authoritative
     ? 'MJU_NEGATIVE_AUTHORITATIVE'
     : (hipPolicy?.acceptUnverifiedMjuAbsence === true ? 'OPERATOR_CONFIRMED_NO_MJU_ACCOUNT' : null);
@@ -180,6 +185,8 @@ export function buildIdentityKindMapping(rows, {
         reason: reason || null,
         maskedNationalId,
         primaryIdentity: kind === 'MJU' ? 'personnel_id' : (kind === 'HIP' ? 'facescan_id' : null),
+        // Attendance (HIP) eligibility is separate from MJU SSO eligibility: contractors need no MJU account.
+        attendanceEligible: kind !== IDENTITY_KIND.UNRESOLVED && hipIdEvidence,
         sso: ssoPolicyForKind(kind),
         ...extra,
       });
@@ -241,12 +248,14 @@ export function buildIdentityKindMapping(rows, {
         identifiers: [
           { idType: 'personnel_id', idValue: personnelId, sourceSystem: MJU_PERSONNEL_SOURCE, isPrimary: true },
           { idType: 'national_id', lookupHmac: currentLookup, lookupKeyVersion: keyVersion, sourceSystem: HIP_BATCH_SOURCE, isPrimary: false },
-          { idType: 'facescan_id', idValue: row.facescan, sourceSystem: HIP_BATCH_SOURCE, isPrimary: false },
-        ],
+        ].concat(hipIdEvidence
+          ? [{ idType: 'facescan_id', idValue: row.facescan, sourceSystem: HIP_BATCH_SOURCE, isPrimary: false }]
+          : []),
       });
     } else {
       hipEligibleStructural += 1; // structurally valid, no MJU match; still needs the policy gate below
       if (!hipApproved) return done('UNRESOLVED', 'HIP_POLICY_NOT_APPROVED', { hipEligible: true, ...existingInfo });
+      if (!hipIdEvidence) return done('UNRESOLVED', 'HIP_ID_FIELD_UNVERIFIED', { hipEligible: true, ...existingInfo });
       if (!hipBasis) return done('UNRESOLVED', 'MJU_ABSENCE_NOT_VERIFIED', { hipEligible: true, ...existingInfo });
       kind = IDENTITY_KIND.HIP;
       basis = hipBasis;
@@ -271,7 +280,7 @@ export function buildIdentityKindMapping(rows, {
     report: {
       mode: 'dry-run',
       writesDatabase: false,
-      hipPolicy: { approved: hipApproved, basis: hipBasis },
+      hipPolicy: { approved: hipApproved, basis: hipBasis, idFieldEvidence: hipIdEvidence },
       mjuSource: { authoritative: mju.authoritative, records: mju.records, unusableRecords: mju.unusable },
       input: {
         rows: rows.length,
@@ -281,7 +290,19 @@ export function buildIdentityKindMapping(rows, {
         uniqueNationalIds: new Set(unique.map((r) => r.national).filter(Boolean)).size,
         uniqueHipIds: new Set(unique.map((r) => r.facescan).filter(Boolean)).size,
       },
+      // The confirmed scope is the human-approved unique-employee count (not a hard-coded legacy number).
+      scope: {
+        confirmedUniqueEmployees: confirmedScope,
+        uniqueRows: unique.length,
+        matchesConfirmedScope: confirmedScope == null ? null : unique.length === confirmedScope,
+      },
       counts,
+      eligibility: {
+        attendance: hipIdEvidence ? counts.MJU + counts.HIP : 0,
+        ssoNotRequired: counts.HIP,
+        ssoEligibleOnFirstMjuLogin: counts.MJU,
+        ssoRequiredForAnyone: 0,
+      },
       total: unique.length,
       hipEligibleStructural,
       hipBasis: hipBasisCounts,

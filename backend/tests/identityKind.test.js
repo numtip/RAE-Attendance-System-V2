@@ -83,6 +83,10 @@ test('service: HIP vs MJU kind and same-value namespace collision across employe
   assert.equal(hip.kind, 'HIP');
   assert.equal(hip.sso.required, false);
   assert.equal(hip.sso.createSubject, false);
+  // attendance eligibility is independent of MJU/SSO
+  assert.deepEqual(hip.attendance, { eligible: true, via: 'facescan_id', requiresMjuSso: false });
+  assert.equal(hip.sso.eligibility, 'NOT_REQUIRED');
+  assert.equal((await service.getIdentityKind(MJU_UID)).sso.eligibility, 'ELIGIBLE_ON_FIRST_MJU_LOGIN');
 
   // Same text in the other namespace for a DIFFERENT employee is refused (either direction).
   await assert.rejects(

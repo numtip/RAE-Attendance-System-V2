@@ -1,3 +1,4 @@
+require('./helpers/syntheticIdentifierKeys');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const test = require('node:test');
@@ -18,6 +19,7 @@ const { createFixtureRepositories } = require('../src/repositories/fixtureReposi
 const baseSsoConfig = {
   enabled: true,
   callbackConfirmed: true,
+  subjectContractConfirmed: true,
   provider: 'mock',
   scopes: 'openid email',
   authorizationUrl: 'https://sso.example.test/oauth/authorize',
@@ -97,6 +99,9 @@ test('contract: mock provider success flow (login, callback, me, logout)', async
 
   const payload = JSON.parse(Buffer.from(session.accessToken.split('.')[1], 'base64url').toString());
   assert.equal(payload.authMethod, 'sso');
+  assert.equal(payload.sub, session.employee.employeeUid);
+  assert.equal(payload.national_id, undefined);
+  assert.equal(payload.citizenID, undefined);
 
   const profile = await ssoService.me({
     employeeUid: session.employee.employeeUid,
@@ -262,7 +267,7 @@ async function callbackWithFetch(responses, repositories) {
 test('contract: valid callback issues tokens for a known active employee', async () => {
   const session = await callbackWithFetch([
     { body: { access_token: 'provider-token', token_type: 'Bearer' } },
-    { body: { email: 'user@example.test' } },
+    { body: { email: 'user@example.test', citizenID: '9900000000001', sub: 'http-subject-001' } },
   ]);
   assert.equal(session.employee.email, 'user@example.test');
   assert.ok(session.accessToken);
@@ -274,7 +279,7 @@ test('contract: missing claims reject the callback', async () => {
       { body: { access_token: 'provider-token' } },
       { body: { sub: 'only-a-subject' } },
     ]),
-    (err) => err.code === 'SSO_USER_UNKNOWN',
+    (err) => err.code === 'SSO_NATIONAL_ID_MISSING',
   );
 });
 
@@ -282,7 +287,7 @@ test('contract: unknown employee rejects the callback', async () => {
   await assert.rejects(
     () => callbackWithFetch([
       { body: { access_token: 'provider-token' } },
-      { body: { email: 'nobody@example.test' } },
+      { body: { email: 'nobody@example.test', citizenID: '9900000000099', sub: 'unknown-subject' } },
     ]),
     (err) => err.code === 'SSO_USER_UNKNOWN',
   );
@@ -292,9 +297,9 @@ test('contract: missing employee mapping does not fall back to employee_id', asy
   await assert.rejects(
     () => callbackWithFetch([
       { body: { access_token: 'provider-token' } },
-      { body: { employee_id: 'E-USER' } },
+      { body: { employee_id: 'E-USER', sub: 'no-national-id' } },
     ]),
-    (err) => err.code === 'SSO_USER_UNKNOWN',
+    (err) => err.code === 'SSO_NATIONAL_ID_MISSING',
   );
 });
 
@@ -346,23 +351,31 @@ test('MJU signin and signout use only the cid parameter', async () => {
 
 test('contract: disabled employee rejects the callback', async () => {
   const repositories = createFixtureRepositories();
-  const previous = repositories.employees.findByEmail.bind(repositories.employees);
-  repositories.employees.findByEmail = async (email) => {
-    if (email === 'inactive@example.test') {
-      return {
-        employeeUid: '44444444-4444-4444-4444-444444444444',
-        email,
-        role: 'user',
-        status: 'inactive',
-        lockedUntil: null,
-      };
-    }
-    return previous(email);
-  };
+  const inactiveUid = '44444444-4444-4444-4444-444444444444';
+  repositories.employees.rows.push({
+    employeeUid: inactiveUid,
+    employeeId: 'E-INACTIVE',
+    firstNameTh: 'ไม่ใช้',
+    lastNameTh: 'งาน',
+    email: 'inactive@example.test',
+    passwordHash: 'x',
+    department: 'ภาควิชา',
+    position: 'เจ้าหน้าที่',
+    employeeType: 'department',
+    status: 'inactive',
+    role: 'user',
+    lockedUntil: null,
+  });
+  await repositories.employeeIdentifiers.insert({
+    employeeUid: inactiveUid,
+    idType: 'national_id',
+    idValue: '9900000000002',
+    sourceSystem: 'fixture',
+  });
   await assert.rejects(
     () => callbackWithFetch([
       { body: { access_token: 'provider-token' } },
-      { body: { email: 'inactive@example.test' } },
+      { body: { email: 'inactive@example.test', citizenID: '9900000000002', sub: 'inactive-subject' } },
     ], repositories),
     (err) => err.code === 'SSO_USER_DISABLED',
   );
@@ -391,6 +404,7 @@ test('SSO login redirect when enabled with mock provider env', async () => {
   const previous = {
     enabled: config.sso.enabled,
     callbackConfirmed: config.sso.callbackConfirmed,
+    subjectContractConfirmed: config.sso.subjectContractConfirmed,
     provider: config.sso.provider,
     authorizationUrl: config.sso.authorizationUrl,
     tokenUrl: config.sso.tokenUrl,
@@ -415,7 +429,9 @@ test('SSO login redirect when enabled with mock provider env', async () => {
       `/api/v1/auth/sso/callback?code=mock-auth-code&state=${encodeURIComponent(state)}`,
     );
     assert.equal(callback.status, 302);
-    assert.ok(callback.location.includes('sso=success'));
+    assert.ok(callback.location.includes('/auth/sso/complete'));
+    assert.ok(callback.location.includes('code='));
+    assert.equal(callback.location.includes('eyJ'), false);
   } finally {
     Object.assign(config.sso, previous);
     delete process.env.SSO_PROVIDER;

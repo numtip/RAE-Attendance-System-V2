@@ -40,3 +40,10 @@ Needs `EMPLOYEE_IDENTIFIER_HMAC_KEY[_FILE]`; `--ephemeral-key` uses a throw-away
 
 ## Not done / gates still closed
 MJU authoritative source, employee scope and VPS gate remain BLOCKED; no production migration/import/deploy. Staged identifiers (`staged`) exist only in memory for a future, separately approved import.
+
+## Update: confirmed scope, eligibility, atomic collision guard
+* **Scope:** 50 unique employees of `IDCardRaecsv2027.csv` is the confirmed scope (the CLI defaults `--confirmed-scope 50` and exits 2 on drift). The earlier "34" is retired.
+* **`Facescan Code` = HIP id:** documented but not verified against a real HIP export; see `docs/HIP_ID_MAPPING_EVIDENCE.md`. HIP rows and attendance attachment require `--hip-id-evidence-ref` (else `HIP_ID_FIELD_UNVERIFIED`).
+* **Two independent eligibilities:** attendance eligibility = an active `facescan_id` (+ verified mapping); SSO eligibility = `NOT_REQUIRED` (HIP), `ELIGIBLE_ON_FIRST_MJU_LOGIN` (MJU), `NOT_ELIGIBLE` (UNRESOLVED). `service.getIdentityKind()` and every mapping item expose both; nobody is forced onto MJU SSO.
+* **Atomic collision guard:** migration `017_identifier_namespace_claim.sql` (claim table + triggers) refuses, for every writer, the same facescan/personnel text on two employees; proven by concurrency tests on MariaDB 10.3 and 10.11 (`backend/tests/namespaceClaim.mariadb.test.js`). A deadlock victim is a safe rolled-back failure; the repository retries. Needs TRIGGER privilege (and `log_bin_trust_function_creators` or SUPER when binary logging is on). Preflight: `database/preflight/017_preflight.sql`; rollback: `database/rollbacks/017_*.down.sql`. Number 017 avoids the 015/016 files on `feat/facescan-ingestion-phase-a`.
+* **Callers of the `personnel_id` source rule:** only `employeeIdentityService.linkIdentifier` enforces it; no HTTP route or script calls it. Updated: tests, `scripts/data-onboarding/lib.mjs` (import batch rows now carry `source_system`). Future importers must set `source_system='mju_person_api'` for `personnel_id` and `IDCardRaecsv2027` for HIP rows.

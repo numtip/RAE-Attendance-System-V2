@@ -57,7 +57,7 @@ function mjuRecords(range) {
   return range.map((n) => ({ personnelId: personnelOf(n), nationalId: syntheticNational(n) }));
 }
 
-const APPROVED = { approvalRef: 'APPROVAL-SYNTHETIC-1' };
+const APPROVED = { approvalRef: 'APPROVAL-SYNTHETIC-1', hipIdFieldEvidenceRef: 'EVIDENCE-SYNTHETIC-1' };
 
 test('50 unique people stay in the list: 12 MJU / 32 HIP / 6 unresolved; masked report; no raw identifiers', () => {
   const keys = keysFor();
@@ -82,6 +82,9 @@ test('50 unique people stay in the list: 12 MJU / 32 HIP / 6 unresolved; masked 
     CSV_NATIONAL_MULTIPLE_FACESCAN: 2,
   });
   assert.deepEqual(report.hipBasis, { MJU_NEGATIVE_AUTHORITATIVE: 32 });
+  assert.deepEqual(report.eligibility, { attendance: 44, ssoNotRequired: 32, ssoEligibleOnFirstMjuLogin: 12, ssoRequiredForAnyone: 0 });
+  assert.ok(report.items.filter((item) => item.kind === 'HIP').every((item) => item.attendanceEligible && item.sso.eligibility === 'NOT_REQUIRED'));
+  assert.ok(report.items.filter((item) => item.kind === 'UNRESOLVED').every((item) => !item.attendanceEligible));
   assert.equal(report.writesDatabase, false);
   assert.deepEqual(report.invariants, {
     syntheticPersonnelIds: 0,
@@ -148,6 +151,20 @@ test('without an authoritative MJU source nothing is classified MJU, and HIP nee
   }));
   assert.deepEqual(report.counts, { MJU: 0, HIP: 2, UNRESOLVED: 0 });
   assert.deepEqual(report.hipBasis, { OPERATOR_CONFIRMED_NO_MJU_ACCOUNT: 2 });
+});
+
+test('Facescan Code = HIP USERID evidence gates HIP and attendance; MJU identity does not depend on it', () => {
+  const keys = keysFor();
+  const mjuSource = { authoritative: true, records: mjuRecords([1]) };
+  const noEvidence = { approvalRef: 'APPROVAL-SYNTHETIC-1' };
+  const { report, staged } = buildIdentityKindMapping([row(1, 2), row(2, 3)], { keys, mjuSource, hipPolicy: noEvidence });
+  assert.deepEqual(report.counts, { MJU: 1, HIP: 0, UNRESOLVED: 1 });
+  assert.deepEqual(report.unresolvedReasons, { HIP_ID_FIELD_UNVERIFIED: 1 });
+  assert.equal(report.hipPolicy.idFieldEvidence, false);
+  assert.equal(report.eligibility.attendance, 0);
+  assert.ok(report.items.every((item) => item.attendanceEligible === false));
+  // the MJU person is still MJU, but the unverified HIP id is NOT attached as an attendance source
+  assert.deepEqual(staged[0].identifiers.map((id) => id.idType), ['personnel_id', 'national_id']);
 });
 
 test('MJU matching uses the protected National ID only: same name / different ID never matches', () => {

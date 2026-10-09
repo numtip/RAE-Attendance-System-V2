@@ -13,7 +13,7 @@ const {
   notFoundMessage,
 } = require('../domain/employeeIdentifier');
 const { HttpError } = require('../utils/httpError');
-const { MJU_PERSONNEL_SOURCE, NAMESPACE_PAIR, deriveIdentityKind, ssoPolicyForKind } = require('../domain/identityKind');
+const { MJU_PERSONNEL_SOURCE, NAMESPACE_PAIR, deriveIdentityKind, ssoPolicyForKind, attendanceEligibility } = require('../domain/identityKind');
 
 /** Maps contract/repository protection errors to HTTP errors without echoing any identifier. */
 function mapProtectionError(error) {
@@ -165,6 +165,9 @@ function createEmployeeIdentityService({ repositories }) {
         if (error.code === 'DUPLICATE_IDENTIFIER') {
           throw new HttpError(409, 'DUPLICATE_IDENTIFIER', 'Identifier already linked to another employee');
         }
+        if (error.code === 'IDENTIFIER_NAMESPACE_COLLISION') {
+          throw new HttpError(409, 'IDENTIFIER_NAMESPACE_COLLISION', 'Identifier value collides with another identity namespace');
+        }
         if (error.code === 'UNKNOWN_EMPLOYEE') {
           throw new HttpError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
         }
@@ -190,7 +193,13 @@ function createEmployeeIdentityService({ repositories }) {
       }
       const rows = await employeeIdentifiers.listByEmployeeUid(employeeUid);
       const { kind, violations } = deriveIdentityKind(rows);
-      return { employeeUid, kind, violations, sso: ssoPolicyForKind(kind) };
+      return {
+        employeeUid,
+        kind,
+        violations,
+        attendance: attendanceEligibility(rows),
+        sso: ssoPolicyForKind(kind),
+      };
     },
 
     async listIdentifiers(employeeUid) {

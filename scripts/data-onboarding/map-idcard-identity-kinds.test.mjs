@@ -44,7 +44,7 @@ test('CLI: masked counts, CSV untouched, nothing written, fails closed without a
     assert.match(denied.stderr, /HMAC key is not configured/);
     assert.equal(denied.stdout, '');
 
-    const result = run(['--csv', csv, '--ephemeral-key', '--hip-approval-ref', 'APPROVAL-SYNTHETIC', '--accept-unverified-mju-absence']);
+    const result = run(['--csv', csv, '--confirmed-scope', '3', '--ephemeral-key', '--hip-approval-ref', 'APPROVAL-SYNTHETIC', '--hip-id-evidence-ref', 'EVIDENCE-SYNTHETIC', '--accept-unverified-mju-absence']);
     assert.equal(result.status, 0, result.stderr);
     const report = JSON.parse(result.stdout);
     assert.equal(report.keySource, 'ephemeral-in-memory');
@@ -57,7 +57,12 @@ test('CLI: masked counts, CSV untouched, nothing written, fails closed without a
       assert.equal(result.stdout.includes(`HX${n}000`), false);
     }
 
-    const unapproved = JSON.parse(run(['--csv', csv, '--ephemeral-key', '--summary']).stdout);
+    // default confirmed scope is 50: a 3-person file must be flagged, not silently accepted
+    const drift = run(['--csv', csv, '--ephemeral-key', '--summary']);
+    assert.equal(drift.status, 2);
+    assert.equal(JSON.parse(drift.stdout).scope.matchesConfirmedScope, false);
+
+    const unapproved = JSON.parse(run(['--csv', csv, '--confirmed-scope', '3', '--ephemeral-key', '--summary']).stdout);
     assert.deepEqual(unapproved.counts, { MJU: 0, HIP: 0, UNRESOLVED: 3 });
     assert.equal(unapproved.hipEligibleStructural, 3);
     assert.equal(unapproved.items, undefined);

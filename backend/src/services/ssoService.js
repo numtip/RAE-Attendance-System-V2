@@ -1,25 +1,13 @@
-const jwt = require('jsonwebtoken');
-const { randomUUID } = require('node:crypto');
 const { HttpError } = require('../utils/httpError');
-const { assertSsoGate, portalConfigReady } = require('./sso/ssoConfig');
+const { signAccessToken } = require('./sso/ssoTokens');
+const { assertSsoGate, assertProductionSafeSso, portalConfigReady } = require('./sso/ssoConfig');
 const { createOAuthProvider } = require('./sso/oauthProvider');
 const { createSsoStateStore } = require('./sso/ssoStateStore');
+const { createSsoLoginCodeStore } = require('./sso/ssoLoginCodeStore');
+const { summarizeUserInfoProfile } = require('./sso/userinfoDiagnostic');
 const { buildCidUrl } = require('./sso/mjuPortal');
 const { summarizeCallbackFields } = require('./sso/callbackDiagnostic');
-
-function assertJwtSecret(config) {
-  if (!config.jwt.secret) {
-    throw new HttpError(503, 'CONFIG_ERROR', 'JWT_SECRET is not configured');
-  }
-}
-
-function signAccessToken(config, employee, authMethod = 'sso') {
-  return jwt.sign(
-    { role: employee.role, email: employee.email, authMethod },
-    config.jwt.secret,
-    { subject: employee.employeeUid, expiresIn: config.jwt.expiresIn },
-  );
-}
+const { createSsoIdentityResolutionService } = require('./ssoIdentityResolutionService');
 
 function createSsoService(deps) {
   const {
@@ -27,6 +15,10 @@ function createSsoService(deps) {
     repositories,
     oauthProvider = createOAuthProvider(config, deps),
     stateStore = createSsoStateStore(),
+    loginCodeStore = createSsoLoginCodeStore({
+      ttlMs: config.sso.loginHandoffTtlMs,
+    }),
+    identityResolutionService = createSsoIdentityResolutionService(deps),
   } = deps;
 
   function disabledResponse() {
@@ -38,6 +30,7 @@ function createSsoService(deps) {
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
       }
+      assertProductionSafeSso(config);
       if (config.sso.callbackDiagnostic) {
         if (!config.sso.signinUrl || !config.sso.clientId) {
           throw new HttpError(503, 'SSO_NOT_READY', 'SSO environment configuration is incomplete');
@@ -58,7 +51,6 @@ function createSsoService(deps) {
       });
     },
 
-    // Live callback does not use createSsoIdentityChainService yet (subject contract UNKNOWN).
     async handleCallback({
       code,
       state,
@@ -72,6 +64,7 @@ function createSsoService(deps) {
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
       }
+      assertProductionSafeSso(config);
       if (config.sso.callbackDiagnostic) {
         const body = rawBody && typeof rawBody === 'object' && !Buffer.isBuffer(rawBody) ? rawBody : {};
         const details = {
@@ -118,43 +111,62 @@ function createSsoService(deps) {
         userInfoUrl: config.sso.userInfoUrl,
         accessToken,
       });
-      const email = profile.email || profile.mail || profile.preferred_username;
-      if (!email) {
-        throw new HttpError(403, 'SSO_USER_UNKNOWN', 'MJU profile did not include an email');
+
+      if (config.sso.userinfoProbe) {
+        const userinfo = summarizeUserInfoProfile(profile);
+        const details = {
+          userinfo,
+          subjectClaimPresent: Boolean(profile.sub || profile.subject || profile.providerSubject),
+          configuredNationalIdClaims: String(config.sso.nationalIdClaims || '')
+            .split(',')
+            .map((part) => part.trim())
+            .filter(Boolean),
+        };
+        console.log(`sso_userinfo_probe ${JSON.stringify(details)}`);
+        throw new HttpError(
+          503,
+          'SSO_NOT_READY',
+          'MJU userinfo contract probe complete; session not issued',
+          details,
+        );
       }
 
-      const employee = await repositories.employees.findByEmail(String(email).toLowerCase());
-      if (!employee) {
-        throw new HttpError(403, 'SSO_USER_UNKNOWN', 'No employee matches the MJU identity');
-      }
-      if (employee.status && employee.status !== 'active') {
-        throw new HttpError(403, 'SSO_USER_DISABLED', 'Employee is not active');
-      }
-      if (employee.lockedUntil && new Date(employee.lockedUntil).getTime() > Date.now()) {
-        throw new HttpError(403, 'ACCOUNT_LOCKED', 'This account is locked');
-      }
-
-      assertJwtSecret(config);
-      const refreshToken = randomUUID();
-      const expiresAt = new Date(Date.now() + config.jwt.refreshTokenDays * 86400000).toISOString();
-      await repositories.refreshTokens.save({
-        token: refreshToken,
-        employeeUid: employee.employeeUid,
-        role: employee.role,
-        email: employee.email,
-        expiresAt,
-        revokedAt: null,
+      const session = await identityResolutionService.issueSessionFromOAuthProfile({
+        profile,
+        rawQuery,
       });
 
       return {
-        accessToken: signAccessToken(config, employee),
-        refreshToken,
-        employee: {
-          employeeUid: employee.employeeUid,
-          email: employee.email,
-          role: employee.role,
-        },
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        employee: session.employee,
       };
+    },
+
+    issueLoginHandoff(session) {
+      if (!session?.accessToken || !session?.refreshToken || !session?.employee) {
+        throw new HttpError(500, 'INTERNAL_ERROR', 'SSO session is incomplete');
+      }
+      return loginCodeStore.issue({
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        employee: session.employee,
+      });
+    },
+
+    exchangeLoginHandoff({ code }) {
+      disabledResponse();
+      if (!code || String(code).trim() === '') {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'code is required');
+      }
+      const result = loginCodeStore.consume(String(code).trim());
+      if (result.status === 'expired') {
+        throw new HttpError(401, 'SSO_HANDOFF_EXPIRED', 'Login code expired');
+      }
+      if (result.status !== 'ok') {
+        throw new HttpError(401, 'SSO_HANDOFF_INVALID', 'Login code is invalid or already used');
+      }
+      return result.payload;
     },
 
     async me(auth) {
@@ -186,4 +198,5 @@ function createSsoService(deps) {
   };
 }
 
-module.exports = { createSsoService, signAccessToken };
+module.exports = { createSsoService };
+module.exports.signAccessToken = signAccessToken;

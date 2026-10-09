@@ -10,6 +10,8 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:migrate:seed": "node scripts/migrate.mjs --seed",
     "db:hash-dev-password": "node scripts/hash-dev-password.mjs",
+    "onboarding:idcard:dry-run": "node scripts/data-onboarding/reconcile-idcard-csv.mjs database/IDCardRaecsv2027.csv",
+    "onboarding:test": "node --test scripts/data-onboarding/onboarding.test.mjs backend/tests/idcardCsvIdentity.test.js",
     "contract:smoke": "node scripts/contract-smoke.mjs",
     "compose:smoke": "node scripts/compose-smoke.mjs",
     "staging:up": "docker compose -f deploy/docker-compose.yml up -d --build --wait",

@@ -38,6 +38,7 @@ function createV1Router(container) {
 
   router.get('/auth/sso/login', sso.login);
   router.get('/auth/sso/callback', sso.callback);
+  router.post('/auth/sso/exchange', sso.exchange);
   router.get('/auth/sso/me', authenticate, sso.me);
   router.post('/auth/sso/logout', authenticate, sso.logout);
 
