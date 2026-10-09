@@ -58,6 +58,9 @@ function extractVerifiedSubject(input = {}) {
   if (profile) {
     const claim = profile.sub || profile.subject || profile.providerSubject;
     const email = profile.email || profile.mail || profile.preferred_username;
+    if (claim && (isAcValue(claim) || (query.ac && String(claim) === String(query.ac)))) {
+      return result('invalid', { evidence: 'callback_ac_rejected' });
+    }
     if (!claim && email) {
       return result('invalid', { evidence: 'email_only_profile_rejected' });
     }

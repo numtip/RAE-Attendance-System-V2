@@ -90,6 +90,16 @@ function createSsoIdentityResolutionService(deps) {
         subjectContractConfirmed: config.sso.subjectContractConfirmed === true,
       });
 
+      // S9: a citizen ID alone is never enough to open a session. A session needs a verified MJU subject
+      // (provider contract confirmed, not `ac`, not an email-shaped or missing subject). Checked before any
+      // employee lookup so an unverified login learns nothing about who exists.
+      if (subjectExtraction.status === 'invalid') {
+        throw new HttpError(403, 'SSO_SUBJECT_INVALID', 'MJU subject is not a valid identity proof');
+      }
+      if (subjectExtraction.status !== 'verified' || !subjectExtraction.subject) {
+        throw new HttpError(403, 'SSO_SUBJECT_NOT_VERIFIED', 'MJU subject is not verified');
+      }
+
       const nationalIdExtraction = extractNationalIdFromProfile(
         profile,
         config.sso.nationalIdClaims,
@@ -99,10 +109,7 @@ function createSsoIdentityResolutionService(deps) {
       let link = null;
       let resolutionPath = null;
 
-      let bySubject = null;
-      if (subjectExtraction.status === 'verified' && subjectExtraction.subject) {
-        bySubject = await tryResolveByProviderSubject(subjectExtraction.subject);
-      }
+      const bySubject = await tryResolveByProviderSubject(subjectExtraction.subject);
 
       let employeeByNational = null;
       if (nationalIdExtraction.status === 'present') {
@@ -128,22 +135,20 @@ function createSsoIdentityResolutionService(deps) {
         employee = employeeByNational;
         resolutionPath = 'national_id';
 
-        if (subjectExtraction.status === 'verified' && subjectExtraction.subject) {
-          link = await identityResolution.linkProviderSubjectFromSsoLogin({
-            providerKey: PROVIDER_MJU_SSO,
-            providerSubject: subjectExtraction.subject,
-            employeeUid: employee.employeeUid,
-            emailSnapshot: profile.email || profile.mail || profile.preferred_username,
-            subjectType: subjectExtraction.subjectType || 'opaque',
-          });
-          await logSsoIdentityEvent(repositories, {
-            eventType: 'sso_provider_link',
-            employeeUid: employee.employeeUid,
-            providerKey: PROVIDER_MJU_SSO,
-            resolutionPath: 'national_id_first_login',
-            subjectType: subjectExtraction.subjectType || 'opaque',
-          });
-        }
+        link = await identityResolution.linkProviderSubjectFromSsoLogin({
+          providerKey: PROVIDER_MJU_SSO,
+          providerSubject: subjectExtraction.subject,
+          employeeUid: employee.employeeUid,
+          emailSnapshot: profile.email || profile.mail || profile.preferred_username,
+          subjectType: subjectExtraction.subjectType || 'opaque',
+        });
+        await logSsoIdentityEvent(repositories, {
+          eventType: 'sso_provider_link',
+          employeeUid: employee.employeeUid,
+          providerKey: PROVIDER_MJU_SSO,
+          resolutionPath: 'national_id_first_login',
+          subjectType: subjectExtraction.subjectType || 'opaque',
+        });
       } else {
         await resolveEmployeeByNationalId(nationalIdExtraction);
       }

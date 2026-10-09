@@ -195,7 +195,7 @@ test('name fields alone do not authenticate', async () => {
     () => service.issueSessionFromOAuthProfile({
       profile: { firstName: 'ผู้ใช้', lastName: 'ตัวอย่าง', email: 'user@example.test' },
     }),
-    (err) => err.code === 'SSO_NATIONAL_ID_MISSING',
+    (err) => err.code === 'SSO_SUBJECT_INVALID',
   );
 });
 
@@ -276,4 +276,56 @@ test('S9: name/email-only profiles and the callback ac value never create or app
   for (const subject of ['user@example.test', 'ac']) {
     assert.equal(await repositories.identityLinks.findByProviderSubject(PROVIDER_MJU_SSO, subject), null);
   }
+});
+
+// ---- S9 fix: no session without a verified MJU subject (a citizen ID alone is not an identity proof) ----
+
+test('S9: a valid citizen ID with no subject is denied (no session, no link)', async () => {
+  const repositories = createFixtureRepositories();
+  await assert.rejects(
+    () => runtime(repositories).issueSessionFromOAuthProfile({ profile: { citizenID: fakeCitizenId } }),
+    (err) => err.status === 403 && err.code === 'SSO_SUBJECT_NOT_VERIFIED',
+  );
+});
+
+test('S9: a valid citizen ID plus a subject is still denied while the MJU subject contract is unconfirmed', async () => {
+  const repositories = createFixtureRepositories();
+  const subject = 's9-unconfirmed-contract';
+  await assert.rejects(
+    () => runtime(repositories, { sso: { subjectContractConfirmed: false } }).issueSessionFromOAuthProfile({
+      profile: { citizenID: fakeCitizenId, sub: subject },
+    }),
+    (err) => err.status === 403 && err.code === 'SSO_SUBJECT_NOT_VERIFIED',
+  );
+  assert.equal(await repositories.identityLinks.findByProviderSubject(PROVIDER_MJU_SSO, subject), null);
+});
+
+test('S9: invalid identity proofs (ac, email-shaped or email-only) are denied even with a valid citizen ID', async () => {
+  const repositories = createFixtureRepositories();
+  const cases = [
+    { citizenID: fakeCitizenId, sub: 'ac' },
+    { citizenID: fakeCitizenId, sub: 'AC' },
+    { citizenID: fakeCitizenId, sub: 'user@example.test' },
+    { citizenID: fakeCitizenId, email: 'user@example.test' },
+  ];
+  for (const profile of cases) {
+    await assert.rejects(
+      () => runtime(repositories).issueSessionFromOAuthProfile({ profile }),
+      (err) => err.status === 403 && err.code === 'SSO_SUBJECT_INVALID',
+      JSON.stringify(Object.keys(profile)),
+    );
+  }
+  for (const subject of ['ac', 'AC', 'user@example.test']) {
+    assert.equal(await repositories.identityLinks.findByProviderSubject(PROVIDER_MJU_SSO, subject), null);
+  }
+});
+
+test('S9: the verified-subject path still works (first login links, second login uses the subject)', async () => {
+  const repositories = createFixtureRepositories();
+  const subject = 's9-verified-subject';
+  const first = await runtime(repositories).issueSessionFromOAuthProfile({ profile: { citizenID: fakeCitizenId, sub: subject } });
+  assert.equal(first.resolutionPath, 'national_id');
+  const second = await runtime(repositories).issueSessionFromOAuthProfile({ profile: { sub: subject } });
+  assert.equal(second.resolutionPath, 'provider_subject');
+  assert.equal(second.employee.employeeUid, userUid);
 });

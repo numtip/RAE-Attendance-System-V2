@@ -221,13 +221,7 @@ function createIdentityResolutionService(deps) {
             'Provider subject is linked to another employee',
           );
         }
-        if (existing.status === LINK_STATUS.CANDIDATE) {
-          return identityLinks.updateLink(existing.id, {
-            status: LINK_STATUS.APPROVED,
-            approvedBy: 'system:sso',
-            approvedAt: new Date(),
-          });
-        }
+        // S9: an existing candidate (or revoked/rejected) link is never promoted here; only a reviewer approves it.
         if (!isAuthenticatableStatus(existing.status)) {
           throw new HttpError(403, 'IDENTITY_NOT_APPROVED', 'Identity link is not approved for sign-in');
         }
