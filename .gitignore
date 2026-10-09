@@ -11,6 +11,17 @@ coverage/
 !database/migrations/*.sql
 !database/seeds/*.sql
 *.dump
+.local/onboarding-snapshots/
+.local/import-batches/
+database/local/
+**/IDCard*.csv
+**/IDCard*.xlsx
+**/IDCard*.xls
+**/IDCardRaecsv*
+**/*person-batch-input*.json
+**/*person-batch-input*.csv
 logs/
 .DS_Store
 *.log
+!database/preflight/*.sql
+!database/rollbacks/*.sql
