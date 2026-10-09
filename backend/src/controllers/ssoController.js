@@ -50,6 +50,7 @@ function createSsoController(ssoService, { config }) {
       // The binding is single use whatever the outcome.
       res.clearCookie(BINDING_COOKIE, cookieOptions);
       const session = await ssoService.handleCallback({
+        ac: req.query.ac,
         code: req.query.code,
         state: req.query.state,
         error: req.query.error,

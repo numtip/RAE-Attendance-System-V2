@@ -21,6 +21,7 @@ const https = (url) => !set(url) || /^https:\/\//i.test(url);
 
 const portal = set(sso.signinUrl);
 const oauth = set(sso.authorizationUrl) && set(sso.tokenUrl) && set(sso.userInfoUrl);
+const mjuToken = sso.mjuTokenFlow === true; // vendor-sample portal flow: signin.aspx?cid= -> ?ac= -> POST token.aspx {clientID, code}
 
 const checks = [
   ['SSO_ENABLED=true', sso.enabled === true],
@@ -28,6 +29,9 @@ const checks = [
   ['SSO_CLIENT_ID set', set(sso.clientId)],
   ['OAuth endpoints set (authorize, token, userinfo) - MJU must provide them', oauth],
   ['SSO_CLIENT_SECRET set (only if MJU requires one)', set(sso.clientSecret)],
+  ['SSO_MJU_TOKEN_FLOW=true with SSO_SIGNIN_URL and SSO_TOKEN_URL (token.aspx) set', mjuToken && portal && set(sso.tokenUrl)],
+  ['SSO_SUBJECT_CONTRACT_CONFIRMED=true (MJU confirmed which field is the stable subject)', sso.subjectContractConfirmed === true],
+  ['SSO_SUBJECT_CLAIM is humanID or personID', ['humanID', 'personID'].includes(sso.subjectClaim)],
   ['SSO_PROTOCOL_CONTRACT_CONFIRMED=true (MJU wrote the protocol down)', sso.protocolContractConfirmed === true],
   ['SSO_NATIONAL_ID_CLAIMS names the confirmed citizen-ID claim', set(sso.nationalIdClaims)],
   ['JWT_SECRET set', set(config.jwt.secret)],
@@ -36,7 +40,7 @@ const checks = [
   ['SSO_PROVIDER is not mock', sso.provider !== 'mock'],
 ];
 
-const mode = sso.callbackDiagnostic ? 'callback-diagnostic (names/lengths only, no session)' : sso.userinfoProbe ? 'userinfo-probe (masked field manifest, no session)' : portal && !oauth ? 'portal redirect (callback exchange unconfirmed: login disabled)' : 'oauth session';
+const mode = mjuToken ? 'mju token flow (signin.aspx?cid= -> ?ac= -> POST token.aspx)' : sso.callbackDiagnostic ? 'callback-diagnostic (names/lengths only, no session)' : sso.userinfoProbe ? 'userinfo-probe (masked field manifest, no session)' : portal && !oauth ? 'portal redirect (callback exchange unconfirmed: login disabled)' : 'oauth session';
 
 console.log(JSON.stringify({
   mode,
@@ -47,5 +51,7 @@ console.log(JSON.stringify({
 const probing = sso.callbackDiagnostic || sso.userinfoProbe;
 const required = probing
   ? checks.filter(([name]) => /SSO_ENABLED|callback URL|CLIENT_ID|https|not mock/.test(name))
-  : checks.filter(([name]) => !/CLIENT_SECRET/.test(name));
+  : mjuToken
+    ? checks.filter(([name]) => !/CLIENT_SECRET|OAuth endpoints|NATIONAL_ID_CLAIMS/.test(name))
+    : checks.filter(([name]) => !/CLIENT_SECRET|MJU_TOKEN_FLOW|SUBJECT_CLAIM/.test(name));
 process.exit(required.every(([, ok]) => ok) ? 0 : 1);

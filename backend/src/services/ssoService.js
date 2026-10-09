@@ -13,11 +13,17 @@ const { summarizeUserInfoProfile } = require('./sso/userinfoDiagnostic');
 const { buildCidUrl } = require('./sso/mjuPortal');
 const { summarizeCallbackFields } = require('./sso/callbackDiagnostic');
 const { createSsoIdentityResolutionService } = require('./ssoIdentityResolutionService');
+const { createMjuTokenClient, normalizeMjuIdentityResponse } = require('./sso/mjuTokenClient');
+const { createMjuPortalGuard } = require('./sso/mjuPortalGuard');
+
+const AC_PATTERN = /^[\x21-\x7E]{1,256}$/; // printable, no whitespace; MJU has not documented the format
 
 function createSsoService(deps) {
   const {
     config,
     repositories,
+    mjuTokenClient = createMjuTokenClient({ fetchImpl: deps.fetchImpl, timeoutMs: config.sso?.httpTimeoutMs }),
+    portalGuard = createMjuPortalGuard(),
     oauthProvider = createOAuthProvider(config, deps),
     stateStore = createSsoStateStore(),
     loginCodeStore = createSsoLoginCodeStore({
@@ -28,6 +34,63 @@ function createSsoService(deps) {
 
   function disabledResponse() {
     assertSsoGate(config);
+  }
+
+  /** The MJU portal flow never runs on the mock provider's exemption: it needs MJU's written protocol contract. */
+  function assertMjuTokenFlowReady() {
+    if (config.sso.protocolContractConfirmed !== true) {
+      throw new HttpError(503, 'SSO_NOT_READY', 'MJU token/userinfo protocol contract is not confirmed');
+    }
+    if (!config.sso.tokenUrl || !config.sso.clientId) {
+      throw new HttpError(503, 'SSO_NOT_READY', 'SSO environment configuration is incomplete');
+    }
+  }
+
+  /**
+   * Portal callback: validate -> redeem `ac` at token.aspx -> validate the identity document -> only then resolve and
+   * open a session. `ac` is a one-shot credential, never an identity.
+   */
+  async function handleMjuPortalCallback({ ac, error, errorDescription, browserBinding }) {
+    assertMjuTokenFlowReady();
+    // Burn the browser binding first, whatever happens next: it is single use.
+    const bound = portalGuard.consumeBinding(browserBinding);
+    if (error) {
+      throw new HttpError(401, 'SSO_DENIED', String(errorDescription || error).slice(0, 200));
+    }
+    if (!bound) {
+      throw new HttpError(
+        403,
+        'SSO_STATE_INVALID',
+        'Login was not started in this browser, has expired, or was already used',
+      );
+    }
+    if (typeof ac !== 'string' || !AC_PATTERN.test(ac)) {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'ac is required');
+    }
+    if (!portalGuard.claimCode(ac)) {
+      throw new HttpError(403, 'SSO_CODE_REPLAY', 'This login code was already used');
+    }
+
+    const document = await mjuTokenClient.redeem({
+      tokenUrl: config.sso.tokenUrl,
+      clientId: config.sso.clientId,
+      code: ac,
+    });
+    const profile = normalizeMjuIdentityResponse(document, {
+      subjectClaim: config.sso.subjectClaim,
+      ac,
+    });
+
+    const session = await identityResolutionService.issueSessionFromOAuthProfile({
+      profile,
+      rawQuery: { ac },
+      source: 'mju_token',
+    });
+    return {
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      employee: session.employee,
+    };
   }
 
   return {
@@ -48,6 +111,13 @@ function createSsoService(deps) {
       }
       disabledResponse();
       if (config.sso.signinUrl) {
+        if (config.sso.mjuTokenFlow) {
+          assertMjuTokenFlowReady();
+          if (typeof browserBinding !== 'string' || browserBinding.length < 16) {
+            throw new HttpError(500, 'SSO_STATE_BINDING_REQUIRED', 'Login state must be bound to the browser');
+          }
+          portalGuard.registerBinding(browserBinding);
+        }
         return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
       }
       assertProtocolConfirmed(config);
@@ -65,6 +135,7 @@ function createSsoService(deps) {
     },
 
     async handleCallback({
+      ac,
       code,
       state,
       error,
@@ -96,6 +167,14 @@ function createSsoService(deps) {
         );
       }
       disabledResponse();
+      if (config.sso.mjuTokenFlow && portalConfigReady(config.sso)) {
+        return handleMjuPortalCallback({
+          ac,
+          error,
+          errorDescription,
+          browserBinding,
+        });
+      }
       if (portalConfigReady(config.sso) && config.sso.provider !== 'mock') {
         throw new HttpError(503, 'SSO_NOT_READY', 'MJU callback query contract is not confirmed');
       }

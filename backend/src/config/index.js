@@ -44,6 +44,13 @@ module.exports = {
     subjectContractConfirmed: process.env.SSO_SUBJECT_CONTRACT_CONFIRMED === 'true',
     /** MJU's written confirmation of the token/userinfo exchange. Off => OAuth code path fails closed. */
     protocolContractConfirmed: process.env.SSO_PROTOCOL_CONTRACT_CONFIRMED === 'true',
+    /**
+     * MJU portal flow from the vendor sample: signin.aspx?cid= -> callback ?ac= -> POST token.aspx {clientID, code}.
+     * Off by default (fail closed); also needs SSO_PROTOCOL_CONTRACT_CONFIRMED and SSO_SUBJECT_CONTRACT_CONFIRMED.
+     */
+    mjuTokenFlow: process.env.SSO_MJU_TOKEN_FLOW === 'true',
+    /** Which token.aspx field is the stable MJU subject: humanID (default) or personID. Never citizenID. */
+    subjectClaim: process.env.SSO_SUBJECT_CLAIM || 'humanID',
     loginHandoffTtlMs: Number(process.env.SSO_LOGIN_HANDOFF_TTL_MS || 45_000),
     /** Comma-separated OAuth userinfo claim names for Thai citizen ID (see docs/SSO_IDENTITY_FLOW.md). */
     nationalIdClaims: process.env.SSO_NATIONAL_ID_CLAIMS || '',

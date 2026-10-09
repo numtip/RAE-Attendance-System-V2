@@ -78,7 +78,10 @@ function createSsoIdentityResolutionService(deps) {
       assertSsoGate(config);
       // The citizen-ID claim name on MJU's userinfo is UNCONFIRMED (docs/SSO_PROTOCOL_EVIDENCE.md). The documented
       // Person-API names are only a development default, so a live provider needs an explicit, operator-confirmed claim.
-      if (config.sso.provider !== 'mock' && !String(config.sso.nationalIdClaims || '').trim()) {
+      // The MJU token.aspx path builds its own minimal profile (mjuTokenClient) whose citizen-ID key is fixed to
+      // `citizenID` (the vendor sample's property name), so it does not depend on SSO_NATIONAL_ID_CLAIMS.
+      const fromMjuToken = input.source === 'mju_token';
+      if (!fromMjuToken && config.sso.provider !== 'mock' && !String(config.sso.nationalIdClaims || '').trim()) {
         throw new HttpError(503, 'SSO_NOT_READY', 'MJU citizen ID claim name is not confirmed (SSO_NATIONAL_ID_CLAIMS)');
       }
       const profile = input.profile || {};
@@ -102,8 +105,14 @@ function createSsoIdentityResolutionService(deps) {
 
       const nationalIdExtraction = extractNationalIdFromProfile(
         profile,
-        config.sso.nationalIdClaims,
+        fromMjuToken ? 'citizenID' : config.sso.nationalIdClaims,
       );
+
+      // token.aspx always returns the citizen ID with the subject: a malformed or absent one is a bad response, not a
+      // reason to fall back to the subject alone (throws SSO_NATIONAL_ID_MISSING / SSO_NATIONAL_ID_INVALID).
+      if (fromMjuToken && nationalIdExtraction.status !== 'present') {
+        await resolveEmployeeByNationalId(nationalIdExtraction);
+      }
 
       let employee = null;
       let link = null;
