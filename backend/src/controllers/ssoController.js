@@ -69,7 +69,10 @@ function createSsoController(ssoService, { config }) {
     }),
     exchange: asyncRoute(async (req, res) => {
       noStore(res);
-      const data = await ssoService.exchangeLoginHandoff({ code: req.body?.code });
+      const data = await ssoService.exchangeLoginHandoff({
+        code: req.body?.code,
+        confirm: req.body?.confirm === true,
+      });
       success(res, data, 'เข้าสู่ระบบ SSO สำเร็จ');
     }),
     me: asyncRoute(async (req, res) => {

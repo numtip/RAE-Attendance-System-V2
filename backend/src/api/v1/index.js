@@ -11,6 +11,8 @@ const { createEmployeeService } = require('../../services/employeeService');
 const { createAttendanceService } = require('../../services/attendanceService');
 const { createLeaveService } = require('../../services/leaveService');
 const { createSsoService } = require('../../services/ssoService');
+const { createMariaDbCodeReplayStore } = require('../../services/sso/mariadbCodeReplayStore');
+const { getPool, isDatabaseConfigured } = require('../../db/pool');
 const { createAttendanceComputeService } = require('../../services/attendanceComputeService');
 const { createAttendanceComputeController } = require('../../controllers/attendanceComputeController');
 
@@ -20,7 +22,11 @@ function createV1Router(container) {
   const attendanceService = createAttendanceService(container);
   const leaveService = createLeaveService(container);
   const attendanceComputeService = createAttendanceComputeService(container);
-  const ssoService = createSsoService(container);
+  const codeReplayStore = container.codeReplayStore
+    || (container.dataSource === 'mariadb' && isDatabaseConfigured(container.config?.database)
+      ? createMariaDbCodeReplayStore(getPool(container.config?.database))
+      : null);
+  const ssoService = createSsoService({ ...container, codeReplayStore });
   const auth = createAuthController(authService);
   const sso = createSsoController(ssoService, container);
   const employees = createEmployeeController(employeeService, attendanceService);
