@@ -131,7 +131,7 @@ for (const port of ports) {
 
       // owner key + NULL semantics: non-national rows never collide; deactivated national row still occupies the slot
       for (const [type, value] of [['facescan_id', 'FS1'], ['facescan_id', 'FS2'], ['personnel_id', 'P1'], ['employee_id', 'E1']]) {
-        await service.linkIdentifier({ employeeUid: 'emp-11', idType: type, idValue: value });
+        await service.linkIdentifier({ employeeUid: 'emp-11', idType: type, idValue: value, sourceSystem: type === 'personnel_id' ? 'mju_person_api' : null });
       }
       const linked = await service.linkIdentifier({ employeeUid: 'emp-12', idType: 'national_id', idValue: '9999999999997' });
       await service.unlinkIdentifier({ id: linked.id, employeeUid: 'emp-12' });
@@ -243,7 +243,55 @@ for (const port of ports) {
       assert.equal(Number(lock.free), 1, 'write lock must always be released');
     });
   });
-}
+
+  test(`${label} identity kinds: HIP contractor has no personnel_id, namespace collisions refused, typed resolution`, { skip }, async () => {
+    await withDb(port, async (pool) => {
+      const { service } = serviceFor(pool, protectorFor(1, b64(32)));
+      // emp-1 = MJU (personnel_id from MJU), emp-2 = HIP contractor (facescan only + protected national)
+      await service.linkIdentifier({ employeeUid: 'emp-1', idType: 'personnel_id', idValue: '5001', sourceSystem: 'mju_person_api' });
+      await service.linkIdentifier({ employeeUid: 'emp-2', idType: 'facescan_id', idValue: '7001', sourceSystem: 'IDCardRaecsv2027', isPrimary: true });
+      await service.linkIdentifier({ employeeUid: 'emp-2', idType: 'national_id', idValue: ID_B, sourceSystem: 'IDCardRaecsv2027' });
+
+      assert.equal((await service.getIdentityKind('emp-1')).kind, 'MJU');
+      const hip = await service.getIdentityKind('emp-2');
+      assert.equal(hip.kind, 'HIP');
+      assert.equal(hip.sso.required, false);
+      assert.equal(hip.sso.createSubject, false);
+
+      // no synthetic personnel_id for the contractor
+      await assert.rejects(
+        () => service.linkIdentifier({ employeeUid: 'emp-2', idType: 'personnel_id', idValue: '7001', sourceSystem: 'IDCardRaecsv2027' }),
+        (e) => e.code === 'PERSONNEL_ID_SOURCE_REQUIRED',
+      );
+      // same text in the other namespace for another employee is refused, both directions
+      await assert.rejects(
+        () => service.linkIdentifier({ employeeUid: 'emp-3', idType: 'facescan_id', idValue: '5001', sourceSystem: 'IDCardRaecsv2027' }),
+        (e) => e.status === 409 && e.code === 'IDENTIFIER_NAMESPACE_COLLISION',
+      );
+      await assert.rejects(
+        () => service.linkIdentifier({ employeeUid: 'emp-3', idType: 'personnel_id', idValue: '7001', sourceSystem: 'mju_person_api' }),
+        (e) => e.code === 'IDENTIFIER_NAMESPACE_COLLISION',
+      );
+      // a facescan id cannot be shared by two employees (UNIQUE(id_type,id_value))
+      await assert.rejects(
+        () => service.linkIdentifier({ employeeUid: 'emp-3', idType: 'facescan_id', idValue: '7001', sourceSystem: 'IDCardRaecsv2027' }),
+        (e) => e.code === 'DUPLICATE_IDENTIFIER',
+      );
+      // typed resolution: a HIP value never resolves as personnel_id
+      assert.equal(await service.resolveUid('facescan_id', '7001'), 'emp-2');
+      await assert.rejects(() => service.resolve('personnel_id', '7001'), (e) => e.code === 'EMPLOYEE_NOT_FOUND');
+      // national id for the contractor stays HMAC-only
+      const blob = await dump(pool);
+      assert.ok(!blob.includes(ID_B));
+      // contractors never get an SSO identity link from onboarding
+      const [[links]] = await pool.query("SELECT COUNT(*) c FROM employee_identity_links WHERE employee_uid IN ('emp-2')");
+      assert.equal(Number(links.c), 0);
+      // upgrade path: MJU account appears later -> same employee_uid becomes MJU, HIP id remains the attendance source
+      await service.linkIdentifier({ employeeUid: 'emp-2', idType: 'personnel_id', idValue: '5002', sourceSystem: 'mju_person_api' });
+      assert.equal((await service.getIdentityKind('emp-2')).kind, 'MJU');
+      assert.equal(await service.resolveUid('facescan_id', '7001'), 'emp-2');
+    });
+  });}
 
 test('backend integration suite is opt-in and loopback-only', () => {
   assert.ok(skip || ports.length > 0);

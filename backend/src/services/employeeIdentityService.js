@@ -13,6 +13,7 @@ const {
   notFoundMessage,
 } = require('../domain/employeeIdentifier');
 const { HttpError } = require('../utils/httpError');
+const { MJU_PERSONNEL_SOURCE, NAMESPACE_PAIR, deriveIdentityKind, ssoPolicyForKind } = require('../domain/identityKind');
 
 /** Maps contract/repository protection errors to HTTP errors without echoing any identifier. */
 function mapProtectionError(error) {
@@ -134,6 +135,19 @@ function createEmployeeIdentityService({ repositories }) {
         throw new HttpError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
       }
 
+      // Identity kinds: personnel_id exists only when issued by MJU; HIP contractors never get a synthetic one.
+      if (idType === 'personnel_id' && input.sourceSystem !== MJU_PERSONNEL_SOURCE) {
+        throw new HttpError(400, 'PERSONNEL_ID_SOURCE_REQUIRED', 'personnel_id can only be linked from the MJU personnel source');
+      }
+      // A HIP code and a personnel_id with the same text must not belong to different employees.
+      const counterpart = NAMESPACE_PAIR[idType];
+      if (counterpart) {
+        const other = await employeeIdentifiers.findActiveByTypeAndValue(counterpart, normalized);
+        if (other && other.employeeUid !== employeeUid) {
+          throw new HttpError(409, 'IDENTIFIER_NAMESPACE_COLLISION', 'Identifier value collides with another identity namespace');
+        }
+      }
+
       try {
         return await employeeIdentifiers.insert({
           employeeUid,
@@ -167,6 +181,16 @@ function createEmployeeIdentityService({ repositories }) {
         throw new HttpError(404, 'IDENTIFIER_NOT_FOUND', 'Identifier not found');
       }
       return { id, employeeUid, status: 'inactive' };
+    },
+
+    /** Derived identity kind (MJU / HIP / UNRESOLVED) + SSO policy; never creates or links anything. */
+    async getIdentityKind(employeeUid) {
+      if (!employeeUid) {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'employeeUid is required');
+      }
+      const rows = await employeeIdentifiers.listByEmployeeUid(employeeUid);
+      const { kind, violations } = deriveIdentityKind(rows);
+      return { employeeUid, kind, violations, sso: ssoPolicyForKind(kind) };
     },
 
     async listIdentifiers(employeeUid) {

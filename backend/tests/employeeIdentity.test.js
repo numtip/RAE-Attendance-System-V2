@@ -82,6 +82,7 @@ test('same identifier cannot map to two employees', async () => {
     employeeUid: '11111111-1111-1111-1111-111111111111',
     idType: 'personnel_id',
     idValue: 'P-DUP-001',
+    sourceSystem: 'mju_person_api',
   });
   await assert.rejects(
     () => repositories.employeeIdentifiers.insert({
