@@ -24,6 +24,7 @@ function createSsoService(deps) {
     repositories,
     mjuTokenClient = createMjuTokenClient({ fetchImpl: deps.fetchImpl, timeoutMs: config.sso?.httpTimeoutMs }),
     portalGuard = createMjuPortalGuard(),
+    codeReplayStore = null,
     oauthProvider = createOAuthProvider(config, deps),
     stateStore = createSsoStateStore(),
     loginCodeStore = createSsoLoginCodeStore({
@@ -48,8 +49,9 @@ function createSsoService(deps) {
   }
 
   /**
-   * Portal callback: validate -> redeem `ac` at token.aspx -> validate the identity document -> only then resolve and
-   * open a session. `ac` is a one-shot credential, never an identity.
+   * Portal callback: validate -> redeem `ac` at token.aspx -> validate the identity document.
+   * Does not write an identity link or a refresh token. Those wait for explicit confirm.
+   * `ac` is a one-shot credential, never an identity.
    */
   async function handleMjuPortalCallback({ ac, error, errorDescription, browserBinding }) {
     assertMjuTokenFlowReady();
@@ -68,7 +70,10 @@ function createSsoService(deps) {
     if (typeof ac !== 'string' || !AC_PATTERN.test(ac)) {
       throw new HttpError(400, 'VALIDATION_ERROR', 'ac is required');
     }
-    if (!portalGuard.claimCode(ac)) {
+    const claimed = codeReplayStore
+      ? await codeReplayStore.claim(ac)
+      : portalGuard.claimCode(ac);
+    if (!claimed) {
       throw new HttpError(403, 'SSO_CODE_REPLAY', 'This login code was already used');
     }
 
@@ -82,15 +87,19 @@ function createSsoService(deps) {
       ac,
     });
 
-    const session = await identityResolutionService.issueSessionFromOAuthProfile({
+    const prepared = await identityResolutionService.issueSessionFromOAuthProfile({
       profile,
       rawQuery: { ac },
       source: 'mju_token',
+      persist: false,
     });
     return {
-      accessToken: session.accessToken,
-      refreshToken: session.refreshToken,
-      employee: session.employee,
+      confirmationRequired: true,
+      profile,
+      rawQuery: { ac },
+      source: 'mju_token',
+      subject: prepared.subjectExtraction.subject,
+      subjectType: prepared.subjectExtraction.subjectType,
     };
   }
 
@@ -254,6 +263,19 @@ function createSsoService(deps) {
     },
 
     issueLoginHandoff(session) {
+      if (session?.confirmationRequired) {
+        if (!session.profile || !session.subject) {
+          throw new HttpError(500, 'INTERNAL_ERROR', 'SSO confirmation is incomplete');
+        }
+        return loginCodeStore.issue({
+          confirmationRequired: true,
+          profile: session.profile,
+          rawQuery: session.rawQuery,
+          source: session.source,
+          subject: session.subject,
+          subjectType: session.subjectType,
+        });
+      }
       if (!session?.accessToken || !session?.refreshToken || !session?.employee) {
         throw new HttpError(500, 'INTERNAL_ERROR', 'SSO session is incomplete');
       }
@@ -264,17 +286,44 @@ function createSsoService(deps) {
       });
     },
 
-    exchangeLoginHandoff({ code }) {
+    async exchangeLoginHandoff({ code, confirm }) {
       disabledResponse();
       if (!code || String(code).trim() === '') {
         throw new HttpError(400, 'VALIDATION_ERROR', 'code is required');
       }
-      const result = loginCodeStore.consume(String(code).trim());
+      const trimmed = String(code).trim();
+      const peeked = loginCodeStore.peek(trimmed);
+      if (peeked.status === 'expired') {
+        throw new HttpError(401, 'SSO_HANDOFF_EXPIRED', 'Login code expired');
+      }
+      if (peeked.status !== 'ok') {
+        throw new HttpError(401, 'SSO_HANDOFF_INVALID', 'Login code is invalid or already used');
+      }
+      if (peeked.payload.confirmationRequired && confirm !== true) {
+        return {
+          confirmationRequired: true,
+          subject: peeked.payload.subject,
+          subjectType: peeked.payload.subjectType,
+        };
+      }
+      const result = loginCodeStore.consume(trimmed);
       if (result.status === 'expired') {
         throw new HttpError(401, 'SSO_HANDOFF_EXPIRED', 'Login code expired');
       }
       if (result.status !== 'ok') {
         throw new HttpError(401, 'SSO_HANDOFF_INVALID', 'Login code is invalid or already used');
+      }
+      if (result.payload.confirmationRequired) {
+        const session = await identityResolutionService.issueSessionFromOAuthProfile({
+          profile: result.payload.profile,
+          rawQuery: result.payload.rawQuery,
+          source: result.payload.source,
+        });
+        return {
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          employee: session.employee,
+        };
       }
       return result.payload;
     },

@@ -69,7 +69,7 @@ test('valid one-time code exchange returns session tokens', async () => {
   const { ssoService, stateStore } = createService();
   const session = await loginSession(ssoService, stateStore);
   const code = ssoService.issueLoginHandoff(session);
-  const exchanged = ssoService.exchangeLoginHandoff({ code });
+  const exchanged = await ssoService.exchangeLoginHandoff({ code });
   assert.equal(exchanged.accessToken, session.accessToken);
   assert.equal(exchanged.refreshToken, session.refreshToken);
   assert.equal(exchanged.employee.employeeUid, session.employee.employeeUid);
@@ -79,8 +79,8 @@ test('replay code is rejected', async () => {
   const { ssoService, stateStore } = createService();
   const session = await loginSession(ssoService, stateStore);
   const code = ssoService.issueLoginHandoff(session);
-  ssoService.exchangeLoginHandoff({ code });
-  assert.throws(
+  await ssoService.exchangeLoginHandoff({ code });
+  await assert.rejects(
     () => ssoService.exchangeLoginHandoff({ code }),
     (err) => err.code === 'SSO_HANDOFF_INVALID',
   );
@@ -96,7 +96,7 @@ test('expired code is rejected', async () => {
   const session = await loginSession(ssoService, stateStore);
   const code = ssoService.issueLoginHandoff(session);
   await new Promise((resolve) => { setTimeout(resolve, 5); });
-  assert.throws(
+  await assert.rejects(
     () => ssoService.exchangeLoginHandoff({ code }),
     (err) => err.code === 'SSO_HANDOFF_EXPIRED',
   );
@@ -104,7 +104,7 @@ test('expired code is rejected', async () => {
 
 test('unknown code is rejected', async () => {
   const { ssoService } = createService();
-  assert.throws(
+  await assert.rejects(
     () => ssoService.exchangeLoginHandoff({ code: 'deadbeef'.repeat(6) }),
     (err) => err.code === 'SSO_HANDOFF_INVALID',
   );
