@@ -176,7 +176,7 @@ test('personnel onboarding holds duplicate IDs and non-authoritative sources', (
   assert.equal(unapproved.hold, 1);
 });
 
-test('import batch builds 34 ready and 16 hold with unique identifiers and dry-run plan', async () => {
+test('synthetic fixture (34 ready / 16 hold are fixture counts, not authoritative) builds unique identifiers and dry-run plan', async () => {
   const samplePath = new URL('./sample/person-batch-50-synthetic.json', import.meta.url);
   const parsed = JSON.parse(await readFile(samplePath, 'utf8'));
   const batch = buildImportBatchFromPersonRecords(parsed.persons, {

@@ -84,9 +84,12 @@ export function loadIdentifierKeys(env = process.env, { requireEncryption = fals
     if (previous.version === current.version) throw new IdentifierCryptoError('KEY_VERSION_DUPLICATE');
   }
 
+  // Raw National ID storage is DISABLED by default. The encryption key is not even loaded
+  // unless EMPLOYEE_IDENTIFIER_RAW_STORAGE_ENABLED=true (set only after a documented necessity approval).
+  const rawStorageEnabled = String(env.EMPLOYEE_IDENTIFIER_RAW_STORAGE_ENABLED || '').trim() === 'true';
   let encryption = null;
-  const encText = readSecretText(env, 'EMPLOYEE_IDENTIFIER_ENCRYPTION_KEY');
-  if (encText || requireEncryption) {
+  const encText = rawStorageEnabled || requireEncryption ? readSecretText(env, 'EMPLOYEE_IDENTIFIER_ENCRYPTION_KEY') : '';
+  if (rawStorageEnabled || requireEncryption) {
     const keyId = String(env.EMPLOYEE_IDENTIFIER_ENCRYPTION_KEY_ID || '').trim();
     if (!keyId) throw new IdentifierCryptoError('KEY_ID_MISSING:EMPLOYEE_IDENTIFIER_ENCRYPTION_KEY_ID');
     encryption = {
@@ -103,7 +106,7 @@ export function loadIdentifierKeys(env = process.env, { requireEncryption = fals
       throw new IdentifierCryptoError('KEY_REUSE_HMAC_AND_ENCRYPTION');
     }
   }
-  return { hmac: { current, previous }, encryption };
+  return { hmac: { current, previous }, encryption, rawStorageEnabled };
 }
 
 export function normalizeNationalId(raw) {
@@ -147,6 +150,7 @@ export function buildLookupCandidates(idType, rawValue, keys) {
  * (ticket/decision id) — refuses otherwise so raw storage cannot happen by accident.
  */
 export function encryptRawIdentifier(idType, rawValue, keys, { necessityApprovalRef } = {}) {
+  if (!keys.rawStorageEnabled) throw new IdentifierCryptoError('RAW_STORAGE_DISABLED');
   if (!String(necessityApprovalRef || '').trim()) throw new IdentifierCryptoError('NECESSITY_APPROVAL_REQUIRED');
   if (!keys.encryption) throw new IdentifierCryptoError('ENCRYPTION_KEY_NOT_CONFIGURED');
   const value = normalizeIdentifier(idType, rawValue);
@@ -182,4 +186,78 @@ export function decryptRawIdentifier(envelope, keys) {
 export function maskNationalId(raw) {
   const digits = String(raw ?? '').replace(/\D/g, '');
   return digits.length >= 4 ? `****${digits.slice(-4)}` : '[redacted]';
+}
+
+/**
+ * Cross-version duplicate check. The DB UNIQUE(id_type,id_value) cannot see that the same person
+ * under key v1 and key v2 is one identity (different HMACs). Call this inside the insert
+ * transaction (after SELECT ... FOR UPDATE on candidate lookups) before every national_id insert.
+ * `existingRows`: [{ id, employee_uid, id_value, lookup_key_version }] (national_id only).
+ * Returns matches by reference only — never raw values.
+ */
+export function detectCrossVersionDuplicates(candidates, existingRows, keys) {
+  const byValue = new Map(existingRows.map((row) => [row.id_value, row]));
+  const matches = [];
+  for (const { ref, raw } of candidates) {
+    const normalized = normalizeIdentifier('national_id', raw);
+    const probes = [normalized, ...buildLookupCandidates('national_id', normalized, keys).map((c) => c.lookup_hmac)];
+    for (const probe of probes) {
+      const hit = byValue.get(probe);
+      if (hit) {
+        matches.push({
+          ref,
+          existing_row_id: hit.id,
+          existing_employee_uid: hit.employee_uid,
+          existing_key_version: hit.lookup_key_version ?? null,
+          legacy_plaintext: probe === normalized,
+        });
+        break;
+      }
+    }
+  }
+  return matches;
+}
+
+/**
+ * Pure reindex plan: move national_id rows to the current key version.
+ * Raw values come from `resolveRaw(row)` (authoritative source, or approved encrypted store); legacy
+ * plaintext rows (13 digits, no version) are their own raw. Rows that cannot be resolved are reported,
+ * never guessed. Any two rows resolving to one identity, or a new lookup colliding with another row,
+ * are `collisions` and the plan is not ok (apply nothing).
+ */
+export function planReindex(rows, keys, { resolveRaw = () => null } = {}) {
+  const current = keys.hmac.current;
+  const updates = [];
+  const unresolved = [];
+  const skippedCurrent = [];
+  const target = new Map();
+  const collisions = [];
+  const existingValues = new Map(rows.map((row) => [row.id_value, row]));
+
+  for (const row of rows) {
+    if (row.lookup_key_version === current.version) {
+      skippedCurrent.push(row.id);
+      continue;
+    }
+    const legacy = row.lookup_key_version == null && /^\d{13}$/.test(String(row.id_value));
+    const raw = legacy ? row.id_value : resolveRaw(row);
+    if (!raw) {
+      unresolved.push(row.id);
+      continue;
+    }
+    const newLookup = identifierLookupHmac('national_id', raw, current);
+    const clash = target.get(newLookup);
+    if (clash) {
+      collisions.push({ row_ids: [clash.id, row.id], employee_uids: [clash.employee_uid, row.employee_uid] });
+      continue;
+    }
+    const other = existingValues.get(newLookup);
+    if (other && other.id !== row.id) {
+      collisions.push({ row_ids: [other.id, row.id], employee_uids: [other.employee_uid, row.employee_uid] });
+      continue;
+    }
+    target.set(newLookup, row);
+    updates.push({ id: row.id, employee_uid: row.employee_uid, from_version: row.lookup_key_version ?? null, to_version: current.version, new_id_value: newLookup });
+  }
+  return { ok: collisions.length === 0 && unresolved.length === 0, updates, unresolved, skipped_current: skippedCurrent, collisions };
 }

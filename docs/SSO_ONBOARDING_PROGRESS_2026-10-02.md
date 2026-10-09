@@ -28,7 +28,7 @@ Live MJU SSO remains **`SSO_ENABLED=false`**. Callback diagnostic can record **m
 | VPS onboarding | Legacy vs V2 DB | Legacy `employees` unreadable (1932); V2 MariaDB empty |
 | 9.5H | `personnelId` vs `employee_id` | **Likely match needs contract**; do not equate without approval |
 | 9.5J | Migration + UID policy | **`013_personnel_identifier.sql`** applied on VPS; UID derivation removed from onboarding code |
-| 9.5K | Import batch approval packet | **34 ready**, **16 HOLD**, **0** identifier conflicts (synthetic 50-person shape + tooling) |
+| 9.5K | Import batch approval packet | 34 ready / 16 HOLD / 0 conflicts on the **synthetic** fixture only (tooling check; 34 is NOT an authoritative real-world count) |
 
 ## MJU Person API (operator-reported, not stored in git)
 

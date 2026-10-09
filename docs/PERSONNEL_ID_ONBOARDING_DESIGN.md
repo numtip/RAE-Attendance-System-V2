@@ -15,7 +15,7 @@ change and import are separately approved.
 
 Current dry-run disposition:
 
-- 34 records: `PERSONNEL_ID_VERIFIED_FROM_MJU`
+- (synthetic fixture only — NOT an authoritative count) 34 records: `PERSONNEL_ID_VERIFIED_FROM_MJU`
 - 16 records: `HOLD` because `personnelId` is missing
 - 0 duplicate `personnelId` values
 - no `employee_uid` is created by classification

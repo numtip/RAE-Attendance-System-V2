@@ -12,6 +12,8 @@ function isBlockedSqlPath(file) {
   if (!/\.sql$/i.test(file)) return false;
   if (file.startsWith('database/migrations/')) return false;
   if (file.startsWith('database/seeds/')) return false;
+  // Reviewed operator SQL only: numbered preflight / rollback scripts (no dumps, no free-form names).
+  if (/^database\/(preflight|rollbacks)\/\d{3}_[a-z0-9_]+(\.down)?\.sql$/.test(file)) return false;
   return true;
 }
 const blockedContent = [

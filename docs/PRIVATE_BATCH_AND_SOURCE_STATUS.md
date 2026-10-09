@@ -1,6 +1,6 @@
 # Private batch directory, dry-run plan, and source status (read-only discovery, 2026-10-09)
 
-Gate: **BLOCKED** until host, authoritative source, and 34-person scope are confirmed by a human. No import, migration, deploy, or SSH was performed.
+Gate: **BLOCKED** until host, authoritative source, and the approved import scope are confirmed by a human. The earlier "expected 34" is **retired** as a count (it only existed as a synthetic fixture shape). No import, migration, deploy, or SSH was performed.
 
 ## Host evidence
 - `README.md` / `docs/PROJECT_DIRECTION.md`: VPS **`10.1.245.190`** is the host for recovery, production validation, live SSO QA, and cutover (VPS-last).
@@ -13,11 +13,11 @@ Gate: **BLOCKED** until host, authoritative source, and 34-person scope are conf
 - Prior runs: name2 180 rows (166 found, 13 not found, 1 ambiguous), name3 95 rows (86 found, 9 not found), personnel 177 rows (134 found).
 - No authoritative MJU Person batch with `personnel_id` exists locally. `docs/SSO_SUBJECT_CONTRACT_INTEGRATION_CHECKLIST.md` says enrich must never run on the callback path.
 
-## 34 vs 50 (masked counts only)
+## Reconciliation status (masked counts only)
 - IDCard CSV: 52 rows -> 50 unique national IDs / 50 FaceScan IDs; 2 exact-duplicate groups; 0 conflicts (sha256 of file in `database/local/` report).
 - Of the 50, **21** national IDs appear in any mju-person-enrich output (name2 16, name3 12, personnel 4, overlapping). 29 have no MJU-enrichment evidence.
 - The figure **34 has no real evidence source**: it appears only as the synthetic fixture shape (`SSO_ONBOARDING_PROGRESS_2026-10-02.md`: "synthetic 50-person shape", `PERSONNEL_ID_ONBOARDING_DESIGN.md`). It does not match 21, 50, or any enrichment report.
-- The remaining 16 are **not** assumed to be hold; they are "scope undefined". Needed from a human: the approved list/criteria and its source (document, ticket, or approver).
+- Data policy: the **50 unique CSV identities are the reconcile set, not import-ready**. The 21 name-based matches are **not** identity-verified (name matching is not identity proof; no personnel_id). Import scope is whatever a human approves after reconciliation — no number is assumed.
 
 ## Private batch directory design (not created)
 - Host path (after approval): `/var/lib/rae-onboarding/batches/<batch_id>/`, owner `rae-onboard:rae-onboard`, dir `0700`, files `0600`, outside web root and repo; no copy to cloud sync/Git; `umask 077`.
@@ -32,3 +32,9 @@ Gate: **BLOCKED** until host, authoritative source, and 34-person scope are conf
 3. QA: unique count equals the **human-approved** count; any identity conflict or count mismatch => BLOCK.
 4. Run `database/preflight/015_preflight.sql` on a copy/staging DB (not production) and record results.
 5. Produce the masked approval report; STOP at `HUMAN_IMPORT_APPROVAL_REQUIRED`.
+
+## Data policy (binding for this PR)
+- "Expected 34" is not authoritative; QA compares against the human-approved scope, never a hard-coded count.
+- 50 unique CSV identities = candidates to reconcile; none is import-ready until verified against an authoritative MJU source with `personnel_id`.
+- 21 name-derived matches are leads, not verified identities.
+- Raw National ID storage is disabled by default (`EMPLOYEE_IDENTIFIER_RAW_STORAGE_ENABLED` must be exactly `true`, plus an approved `necessity_ref`).

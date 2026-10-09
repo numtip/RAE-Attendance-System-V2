@@ -5,6 +5,8 @@ import test from 'node:test';
 import {
   buildLookup,
   buildLookupCandidates,
+  detectCrossVersionDuplicates,
+  planReindex,
   decryptRawIdentifier,
   encryptRawIdentifier,
   loadIdentifierKeys,
@@ -20,6 +22,7 @@ function env(overrides = {}) {
   return {
     EMPLOYEE_IDENTIFIER_HMAC_KEY: b64(32),
     EMPLOYEE_IDENTIFIER_HMAC_KEY_VERSION: '2',
+    EMPLOYEE_IDENTIFIER_RAW_STORAGE_ENABLED: 'true',
     EMPLOYEE_IDENTIFIER_ENCRYPTION_KEY: b64(32),
     EMPLOYEE_IDENTIFIER_ENCRYPTION_KEY_ID: 'enc-test-1',
     ...overrides,
@@ -83,11 +86,8 @@ test('errors never leak identifier or key material', () => {
 test('raw ID encryption needs an approved necessity ref and round-trips with AES-256-GCM', () => {
   const keys = loadIdentifierKeys(env());
   assert.throws(() => encryptRawIdentifier('national_id', FAKE_ID, keys), { code: 'NECESSITY_APPROVAL_REQUIRED' });
-  const noEnc = loadIdentifierKeys({ ...env(), EMPLOYEE_IDENTIFIER_ENCRYPTION_KEY: '' });
-  assert.throws(
-    () => encryptRawIdentifier('national_id', FAKE_ID, noEnc, { necessityApprovalRef: 'APPROVAL-TEST' }),
-    { code: 'ENCRYPTION_KEY_NOT_CONFIGURED' },
-  );
+  // enabled but key missing => fail closed at load time\r
+  assert.throws(() => loadIdentifierKeys({ ...env(), EMPLOYEE_IDENTIFIER_ENCRYPTION_KEY: '' }), /KEY_MISSING/);
   const envelope = encryptRawIdentifier('national_id', FAKE_ID, keys, { necessityApprovalRef: 'APPROVAL-TEST' });
   assert.equal(envelope.iv.length, 12);
   assert.equal(envelope.auth_tag.length, 16);
@@ -152,10 +152,58 @@ test('migration 015 is idempotent, additive, and has a separate rollback + prefl
   assert.match(up, /CREATE TABLE IF NOT EXISTS employee_identifier_access_audit/);
   assert.match(up, /\[0-9a-f\]\{64\}/);
   assert.match(up, /lookup_key_version SMALLINT UNSIGNED NULL/);
+  assert.match(up, /ABORT_015_requires_MariaDB_10_2_3_or_MySQL_8_0_16/);
+  assert.match(up, /uk_employee_identifier_national_owner/);
   assert.ok(!/DROP\s+(TABLE|COLUMN)|DELETE\s+FROM|TRUNCATE/i.test(up.replace(/^--.*$/gm, '')), 'up migration must be non-destructive');
   const down = await read('../../database/rollbacks/015_employee_identifier_secure_lookup.down.sql');
-  assert.match(down, /DROP COLUMN lookup_key_version/);
+  const downSql = down.replace(/^--.*$/gm, '');
+  assert.match(downSql, /DROP COLUMN national_id_owner_uid/);
+  assert.match(downSql, /ABORT_rollback_secret_rows_exist_export_first/);
+  assert.ok(!/DROP COLUMN lookup_key_version/.test(downSql), 'rollback must keep key-version metadata');
+  assert.ok(!/employee_identifier_access_audit/.test(downSql), 'rollback must never touch the audit table');
   const pre = await read('../../database/preflight/015_preflight.sql');
   assert.match(pre, /duplicate_type_value_groups/);
   assert.ok(!/SELECT\s+[^;]*id_value\s*,/i.test(pre.replace(/^--.*$/gm, '')), 'preflight must not select id_value');
+});
+
+test('raw National ID storage is disabled by default (no flag => no encryption key loaded, encrypt refused)', () => {
+  const base = env();
+  delete base.EMPLOYEE_IDENTIFIER_RAW_STORAGE_ENABLED;
+  const keys = loadIdentifierKeys(base); // key present in env but flag absent
+  assert.equal(keys.rawStorageEnabled, false);
+  assert.equal(keys.encryption, null);
+  assert.throws(
+    () => encryptRawIdentifier('national_id', FAKE_ID, keys, { necessityApprovalRef: 'APPROVAL-TEST' }),
+    { code: 'RAW_STORAGE_DISABLED' },
+  );
+  assert.equal(loadIdentifierKeys(env({ EMPLOYEE_IDENTIFIER_RAW_STORAGE_ENABLED: 'yes' })).rawStorageEnabled, false);
+});
+
+test('cross-version duplicate detection and reindex planning (pure, no raw output)', () => {
+  const k1 = env({ EMPLOYEE_IDENTIFIER_HMAC_KEY_VERSION: '1' });
+  const keys1 = loadIdentifierKeys(k1);
+  const rotating = loadIdentifierKeys({
+    ...k1,
+    EMPLOYEE_IDENTIFIER_HMAC_KEY: b64(32),
+    EMPLOYEE_IDENTIFIER_HMAC_KEY_VERSION: '2',
+    EMPLOYEE_IDENTIFIER_HMAC_KEY_PREVIOUS: k1.EMPLOYEE_IDENTIFIER_HMAC_KEY,
+    EMPLOYEE_IDENTIFIER_HMAC_KEY_PREVIOUS_VERSION: '1',
+  });
+  const existing = [
+    { id: 1, employee_uid: 'u1', id_value: buildLookup('national_id', FAKE_ID, keys1).lookup_hmac, lookup_key_version: 1 },
+    { id: 2, employee_uid: 'u2', id_value: '9999999999992', lookup_key_version: null }, // legacy plaintext
+  ];
+  const hits = detectCrossVersionDuplicates(
+    [{ ref: 'a', raw: FAKE_ID }, { ref: 'b', raw: '9999999999992' }, { ref: 'c', raw: '9999999999993' }],
+    existing,
+    rotating,
+  );
+  assert.deepEqual(hits.map((h) => [h.ref, h.existing_key_version, h.legacy_plaintext]), [['a', 1, false], ['b', null, true]]);
+  assert.ok(!JSON.stringify(hits).includes(FAKE_ID));
+
+  const plan = planReindex(existing, rotating, { resolveRaw: (row) => (row.id === 1 ? FAKE_ID : null) });
+  assert.equal(plan.ok, true); // row 2 is legacy plaintext => its own raw
+  assert.deepEqual(plan.updates.map((u) => [u.id, u.from_version, u.to_version]), [[1, 1, 2], [2, null, 2]]);
+  assert.ok(!JSON.stringify(plan).includes('9999999999992'));
+  assert.equal(planReindex(existing, rotating).ok, false); // row 1 unresolved => not ok, nothing guessed
 });
