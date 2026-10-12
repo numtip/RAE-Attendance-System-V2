@@ -56,7 +56,7 @@ function createSsoService(deps) {
   async function handleMjuPortalCallback({ ac, error, errorDescription, browserBinding }) {
     assertMjuTokenFlowReady();
     // Burn the browser binding first, whatever happens next: it is single use.
-    const bound = portalGuard.consumeBinding(browserBinding);
+    const bound = await Promise.resolve(portalGuard.consumeBinding(browserBinding));
     if (error) {
       throw new HttpError(401, 'SSO_DENIED', String(errorDescription || error).slice(0, 200));
     }
@@ -126,7 +126,7 @@ function createSsoService(deps) {
           if (typeof browserBinding !== 'string' || browserBinding.length < 16) {
             throw new HttpError(500, 'SSO_STATE_BINDING_REQUIRED', 'Login state must be bound to the browser');
           }
-          portalGuard.registerBinding(browserBinding);
+          await Promise.resolve(portalGuard.registerBinding(browserBinding));
         }
         return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
       }
@@ -134,7 +134,7 @@ function createSsoService(deps) {
       if (typeof browserBinding !== 'string' || browserBinding.length < 16) {
         throw new HttpError(500, 'SSO_STATE_BINDING_REQUIRED', 'Login state must be bound to the browser');
       }
-      const state = stateStore.create({ binding: browserBinding });
+      const state = await Promise.resolve(stateStore.create({ binding: browserBinding }));
       return oauthProvider.buildAuthorizationUrl({
         authorizationUrl: config.sso.authorizationUrl,
         clientId: config.sso.clientId,
@@ -198,7 +198,7 @@ function createSsoService(deps) {
       if (typeof state !== 'string' || state.length === 0 || state.length > 256) {
         throw new HttpError(403, 'SSO_STATE_INVALID', 'OAuth state is missing or expired');
       }
-      if (!stateStore.consume(state, browserBinding)) {
+      if (!await Promise.resolve(stateStore.consume(state, browserBinding))) {
         throw new HttpError(
           403,
           'SSO_STATE_INVALID',
@@ -262,28 +262,28 @@ function createSsoService(deps) {
       };
     },
 
-    issueLoginHandoff(session) {
+    async issueLoginHandoff(session) {
       if (session?.confirmationRequired) {
         if (!session.profile || !session.subject) {
           throw new HttpError(500, 'INTERNAL_ERROR', 'SSO confirmation is incomplete');
         }
-        return loginCodeStore.issue({
+        return Promise.resolve(loginCodeStore.issue({
           confirmationRequired: true,
           profile: session.profile,
           rawQuery: session.rawQuery,
           source: session.source,
           subject: session.subject,
           subjectType: session.subjectType,
-        });
+        }));
       }
       if (!session?.accessToken || !session?.refreshToken || !session?.employee) {
         throw new HttpError(500, 'INTERNAL_ERROR', 'SSO session is incomplete');
       }
-      return loginCodeStore.issue({
+      return Promise.resolve(loginCodeStore.issue({
         accessToken: session.accessToken,
         refreshToken: session.refreshToken,
         employee: session.employee,
-      });
+      }));
     },
 
     async exchangeLoginHandoff({ code, confirm }) {
@@ -292,7 +292,7 @@ function createSsoService(deps) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'code is required');
       }
       const trimmed = String(code).trim();
-      const peeked = loginCodeStore.peek(trimmed);
+      const peeked = await Promise.resolve(loginCodeStore.peek(trimmed));
       if (peeked.status === 'expired') {
         throw new HttpError(401, 'SSO_HANDOFF_EXPIRED', 'Login code expired');
       }
@@ -306,7 +306,7 @@ function createSsoService(deps) {
           subjectType: peeked.payload.subjectType,
         };
       }
-      const result = loginCodeStore.consume(trimmed);
+      const result = await Promise.resolve(loginCodeStore.consume(trimmed));
       if (result.status === 'expired') {
         throw new HttpError(401, 'SSO_HANDOFF_EXPIRED', 'Login code expired');
       }

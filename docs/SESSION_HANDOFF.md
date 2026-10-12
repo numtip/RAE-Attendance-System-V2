@@ -3,6 +3,8 @@
 Last updated: 2026-10-09 (candidate subject committed for Draft PR #34; do not merge). Read this file **before** starting any work.
 It contains no PII, secrets or real CSV content, and must stay that way.
 
+**Next start (2026-10-12, VPS `10.1.245.190`):** `docs/J2_SSO_EOD_HANDOFF_20261012.md` on branch `phase-d/sso-security-remediation`. Sections below stay the 2026-10-09 record. Do not treat them as the current SHA.
+
 ## 1. Repo and working branch
 
 * Single workspace: `G:\ProjectAI\rae-attendance-system-v2` (GitHub: `numtip/RAE-Attendance-System-V2`).

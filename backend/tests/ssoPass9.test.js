@@ -68,7 +68,7 @@ async function loginSession(ssoService, _stateStore) {
 test('valid one-time code exchange returns session tokens', async () => {
   const { ssoService, stateStore } = createService();
   const session = await loginSession(ssoService, stateStore);
-  const code = ssoService.issueLoginHandoff(session);
+  const code = await ssoService.issueLoginHandoff(session);
   const exchanged = await ssoService.exchangeLoginHandoff({ code });
   assert.equal(exchanged.accessToken, session.accessToken);
   assert.equal(exchanged.refreshToken, session.refreshToken);
@@ -78,7 +78,7 @@ test('valid one-time code exchange returns session tokens', async () => {
 test('replay code is rejected', async () => {
   const { ssoService, stateStore } = createService();
   const session = await loginSession(ssoService, stateStore);
-  const code = ssoService.issueLoginHandoff(session);
+  const code = await ssoService.issueLoginHandoff(session);
   await ssoService.exchangeLoginHandoff({ code });
   await assert.rejects(
     () => ssoService.exchangeLoginHandoff({ code }),
@@ -94,7 +94,7 @@ test('expired code is rejected', async () => {
     }),
   });
   const session = await loginSession(ssoService, stateStore);
-  const code = ssoService.issueLoginHandoff(session);
+  const code = await ssoService.issueLoginHandoff(session);
   await new Promise((resolve) => { setTimeout(resolve, 5); });
   await assert.rejects(
     () => ssoService.exchangeLoginHandoff({ code }),

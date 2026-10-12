@@ -12,6 +12,9 @@ const { createAttendanceService } = require('../../services/attendanceService');
 const { createLeaveService } = require('../../services/leaveService');
 const { createSsoService } = require('../../services/ssoService');
 const { createMariaDbCodeReplayStore } = require('../../services/sso/mariadbCodeReplayStore');
+const { createOptInSharedStores } = require('../../services/sso/ssoSharedClaimAdapter');
+const { createMjuPortalGuard } = require('../../services/sso/mjuPortalGuard');
+const { HttpError } = require('../../utils/httpError');
 const { getPool, isDatabaseConfigured } = require('../../db/pool');
 const { createAttendanceComputeService } = require('../../services/attendanceComputeService');
 const { createAttendanceComputeController } = require('../../controllers/attendanceComputeController');
@@ -26,7 +29,18 @@ function createV1Router(container) {
     || (container.dataSource === 'mariadb' && isDatabaseConfigured(container.config?.database)
       ? createMariaDbCodeReplayStore(getPool(container.config?.database))
       : null);
-  const ssoService = createSsoService({ ...container, codeReplayStore });
+  let sharedStores = {};
+  if (container.config?.sso?.sharedClaimStore === true) {
+    if (container.dataSource !== 'mariadb' || !isDatabaseConfigured(container.config?.database)) {
+      throw new HttpError(503, 'SSO_SHARED_STORE_UNAVAILABLE', 'SSO shared claim store is not configured');
+    }
+    const handoffMs = Number(container.config.sso.loginHandoffTtlMs);
+    sharedStores = createOptInSharedStores(getPool(container.config.database), {
+      handoffTtlSeconds: Number.isFinite(handoffMs) ? Math.max(1, Math.ceil(handoffMs / 1000)) : undefined,
+      portalGuard: createMjuPortalGuard(),
+    });
+  }
+  const ssoService = createSsoService({ ...container, codeReplayStore, ...sharedStores });
   const auth = createAuthController(authService);
   const sso = createSsoController(ssoService, container);
   const employees = createEmployeeController(employeeService, attendanceService);

@@ -61,7 +61,7 @@ function createSsoController(ssoService, { config }) {
         cookieNames: cookieNames(req),
         browserBinding,
       });
-      const handoffCode = ssoService.issueLoginHandoff(session);
+      const handoffCode = await ssoService.issueLoginHandoff(session);
       const redirectBase = config.app.url.replace(/\/$/, '');
       const target = new URL(`${redirectBase}/auth/sso/complete`);
       target.searchParams.set('code', handoffCode);
