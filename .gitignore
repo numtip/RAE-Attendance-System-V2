@@ -11,6 +11,8 @@ coverage/
 !database/migrations/*.sql
 !database/seeds/*.sql
 *.dump
+# Local-only notes, evidence and throw-away QA helpers stay out of git.
+.local/
 .local/onboarding-snapshots/
 .local/import-batches/
 database/local/

@@ -10,6 +10,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
+import {
+  describeDryRun,
+  listMigrationFiles,
+  parseArgs,
+  planMigrations,
+} from './migrationPlan.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
@@ -19,18 +25,6 @@ const seedFile = path.join(repoRoot, 'database', 'seeds', 'dev-fixtures.sql');
 function env(name, fallback) {
   const value = process.env[name];
   return value === undefined || value === '' ? fallback : value;
-}
-
-function parseArgs(argv) {
-  return {
-    seed: argv.includes('--seed'),
-    dryRun: argv.includes('--dry-run'),
-  };
-}
-
-async function listMigrationFiles() {
-  const entries = await fs.readdir(migrationsDir);
-  return entries.filter((name) => name.endsWith('.sql')).sort();
 }
 
 async function ensureSchemaMigrationsTable(connection) {
@@ -46,6 +40,21 @@ async function ensureSchemaMigrationsTable(connection) {
 async function appliedVersions(connection) {
   const [rows] = await connection.query('SELECT version FROM schema_migrations');
   return new Set(rows.map((row) => row.version));
+}
+
+/**
+ * Read-only ledger read for `--dry-run`. Unlike appliedVersions it never
+ * creates `schema_migrations`, so a dry run against a database that has no
+ * ledger yet leaves that database untouched and correctly reports everything
+ * as pending.
+ */
+async function appliedVersionsReadOnly(connection) {
+  const [present] = await connection.query(
+    `SELECT COUNT(*) AS count FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'schema_migrations'`,
+  );
+  if (Number(present[0].count) === 0) return new Set();
+  return appliedVersions(connection);
 }
 
 async function applyMigration(connection, version, sql) {
@@ -77,16 +86,36 @@ async function main() {
     multipleStatements: true,
   };
 
-  const files = await listMigrationFiles();
+  const files = await listMigrationFiles(migrationsDir);
   if (files.length === 0) {
     console.error('No migration files in database/migrations/');
     process.exit(1);
   }
 
+  const ledgerLabel = `${config.database}@${config.host}:${config.port}`;
+
   if (dryRun) {
-    console.log('Dry run — pending migrations:');
-    for (const file of files) console.log(`  ${file}`);
-    if (seed) console.log('Would run seed:', path.relative(repoRoot, seedFile));
+    // A pending list is only meaningful against the ledger. Reporting every
+    // file as pending when the ledger was never read is what made this flag
+    // look like schema validation, so refuse rather than guess.
+    let connection;
+    try {
+      connection = await mysql.createConnection(config);
+    } catch (error) {
+      console.error(`Dry run needs the migration ledger, but ${ledgerLabel} is unreachable: ${error.message}`);
+      console.error('Cannot report what is pending. Start the database, or run the apply without --dry-run.');
+      process.exit(1);
+    }
+    try {
+      const applied = await appliedVersionsReadOnly(connection);
+      const plan = planMigrations(files, applied);
+      for (const line of describeDryRun({ ...plan, total: files.length, ledgerLabel })) {
+        console.log(line);
+      }
+      if (seed) console.log('  Would run seed:', path.relative(repoRoot, seedFile));
+    } finally {
+      await connection.end();
+    }
     return;
   }
 

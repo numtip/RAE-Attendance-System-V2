@@ -56,6 +56,8 @@ module.exports = {
      */
     subjectClaim: process.env.SSO_SUBJECT_CLAIM || 'humanID',
     loginHandoffTtlMs: Number(process.env.SSO_LOGIN_HANDOFF_TTL_MS || 45_000),
+    /** Off by default. When true, binding and login handoff use MariaDB and never fall back to memory. */
+    sharedClaimStore: process.env.SSO_SHARED_CLAIM_STORE === 'true',
     /** Comma-separated OAuth userinfo claim names for Thai citizen ID (see docs/SSO_IDENTITY_FLOW.md). */
     nationalIdClaims: process.env.SSO_NATIONAL_ID_CLAIMS || '',
     httpTimeoutMs: Number(process.env.SSO_HTTP_TIMEOUT_MS || 15_000),

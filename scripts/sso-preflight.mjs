@@ -45,8 +45,9 @@ const mode = mjuToken ? 'mju token flow (signin.aspx?cid= -> ?ac= -> POST token.
 const residualRisks = mjuToken ? [
   'subject is a candidate from SSO_SUBJECT_CLAIM (default humanID); MJU IT has not certified it',
   'protocol is vendor-sample evidence; SSO_PROTOCOL_CONTRACT_CONFIRMED is not required and must stay false',
-  'MJU does not echo state; browser binding does not bind ac to the exact login',
-  'ac replay guard is in-memory and per process',
+  'MJU does not echo state; explicit confirmation does not close login CSRF',
+  'browser binding does not bind ac to the exact login',
+  'ac replay is durable only when the MariaDB store is the claim path; binding and handoff stay in one process',
 ] : [];
 
 console.log(JSON.stringify({

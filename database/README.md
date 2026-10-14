@@ -28,6 +28,11 @@ Isolated InnoDB recovery procedures remain under `database/recovery-lab/` (lab c
    npm run db:migrate:seed
    ```
 
+   `npm run db:migrate -- --dry-run` connects read-only and reports only the
+   files the `schema_migrations` ledger does not record (it never creates the
+   ledger, and exits 1 if the database is unreachable rather than guessing).
+   Tests: `npm run migrate:test`.
+
 Environment variables (defaults match compose):
 
 | Variable | Default |

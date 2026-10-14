@@ -23,8 +23,9 @@ function hexOf(value) {
  *  2. Code replay. Each `ac` value is tried at most once per process (stored only as a SHA-256 digest). MJU's own
  *     single-use rule is UNKNOWN, so we do not depend on it.
  *
- * In-memory: does not survive a restart and is not shared between instances. Use a shared store before running more
- * than one backend instance.
+ * In-memory code claims do not survive a restart and are not shared. The MariaDB replay store is the shared claim
+ * when the service is given one. Binding and the login handoff stay in this process. Do not run more than one
+ * backend until those are shared or the proxy pins the browser to one process.
  */
 function createMjuPortalGuard({
   bindingTtlMs = DEFAULT_BINDING_TTL_MS,

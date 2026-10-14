@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const test = require('node:test');
 const jwt = require('jsonwebtoken');
+const { HttpError } = require('../src/utils/httpError');
 
 process.env.JWT_SECRET = 'test-only-secret';
 process.env.DATA_SOURCE = 'fixture';
@@ -82,7 +83,7 @@ function identityDoc(overrides = {}) {
   };
 }
 
-async function start({ reply = (body) => ({ body: body.code === GOOD_AC ? identityDoc() : {} }), sso = {}, repos = repositories(), env = 'test' } = {}) {
+async function start({ reply = (body) => ({ body: body.code === GOOD_AC ? identityDoc() : {} }), sso = {}, repos = repositories(), env = 'test', portalGuard, codeReplayStore = null } = {}) {
   const mju = await startMjuMock(reply);
   const config = {
     ...realConfig,
@@ -108,7 +109,9 @@ async function start({ reply = (body) => ({ body: body.code === GOOD_AC ? identi
       ...sso,
     },
   };
-  const server = http.createServer(createApp({ container: { config, dataSource: 'fixture', repositories: repos } }));
+  const server = http.createServer(createApp({
+    container: { config, dataSource: 'fixture', repositories: repos, portalGuard, codeReplayStore },
+  }));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}/api/v1`;
   const seen = [];
@@ -138,7 +141,10 @@ async function start({ reply = (body) => ({ body: body.code === GOOD_AC ? identi
     const callback = await call(`/auth/sso/callback?ac=${encodeURIComponent(ac)}`, { cookie });
     return { login, cookie, callback };
   };
-  const exchange = (callback) => call('/auth/sso/exchange', { method: 'POST', body: { code: new URL(callback.location).searchParams.get('code') } });
+  const exchange = (callback, extra = {}) => call('/auth/sso/exchange', {
+    method: 'POST',
+    body: { code: new URL(callback.location).searchParams.get('code'), confirm: true, ...extra },
+  });
   const linkFor = (subject) => repos.identityLinks.findByProviderSubject(PROVIDER_MJU_SSO, subject);
   return { call, begin, signIn, exchange, linkFor, mju, repos, seen, close: () => { server.close(); mju.close(); } };
 }
@@ -220,7 +226,9 @@ test('valid login: signin?cid= -> ?ac= -> POST token.aspx {clientID, code} -> ma
 test('second login of the same linked person uses the stored subject and the citizen ID agrees', async () => {
   const t = await start();
   try {
-    assert.equal((await t.signIn(GOOD_AC)).callback.status, 302);
+    const first = await t.signIn(GOOD_AC);
+    assert.equal(first.callback.status, 302);
+    assert.equal((await t.exchange(first.callback)).status, 200);
     const next = 'fedcba9876543210fedcba9876543210';
     t.mju.requests.length = 0;
     const t2 = await start({ repos: t.repos, reply: (body) => ({ body: body.code === next ? identityDoc() : {} }) });
@@ -239,7 +247,9 @@ test('second login of the same linked person uses the stored subject and the cit
 test('personID is accepted as the subject only when the operator selects it; citizenID never can be', async () => {
   const personFlow = await start({ sso: { subjectClaim: 'personID' } });
   try {
-    assert.equal((await personFlow.signIn()).callback.status, 302);
+    const started = await personFlow.signIn();
+    assert.equal(started.callback.status, 302);
+    assert.equal((await personFlow.exchange(started.callback)).status, 200);
     assert.equal((await personFlow.linkFor('100234')).employeeUid, MJU_UID);
     assert.equal(await personFlow.linkFor('H-100234'), null);
   } finally {
@@ -401,7 +411,9 @@ test('wrong-user mapping: unknown citizen ID, name/e-mail/personID coincidences 
   const repos = repositories();
   const first = await start({ repos });
   try {
-    assert.equal((await first.signIn()).callback.status, 302);
+    const started = await first.signIn();
+    assert.equal(started.callback.status, 302);
+    assert.equal((await first.exchange(started.callback)).status, 200);
   } finally {
     first.close();
   }
@@ -491,6 +503,172 @@ test('browser binding: a callback without this browser\'s login cookie is refuse
   }
 });
 
+test('csrf: swapped ac still reaches confirm; confirmation does not prove the ac belongs to this login', async () => {
+  const repos = repositories();
+  let saves = 0;
+  const save = repos.refreshTokens.save.bind(repos.refreshTokens);
+  repos.refreshTokens.save = async (record) => {
+    saves += 1;
+    return save(record);
+  };
+  const attackerAc = 'fedcba9876543210fedcba9876543210';
+  const t = await start({
+    repos,
+    reply: (body) => ({ body: body.code === attackerAc ? identityDoc() : {} }),
+  });
+  try {
+    const { cookie } = await t.begin();
+    const callback = await t.call(`/auth/sso/callback?ac=${attackerAc}`, { cookie });
+    assert.equal(callback.status, 302);
+    assert.equal(t.mju.requests.length, 1);
+    const code = new URL(callback.location).searchParams.get('code');
+    const preview = await t.call('/auth/sso/exchange', { method: 'POST', body: { code } });
+    assert.equal(preview.status, 200);
+    assert.equal(preview.json.data.confirmationRequired, true);
+    assert.equal(preview.json.data.subject, 'H-100234');
+    assert.equal(preview.json.data.accessToken, undefined);
+    assert.equal(saves, 0);
+    assert.equal(await t.linkFor('H-100234'), null);
+    const session = await t.call('/auth/sso/exchange', { method: 'POST', body: { code, confirm: true } });
+    assert.equal(session.status, 200);
+    assert.equal(saves, 1);
+    assertNoLeak(t);
+  } finally {
+    t.close();
+  }
+});
+
+test('csrf: abandoned confirmation writes no refresh token and no identity link', async () => {
+  const repos = repositories();
+  let saves = 0;
+  const save = repos.refreshTokens.save.bind(repos.refreshTokens);
+  repos.refreshTokens.save = async (record) => {
+    saves += 1;
+    return save(record);
+  };
+  const t = await start({ repos });
+  try {
+    const { callback } = await t.signIn();
+    assert.equal(callback.status, 302);
+    assert.equal(saves, 0);
+    const code = new URL(callback.location).searchParams.get('code');
+    const preview = await t.call('/auth/sso/exchange', { method: 'POST', body: { code } });
+    assert.equal(preview.json.data.confirmationRequired, true);
+    assert.equal(preview.json.data.accessToken, undefined);
+    assert.equal(saves, 0);
+    assert.equal(await t.linkFor('H-100234'), null);
+    assertNoLeak(t);
+  } finally {
+    t.close();
+  }
+});
+
+test('csrf: confirm false does not issue a session', async () => {
+  const repos = repositories();
+  let saves = 0;
+  const save = repos.refreshTokens.save.bind(repos.refreshTokens);
+  repos.refreshTokens.save = async (record) => {
+    saves += 1;
+    return save(record);
+  };
+  const t = await start({ repos });
+  try {
+    const { callback } = await t.signIn();
+    const code = new URL(callback.location).searchParams.get('code');
+    const preview = await t.call('/auth/sso/exchange', { method: 'POST', body: { code, confirm: false } });
+    assert.equal(preview.status, 200);
+    assert.equal(preview.json.data.confirmationRequired, true);
+    assert.equal(preview.json.data.accessToken, undefined);
+    assert.equal(saves, 0);
+    assert.equal(await t.linkFor('H-100234'), null);
+  } finally {
+    t.close();
+  }
+});
+
+test('csrf: concurrent confirm is single-use', async () => {
+  const t = await start();
+  try {
+    const { callback } = await t.signIn();
+    const code = new URL(callback.location).searchParams.get('code');
+    const [left, right] = await Promise.all([
+      t.call('/auth/sso/exchange', { method: 'POST', body: { code, confirm: true } }),
+      t.call('/auth/sso/exchange', { method: 'POST', body: { code, confirm: true } }),
+    ]);
+    const statuses = [left.status, right.status].sort((a, b) => a - b);
+    assert.deepEqual(statuses, [200, 401]);
+    const winner = left.status === 200 ? left : right;
+    assert.ok(winner.json.data.refreshToken);
+    assert.equal((await t.linkFor('H-100234')).employeeUid, MJU_UID);
+  } finally {
+    t.close();
+  }
+});
+
+test('csrf: expired binding is refused before MJU', async () => {
+  let clock = 1_000;
+  const portalGuard = createMjuPortalGuard({ bindingTtlMs: 50, now: () => clock });
+  const t = await start({ portalGuard });
+  try {
+    const { cookie } = await t.begin();
+    clock += 51;
+    const callback = await t.call(`/auth/sso/callback?ac=${GOOD_AC}`, { cookie });
+    assert.equal(callback.status, 403);
+    assert.equal(errorCode(callback), 'SSO_STATE_INVALID');
+    assert.equal(t.mju.requests.length, 0);
+  } finally {
+    t.close();
+  }
+});
+
+test('csrf: expired handoff confirm writes no refresh token', async () => {
+  const repos = repositories();
+  let saves = 0;
+  const save = repos.refreshTokens.save.bind(repos.refreshTokens);
+  repos.refreshTokens.save = async (record) => {
+    saves += 1;
+    return save(record);
+  };
+  const t = await start({ repos, sso: { loginHandoffTtlMs: 30 } });
+  try {
+    const { callback } = await t.signIn();
+    await new Promise((resolve) => { setTimeout(resolve, 80); });
+    const response = await t.exchange(callback);
+    assert.equal(response.status, 401);
+    assert.equal(errorCode(response), 'SSO_HANDOFF_EXPIRED');
+    assert.equal(saves, 0);
+  } finally {
+    t.close();
+  }
+});
+
+test('replay store: a failed durable claim does not call MJU or the in-memory map', async () => {
+  let memoryClaims = 0;
+  const portalGuard = createMjuPortalGuard();
+  const original = portalGuard.claimCode.bind(portalGuard);
+  portalGuard.claimCode = (code) => {
+    memoryClaims += 1;
+    return original(code);
+  };
+  const t = await start({
+    portalGuard,
+    codeReplayStore: {
+      async claim() {
+        throw new HttpError(503, 'SSO_REPLAY_STORE_UNAVAILABLE', 'down');
+      },
+    },
+  });
+  try {
+    const { callback } = await t.signIn();
+    assert.equal(callback.status, 503);
+    assert.equal(errorCode(callback), 'SSO_REPLAY_STORE_UNAVAILABLE');
+    assert.equal(t.mju.requests.length, 0);
+    assert.equal(memoryClaims, 0);
+  } finally {
+    t.close();
+  }
+});
+
 test('callback input validation: missing, repeated or malformed ac and provider errors never reach MJU', async () => {
   const t = await start();
   try {
@@ -554,6 +732,7 @@ test('gates: token flow off or SSO disabled refuses; contract flags do not certi
   try {
     const { callback } = await noProtocol.signIn();
     assert.equal(callback.status, 302);
+    assert.equal((await noProtocol.exchange(callback)).status, 200);
     const link = await noProtocol.linkFor('H-100234');
     assert.equal(link.subjectType, 'candidate:humanID');
     assert.equal(link.source, 'mju_token_candidate_subject');

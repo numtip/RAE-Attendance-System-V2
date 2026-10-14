@@ -27,6 +27,21 @@ function createSsoLoginCodeStore({ ttlMs = DEFAULT_TTL_MS, now = () => Date.now(
     },
 
     /**
+     * Read a pending handoff without burning it. Used to show the candidate subject before confirm.
+     * @returns {{ status: 'ok', payload: object } | { status: 'expired'|'unknown' }}
+     */
+    peek(code) {
+      if (!code || !pending.has(code)) {
+        return { status: 'unknown' };
+      }
+      const entry = pending.get(code);
+      if (entry.expiresAt <= now()) {
+        return { status: 'expired' };
+      }
+      return { status: 'ok', payload: entry.payload };
+    },
+
+    /**
      * @returns {{ status: 'ok', payload: object } | { status: 'expired'|'unknown' }}
      */
     consume(code) {

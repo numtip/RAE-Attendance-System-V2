@@ -150,7 +150,21 @@ function createSsoIdentityResolutionService(deps) {
       } else if (employeeByNational) {
         employee = employeeByNational;
         resolutionPath = 'national_id';
+      } else {
+        await resolveEmployeeByNationalId(nationalIdExtraction);
+      }
 
+      assertEmployeeCanAuthenticate(employee);
+
+      // Portal completion validates here, then waits for an explicit confirm before any link or refresh row.
+      if (input.persist === false) {
+        return {
+          confirmationRequired: true,
+          subjectExtraction,
+        };
+      }
+
+      if (resolutionPath === 'national_id') {
         link = await identityResolution.linkProviderSubjectFromSsoLogin({
           providerKey: PROVIDER_MJU_SSO,
           providerSubject: subjectExtraction.subject,
@@ -167,11 +181,7 @@ function createSsoIdentityResolutionService(deps) {
           resolutionPath: 'national_id_first_login',
           subjectType: subjectExtraction.subjectType || 'opaque',
         });
-      } else {
-        await resolveEmployeeByNationalId(nationalIdExtraction);
       }
-
-      assertEmployeeCanAuthenticate(employee);
 
       assertJwtSecret(config);
       const refreshToken = randomUUID();

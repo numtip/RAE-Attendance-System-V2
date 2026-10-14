@@ -6,7 +6,7 @@
 
 * One local workspace: `G:\ProjectAI\rae-attendance-system-v2`. Several Git **branches** are fine; do **not** create Git worktrees or extra project folders.
 * One GitHub repo: `numtip/RAE-Attendance-System-V2`. One production deployment.
-* Current working branch: `integration/attendance-sso-hip` (PR #34, Draft, stacked on PR #30). Check `git status -sb` first.
+* Current working branch on the VPS checkout (2026-10-12): `phase-d/sso-security-remediation`. Start at `docs/J2_SSO_EOD_HANDOFF_20261012.md`. The 2026-10-09 note below named `integration/attendance-sso-hip` (PR #34, Draft). Check `git status -sb` first.
 * Windows PowerShell: call `git.exe` (the `git` shell function can be broken); write commit messages to a temp file and use `git commit -F`. Never use `git add -A` (the CSV and `database/local/` are protected only by `.gitignore`).
 
 ## Product scope
