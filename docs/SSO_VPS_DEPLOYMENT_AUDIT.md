@@ -199,7 +199,32 @@ Local probes returned `200` for `http://127.0.0.1:8088/`, `http://127.0.0.1:3210
 
 **This corrects the earlier claim that "V2 is not deployed to production yet".** V2 is reachable on `raeservice.mju.ac.th` at `/attendance-v2/` and `/api/v1/`. Whether it answers from the public internet depends on the host firewall and any Cloudflare layer, which this pass did not test; the nginx listeners on `80`/`443` are bound to `0.0.0.0`.
 
-Seen but not readable without root: `/etc/sudoers.d/attendance-frontend-deploy` (mtime 2025-09-25) exists but does **not** appear in `sudo -l` for `rae_admin`, so it grants some other account a frontend deploy command. `rae_admin` itself has `(ALL : ALL) ALL` with a password, plus `NOPASSWD` only for `/usr/local/bin/cleanup-joomla-190.sh`.
+Seen earlier and not readable without root: `/etc/sudoers.d/attendance-frontend-deploy`. It was read on 2026-10-14 (section 2.4) and grants nothing active. `rae_admin` itself has `(ALL : ALL) ALL` with a password, plus `NOPASSWD` only for `/usr/local/bin/cleanup-joomla-190.sh`.
+
+### 2.4 Root-level cron and sudoers (2026-10-14) - closes the ACCESS BLOCKED item
+
+Run by the operator in an interactive terminal, because `sudo -v` does not carry to a non-tty agent shell (that shell reports `not a tty` and `sudo -n` answers "a password is required"; sudo timestamps are per-TTY). Read-only; nothing was changed.
+
+**Root crontab (`sudo crontab -l`).** The only active jobs are:
+
+* `0 12 * * * /usr/bin/certbot renew --quiet`
+* `*/5 * * * * curl -fsS https://raeservice.mju.ac.th/health || echo "Health check failed $(date -Is)" >> /var/log/health_fail.log`
+
+There is **no `git pull`, no `git fetch`, no migrate, and no deploy**.
+
+**`sudo grep -rn -i -E 'git pull|git fetch|db:migrate|migrate\.mjs|deploy' /var/spool/cron/crontabs /etc/cron.d /etc/cron.daily /etc/cron.hourly`.** The only hit is a **commented-out** line recorded in the root crontab's own comment block, mentioning `deploy-landing-fix.sh`. No active job matches any of the patterns.
+
+**`/etc/sudoers.d/attendance-frontend-deploy`** (151 bytes, `root:root`, mode `-r--r-----`, mtime 2025-09-25) holds a single **disabled** rule:
+
+```
+# [removed 2026-09-25 by joomla-cleanup bootstrap] rae_admin ALL=(root) NOPASSWD: /home/rae_admin/real-attendance-system/scripts/deploy-landing-fix.sh
+```
+
+Three reasons this is not a live deploy path: it is commented out, it targeted a legacy *landing page* fix script rather than the V2 attendance deploy, and **the referenced script no longer exists** (`/home/rae_admin/real-attendance-system` exists but is not a git checkout and has no `scripts/deploy-landing-fix.sh`).
+
+**Consequence.** The section 2.1 and section 6 item "root crontab ... ACCESS BLOCKED, so auto-pull and auto-migrate are not closed" is **closed**: at root level the answer to both is **NO**. The bodies of `/home/rae_admin/docker-raeserver/backup_db.sh` and `/home/rae_admin/risk/kri_collect.sh` remain unread, but neither can deploy V2 - they are the two jobs already visible in the user crontab, and they are a database backup and a collect script respectively.
+
+Against the decision rule in section 6 - "if auto-pull or auto-migrate is yes, or the active branch is `main`, BLOCK the first merge" - all three inputs are now **no** (auto-pull no, auto-migrate no, and the runtime directory is not a git checkout). **The host-side blocker on the first merge is cleared.** That is not approval to merge: merging each PR still needs its own approval, and `#33` still needs its `.gitignore` resolution first.
 
 ## 3. Replay store (single process)
 
@@ -257,7 +282,7 @@ Do not widen to the 50-person scope from a single pass.
 
 Still open, and not mitigated by this document:
 
-1. Section 2.1 now records the authorized read-only pass. Live migrations end at `013_personnel_identifier.sql`, `log_bin` is off, and one V2 backend is running. Runtime commit is still UNKNOWN. Root crontab and two backup-script bodies are ACCESS BLOCKED, so auto-pull and auto-migrate are not closed. Section 2.2 records a source-only worktree at `7d810d8`; the runtime image was not changed. These facts do not authorize a merge.
+1. Section 2.1 now records the authorized read-only pass. Live migrations end at `013_personnel_identifier.sql`, `log_bin` is off, and one V2 backend is running. Root crontab and two backup-script bodies are ACCESS BLOCKED, so auto-pull and auto-migrate are not closed. Section 2.2 records a source-only worktree at `7d810d8`; the runtime image was not changed. These facts do not authorize a merge. **Correction 2026-10-14: section 2.4 closes the root-crontab item - auto-pull and auto-migrate are both NO at root level.**
 2. **Section 2.3 supersedes the "V2 is not deployed to production yet" wording.** V2 frontend and API are proxied on the production domain `raeservice.mju.ac.th` (`/attendance-v2/`, `/api/v1/`) and answer `200` locally. The served build traces to `9bc709d5`, already in `main`. This is exposure, not auto-deploy: nothing observed deploys on its own, and the question of public reachability was not tested.
 3. Login CSRF as in section 4.
 4. Replay store is process-local (section 3).

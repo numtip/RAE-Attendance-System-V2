@@ -96,13 +96,17 @@ This is the item the 2026-10-09 audit left **ACCESS BLOCKED**, and it is the dec
 | Check | Reading |
 |---|---|
 | `crontab -l` (non-comment lines) | Three jobs, all backup or collect: `backup_db.sh`, `risk/kri_collect.sh`, and an unrelated `/opt/raenew2026/scripts/backup.sh`. **No `git pull`, no `git fetch`, no migrate.** |
+| `sudo crontab -l` (root, closed 2026-10-14) | Two active jobs: `certbot renew`, and a 5-minute `curl` health check of `https://raeservice.mju.ac.th/health`. **No pull, no fetch, no migrate, no deploy.** |
+| `/etc/sudoers.d/attendance-frontend-deploy` | One **disabled** rule (`[removed 2026-09-25 by joomla-cleanup bootstrap]`) granting `NOPASSWD` for the legacy `/home/rae_admin/real-attendance-system/scripts/deploy-landing-fix.sh`. That script no longer exists and the directory is not a git checkout. |
 | `/etc/cron.d`, `cron.daily`, `cron.hourly` | `certbot`, `e2scrub_all`, `php`, `ssh_monitor` and distro defaults. No pull, deploy or migrate match. |
 | webhook / watchtower / CI-runner processes | None running. |
 | Runtime compose (`/home/rae_admin/rae-attendance-v2-runtime/docker-compose.yml`) | Services `mariadb`, `backend`, `frontend` only. **No `migrate` service.** `pull_policy: never` on mariadb and frontend; backend pinned to the local tag `rae-attendance-v2-backend:abb2792`. |
 | Backend container | `Cmd ["node","src/server.js"]`, entrypoint `docker-entrypoint.sh`. No migrate step. |
 | Runtime directory | Still **not** a git checkout (no `.git`), so it cannot pull a branch. |
 
-**Answer: nothing on this host pulls or deploys `main` automatically, and nothing migrates at container start-up.** Remaining gap, accepted by owner decision on 2026-10-14: the **root crontab is still unread** (`sudo` requires a password). Treat this as "no auto-pull/auto-migrate as far as a non-root read can see", not as a host-wide proof. If a future merge coincides with an unexplained schema change, re-open this.
+**Answer: nothing on this host pulls or deploys `main` automatically, and nothing migrates at container start-up.** The root crontab was read on 2026-10-14 (section 11.5) and holds only `certbot renew` and a health-check `curl`, so this is now a **root-level** answer, not just a non-root one. The two unread script bodies are a database backup and a collect script; neither can deploy V2. Residual uncertainty is limited to an unseen process outside cron, systemd and docker, which is not a realistic deploy path here.
+
+**Decision rule, cleared.** Section 6 of the 2026-10-09 audit blocks the first merge when auto-pull is yes, auto-migrate is yes, or the served branch is `main`. All three are now **no**: auto-pull no, auto-migrate no, and the runtime directory is not a git checkout at all. **The host-side blocker on the first merge is cleared.** Merging still needs its own approval (see the owner decisions at the top of this file), and `#33` still needs its `.gitignore` resolution first.
 
 ### 11.2 Preflights on the live database — **pass**, nothing applied
 
@@ -122,7 +126,19 @@ Read-only `SELECT` on `attendance_v2` in `rae-v2-mariadb` (MariaDB 11.4.10). Cou
 
 ### 11.4 Still open after this pass
 
-1. Root crontab (11.1) — accepted risk, not closed.
+1. ~~Root crontab~~ **CLOSED 2026-10-14** — see 11.5. Auto-pull and auto-migrate are **NO** at root level. The two unread script bodies (`backup_db.sh`, `kri_collect.sh`) are a database backup and a collect script, not a deploy path.
 2. The stock runner is still unsafe against this database: a `migrate.mjs` run would attempt `013_employee_identifier_foundation.sql`, which conflicts with the live unique key and enum order (see `docs/SSO_SCHEMA_RECONCILIATION.md`). Applying 017 is not a one-command operation.
 3. `#33`'s `.gitignore` conflict is proven but **not yet resolved**; it must be resolved before `#33` merges second.
 4. Everything in sections 3–6 that was BLOCKED before is still BLOCKED.
+
+### 11.5 Root-level cron and sudoers (2026-10-14)
+
+Run by the operator in an interactive terminal, because `sudo -v` does not carry to a non-tty agent shell (sudo timestamps are per-TTY; the agent shell gets "a password is required"). Read-only, nothing changed. Full detail: `docs/SSO_VPS_DEPLOYMENT_AUDIT.md` section 2.4.
+
+* `sudo crontab -l` — active jobs are only `0 12 * * * certbot renew --quiet` and `*/5 * * * * curl -fsS https://raeservice.mju.ac.th/health || echo ... >> /var/log/health_fail.log`. **No pull, fetch, migrate or deploy.**
+* `sudo grep -rn -i -E 'git pull|git fetch|db:migrate|migrate\.mjs|deploy' /var/spool/cron/crontabs /etc/cron.d /etc/cron.daily /etc/cron.hourly` — the only hit is a commented-out line inside the root crontab comment block mentioning `deploy-landing-fix.sh`. No active job matches.
+* `/etc/sudoers.d/attendance-frontend-deploy` (151 bytes, root:root, `-r--r-----`, mtime 2025-09-25) — one **disabled** rule for `NOPASSWD /home/rae_admin/real-attendance-system/scripts/deploy-landing-fix.sh`. The script no longer exists and that directory is not a git checkout.
+
+### 11.6 V2 is already served on the production domain
+
+Also learned 2026-10-14 while closing 11.5: `/etc/nginx/sites-enabled/raeservice.mju.ac.th.conf` proxies `/attendance-v2/` to `127.0.0.1:8088` and `/api/v1/` to `127.0.0.1:3210/api/v1/`, naming Release 1 SHA `9bc709d5` (merge of PR #16, an ancestor of `origin/main`). Local probes answer 200. Only ports 80 and 443 are bound publicly. This corrects the earlier "V2 is not deployed to production yet" wording. It is exposure, not auto-deploy. Public reachability through the firewall or Cloudflare was not tested, and the runtime `.env` values for `SSO_ENABLED`, `SSO_CALLBACK_CONFIRMED` and `DATA_SOURCE` were not read. Details: `docs/SSO_VPS_DEPLOYMENT_AUDIT.md` section 2.3.
