@@ -14,7 +14,9 @@ The filename gap from Phase C3 is the baseline. Object presence below was read f
 
 ## Ledger and runner
 
-Production `schema_migrations`, from Phase C2, contains `001` through `010` and `013_personnel_identifier.sql`. The runner in `scripts/migrate.mjs` stores the full filename and no checksum. Skip is an exact string match. Order is lexicographic. `--dry-run` prints every filename and does not read the ledger, so it is not schema validation.
+Production `schema_migrations`, from Phase C2, contains `001` through `010` and `013_personnel_identifier.sql`. The runner in `scripts/migrate.mjs` stores the full filename and no checksum. Skip is an exact string match. Order is lexicographic.
+
+**Correction (2026-10-14).** `--dry-run` printed every filename and did not read the ledger, so it was not schema validation. That is fixed: the flag now connects read-only, reads `schema_migrations` **without creating it**, and prints only the files the ledger does not record, labelled against the ledger. If the database is unreachable the flag refuses to report and exits 1 instead of listing everything as pending. The apply path is unchanged. Unit tests: `scripts/migrate.test.mjs` (`npm run migrate:test`), including a regression case built from the ledger below. The runner still has **no flag to apply a single file or a subset**: `parseArgs` accepts only `--seed` and `--dry-run`, so applying 017 alone against this database remains an out-of-band, manually supervised operation.
 
 Against that ledger a stock run would attempt, then stop at the first error:
 

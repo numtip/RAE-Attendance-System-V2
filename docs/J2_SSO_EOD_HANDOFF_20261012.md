@@ -127,7 +127,7 @@ Read-only `SELECT` on `attendance_v2` in `rae-v2-mariadb` (MariaDB 11.4.10). Cou
 ### 11.4 Still open after this pass
 
 1. ~~Root crontab~~ **CLOSED 2026-10-14** — see 11.5. Auto-pull and auto-migrate are **NO** at root level. The two unread script bodies (`backup_db.sh`, `kri_collect.sh`) are a database backup and a collect script, not a deploy path.
-2. The stock runner is still unsafe against this database: a `migrate.mjs` run would attempt `013_employee_identifier_foundation.sql`, which conflicts with the live unique key and enum order (see `docs/SSO_SCHEMA_RECONCILIATION.md`). Applying 017 is not a one-command operation.
+2. The stock runner is still unsafe against this database: a `migrate.mjs` run would attempt `013_employee_identifier_foundation.sql`, which conflicts with the live unique key and enum order (see `docs/SSO_SCHEMA_RECONCILIATION.md`). **Still no flag applies a subset** (`parseArgs` accepts only `--seed` and `--dry-run`), so applying 017 alone stays out-of-band. **Fixed 2026-10-14:** `--dry-run` now reads the ledger read-only instead of listing every file as pending, and refuses (exit 1) when the database is unreachable; covered by `scripts/migrate.test.mjs` in CI.
 3. `#33`'s `.gitignore` conflict is proven but **not yet resolved**; it must be resolved before `#33` merges second.
 4. Everything in sections 3–6 that was BLOCKED before is still BLOCKED.
 

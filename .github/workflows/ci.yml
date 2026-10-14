@@ -31,6 +31,8 @@ jobs:
         run: npm run contract:smoke
       - name: Data onboarding dry-run tests
         run: node --test scripts/data-onboarding/onboarding.test.mjs
+      - name: Migration tooling tests
+        run: node --test scripts/migrate.test.mjs
 
   backend-mariadb:
     runs-on: ubuntu-latest
@@ -83,6 +85,11 @@ jobs:
         run: npm ci
       - name: Apply migrations and dev seed
         run: npm run db:migrate:seed
+      - name: Dry run reads the ledger and reports nothing pending
+        run: |
+          output=$(npm run db:migrate -- --dry-run)
+          echo "$output"
+          echo "$output" | grep -q 'nothing pending'
       - name: Backend lint and MariaDB integration tests
         working-directory: backend
         run: |
