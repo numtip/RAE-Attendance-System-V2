@@ -1,9 +1,9 @@
 # Session Handoff
 
-Last updated: 2026-10-09 (candidate subject committed for Draft PR #34; do not merge). Read this file **before** starting any work.
+Last updated: 2026-10-14 (repo-vs-GitHub verification; see the note below). The body from section 1 down stays the **2026-10-09 record** and is not the current SHA. Read this file **before** starting any work.
 It contains no PII, secrets or real CSV content, and must stay that way.
 
-**Next start (2026-10-12, VPS `10.1.245.190`):** `docs/J2_SSO_EOD_HANDOFF_20261012.md` on branch `phase-d/sso-security-remediation`. Sections below stay the 2026-10-09 record. Do not treat them as the current SHA.
+**Next start (2026-10-14, VPS `10.1.245.190`):** `docs/J2_SSO_EOD_HANDOFF_20261012.md` on branch `phase-d/sso-security-remediation`. That branch is [PR #35](https://github.com/numtip/RAE-Attendance-System-V2/pull/35) (Draft, OPEN, base `integration/attendance-sso-hip`), which this file and the 12 Oct handoff did not previously record. PR #35 CI at `2bc999c` was **6/8 (lint failure)**; fixed locally in `82e2847`. Local-only commits after `2bc999c`: `f4b672a` and `82e2847`, both unpushed. Sections below stay the 2026-10-09 record.
 
 ## 1. Repo and working branch
 

@@ -4,6 +4,8 @@ Host: `10.1.245.190` (`raeserver`). Repo: `/home/rae_admin/RAE-Attendance-System
 Branch: `phase-d/sso-security-remediation`. Prior baseline: `a6a18d5`.
 No production migration, restart, deploy, SSO enable, Cloudflare change, or credential creation.
 
+**Update (2026-10-14, read-only verification).** This branch is [PR #35](https://github.com/numtip/RAE-Attendance-System-V2/pull/35) (Draft, OPEN, base `integration/attendance-sso-hip`, head `phase-d/sso-security-remediation`, 27 files +1432/-53) — an earlier revision of this handoff did not record that the PR exists. CI on `2bc999c` was **6/8, red**: `backend` and `backend-mariadb` both failed at the lint step (see the QA correction below). Local commits after `2bc999c`: `f4b672a` (Phase C evidence docs + ignore `.local/`) and `82e2847` (the lint fix). Both are **unpushed**.
+
 Prior evidence, not rewritten: `docs/SESSION_HANDOFF.md` (2026-10-09), `docs/SSO_PROTOCOL_EVIDENCE.md`, `docs/SSO_IDENTITY_FLOW.md` (Pass 9 handoff, Pass 10 deferral), `docs/SSO_PHASE_D_SECURITY_REMEDIATION.md`, `docs/MIGRATION_017_PRIVILEGES.md`. Local notes that stay untracked: `.local/J2_SSO_BLOCKER_REMEDIATION.md`, `.local/J2_SSO_017_DBA_CHECKLIST.md`.
 
 ## Status
@@ -20,12 +22,16 @@ Prior evidence, not rewritten: `docs/SESSION_HANDOFF.md` (2026-10-09), `docs/SSO
 | MJU subject / `ac` certification | **BLOCKED** |
 | Staging | **NO-GO** |
 | Production | **NO-GO** |
+| PR #35 (this branch) | Draft, OPEN, base `integration/attendance-sso-hip` |
+| PR #35 CI at `2bc999c` | **6/8 - lint failure** (fixed in `82e2847`, unpushed) |
 
 ## QA
 
 Node 20.19.5, no production database:
 
 * SSO, MVP, MJU token flow, Pass 9, callback wiring, identity chain, Release 1 auth, shared-claim opt-in: **84 pass, 0 fail**.
+* **Correction (2026-10-14):** that run did not cover `npm run lint`, and lint was red on `2bc999c` (the commit that added the shared-claim store). `backend/eslint.config.js` declares globals as an explicit list with no `__dirname`, and `sourceType: 'commonjs'` does not supply it, so `backend/tests/ssoSharedClaimStore.mariadb.test.js` failed with 3 `no-undef` errors. This is why PR #35 CI was 6/8. Fixed in `82e2847` with the `/* global __dirname */` header this repo already uses in `backend/tests/idcardCsvIdentity.test.js`. Re-verified on Node 20.19.5: `npm run lint` exit 0, `JWT_SECRET=ci-fixture-only-secret npm test` 201 pass / 0 fail / 8 skipped. **Always run lint, not tests alone, before calling this branch green.**
+* Note: `node` on the host PATH is v12.22.9; the project needs Node 20. Use `~/.nvm/versions/node/v20.19.5` for any local QA.
 * Earlier the same day, disposable MariaDB 10.11 on `127.0.0.1:3319` (container removed): two OS processes, one binding consume and one handoff consume each had exactly one winner; expiry, replay, missing table, and `IDENTITY_NOT_APPROVED` then 401 also passed (**86 pass, 0 fail** including those cases).
 * Secret content scan of the committed paths: no private keys, no filled `OPENROUTER_API_KEY`, no password assignment.
 
@@ -58,11 +64,12 @@ Token, userinfo, and the stable subject are not certified. `humanID` remains a c
 
 ## Next tasks
 
-1. Operator: Cloudflare Access grant, then project-token handoff. Dependency: Jev smoke. Do not call port 8787 or bypass Access.
-2. DBA: sign the 017 checklist, then a staging-only apply. Dependency: zero collisions from `database/preflight/017_preflight.sql`. Do not grant `SUPER` while `log_bin=0`.
-3. Staging database: apply `019` only there, set `SSO_SHARED_CLAIM_STORE=true` on that process, rerun the disposable two-process test against that database. Do not point it at `rae-v2-mariadb`.
-4. Production-shaped identifier change: use the additive 013 script only under a separate approval. Do not run historical `013_employee_identifier_foundation.sql` there.
-5. MJU IT: `ac` lifetime and which field is the stable subject. Dependency for any live login.
+1. Push `f4b672a` and `82e2847` to `origin/phase-d/sso-security-remediation` (fast-forward, no force), then confirm PR #35 CI is 8/8. **Needs explicit approval.** Do not push as part of any other task.
+2. Operator: Cloudflare Access grant, then project-token handoff. Dependency: Jev smoke. Do not call port 8787 or bypass Access.
+3. DBA: sign the 017 checklist, then a staging-only apply. Dependency: zero collisions from `database/preflight/017_preflight.sql`. Do not grant `SUPER` while `log_bin=0`.
+4. Staging database: apply `019` only there, set `SSO_SHARED_CLAIM_STORE=true` on that process, rerun the disposable two-process test against that database. Do not point it at `rae-v2-mariadb`.
+5. Production-shaped identifier change: use the additive 013 script only under a separate approval. Do not run historical `013_employee_identifier_foundation.sql` there.
+6. MJU IT: `ac` lifetime and which field is the stable subject. Dependency for any live login.
 
 ## Do not repeat
 
