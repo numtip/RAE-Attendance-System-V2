@@ -1,11 +1,12 @@
 # SSO VPS deployment safety audit (Phase C)
 
-> **Point-in-time record (2026-10-09).** For current state read
-> `docs/J2_SSO_EOD_HANDOFF_20261012.md`, which supersedes this file where they
-> differ. The evidence below is not rewritten and its **NO-GO** verdicts stay in
-> force. The PR head, branch and migration ledger named here have since moved
-> on (branch `phase-d/sso-security-remediation`, HEAD `2bc999c`, migration `019`
-> added but not applied).
+> **Point-in-time record (2026-10-09), with a 2026-10-14 addendum.** For current
+> state read `docs/J2_SSO_EOD_HANDOFF_20261012.md`, which supersedes this file
+> where they differ. The evidence below is not rewritten and its **NO-GO**
+> verdicts stay in force. The PR head, branch and migration ledger named here
+> have since moved on (branch `phase-d/sso-security-remediation`, HEAD `13962ac`,
+> migration `019` added but not applied). **Section 2.3 was added 2026-10-14 and
+> supersedes this file's earlier "V2 is not deployed to production yet" claim.**
 
 Date: 2026-10-09. Repo `numtip/RAE-Attendance-System-V2`, branch `integration/attendance-sso-hip`, Draft PR #34 head `7d810d8`. No SSH, no deploy, no migration, no secret or personnel data was read. Phase B (MJU IT written confirmation) stays skipped by owner decision. This audit does not certify the protocol.
 
@@ -174,6 +175,32 @@ Owner approved a source sync only. No production deploy.
 
 Section 2.1 was updated after this sync by an authorized read-only pass. The worktree branch is not the production branch. Runtime commit, auto-pull, and auto-migrate were not closed by the sync.
 
+### 2.3 Runtime routing and exposure (2026-10-14, read-only)
+
+Measured on `raeserver` without root. No file was changed. `sudo -v` in an interactive terminal does not carry to a non-tty agent shell, so the root crontab and `/etc/sudoers.d/` were still not readable; everything below is non-root evidence.
+
+**The V2 app is already served on the production domain.** `/etc/nginx/sites-enabled/raeservice.mju.ac.th.conf` (mtime 2026-10-01 06:37) contains:
+
+* `location = /attendance-v2` -> `301` to `/attendance-v2/`
+* `location ^~ /attendance-v2/` -> `proxy_pass http://127.0.0.1:8088/` (V2 frontend)
+* `location ^~ /api/v1/` -> `proxy_pass http://127.0.0.1:3210/api/v1/` (V2 backend)
+* a comment: `# Release 1 SHA 9bc709d5a85078fe732e0b8b35fed4b4d380fa4e`
+
+Local probes returned `200` for `http://127.0.0.1:8088/`, `http://127.0.0.1:3210/api/v1/health` and the legacy `http://127.0.0.1:3000/`. Only `0.0.0.0:80` and `0.0.0.0:443` are bound publicly; `8088` and `3210` listen on loopback only.
+
+| Item | Finding |
+|---|---|
+| Release 1 SHA recorded in nginx | `9bc709d5` = merge commit of PR #16 (`feat/release1-final-signoff`, 2026-10-01). It **is** an ancestor of `origin/main`, so nothing outside main's history is being served. |
+| Served frontend assets | `/home/rae_admin/rae-attendance-v2-runtime/frontend-dist`, mtime 2026-10-01, consistent with the nginx comment. |
+| Runtime env | Keys `SSO_ENABLED`, `SSO_CALLBACK_CONFIRMED` and `DATA_SOURCE` exist in `/home/rae_admin/rae-attendance-v2-runtime/.env`. The **values were not read**, so this pass does not report their state. |
+| PM2 | `pm2-rae_admin.service` is active, but `$HOME/.pm2/dump.pm2` is absent, so PM2 currently manages zero applications. |
+| Health timer | `check-raeservice-attendance.timer` runs every 15 minutes and only curls health URLs; it deploys nothing. |
+| `/opt/rae-attendance` | Not a git checkout. Holds legacy helper scripts dated Nov 2025, not a deploy path. |
+
+**This corrects the earlier claim that "V2 is not deployed to production yet".** V2 is reachable on `raeservice.mju.ac.th` at `/attendance-v2/` and `/api/v1/`. Whether it answers from the public internet depends on the host firewall and any Cloudflare layer, which this pass did not test; the nginx listeners on `80`/`443` are bound to `0.0.0.0`.
+
+Seen but not readable without root: `/etc/sudoers.d/attendance-frontend-deploy` (mtime 2025-09-25) exists but does **not** appear in `sudo -l` for `rae_admin`, so it grants some other account a frontend deploy command. `rae_admin` itself has `(ALL : ALL) ALL` with a password, plus `NOPASSWD` only for `/usr/local/bin/cleanup-joomla-190.sh`.
+
 ## 3. Replay store (single process)
 
 `backend/src/services/sso/mjuPortalGuard.js`: each `ac` is a SHA-256 digest in a process-local `Map`. TTL 1 hour. Cap 10,000; the oldest digest is deleted. Bindings expire after 10 minutes and are single-use. The guard is not shared and does not survive a restart.
@@ -231,11 +258,12 @@ Do not widen to the 50-person scope from a single pass.
 Still open, and not mitigated by this document:
 
 1. Section 2.1 now records the authorized read-only pass. Live migrations end at `013_personnel_identifier.sql`, `log_bin` is off, and one V2 backend is running. Runtime commit is still UNKNOWN. Root crontab and two backup-script bodies are ACCESS BLOCKED, so auto-pull and auto-migrate are not closed. Section 2.2 records a source-only worktree at `7d810d8`; the runtime image was not changed. These facts do not authorize a merge.
-2. Login CSRF as in section 4.
-3. Replay store is process-local (section 3).
-4. `ac` lifetime and single-use at MJU, response signing, and whether `humanID` is stable are still unknown. Phase B was skipped; that did not answer them.
-5. Migration 017 on a real database needs `SUPER` or `log_bin_trust_function_creators=1`. Not decided. Not tested on production data.
-6. After #30 merges, #33 conflicts on `.gitignore`. Resolution remains: keep every #30 rule and append `mju-person-enrich.zip`.
-7. PR #34 is still a Draft based on `docs/mju-subject-evidence-pack`, not `main`.
+2. **Section 2.3 supersedes the "V2 is not deployed to production yet" wording.** V2 frontend and API are proxied on the production domain `raeservice.mju.ac.th` (`/attendance-v2/`, `/api/v1/`) and answer `200` locally. The served build traces to `9bc709d5`, already in `main`. This is exposure, not auto-deploy: nothing observed deploys on its own, and the question of public reachability was not tested.
+3. Login CSRF as in section 4.
+4. Replay store is process-local (section 3).
+5. `ac` lifetime and single-use at MJU, response signing, and whether `humanID` is stable are still unknown. Phase B was skipped; that did not answer them.
+6. Migration 017 on a real database needs `SUPER` or `log_bin_trust_function_creators=1`. **Read on 2026-10-14: `log_bin=0` on this host, so the 1419 requirement does not apply and the `SUPER` item is moot while binary logging stays off** (`docs/MIGRATION_017_PRIVILEGES.md`). Not tested on production data and not approved.
+7. After #30 merges, #33 conflicts on `.gitignore`. Resolution remains: keep every #30 rule and append `mju-person-enrich.zip`. A `git merge-tree` dry-run on 2026-10-14 confirmed the conflict is `.gitignore` only.
+8. PR #34 is still a Draft based on `docs/mju-subject-evidence-pack`, not `main`. The working branch `phase-d/sso-security-remediation` is **[PR #35](https://github.com/numtip/RAE-Attendance-System-V2/pull/35)**, Draft, base `integration/attendance-sso-hip`; CI at `90f7b53` and `13962ac` is 8/8 green.
 
-Next, in order, each with its own approval: receive the section 2 table; only then consider merge order #30, #33 (gitignore), #34. A staging pilot is a separate approval after the host for that pilot is named. Do not SSH, merge, or enable flags as part of reading this file.
+Next, in order, each with its own approval: receive the section 2 table; only then consider merge order #30, #33 (gitignore), #34/#35. A staging pilot is a separate approval after the host for that pilot is named. Do not SSH, merge, or enable flags as part of reading this file.
