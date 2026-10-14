@@ -3,7 +3,7 @@
 Last updated: 2026-10-14 (repo-vs-GitHub verification; see the note below). The body from section 1 down stays the **2026-10-09 record** and is not the current SHA. Read this file **before** starting any work.
 It contains no PII, secrets or real CSV content, and must stay that way.
 
-**Next start (2026-10-14, VPS `10.1.245.190`):** `docs/J2_SSO_EOD_HANDOFF_20261012.md` on branch `phase-d/sso-security-remediation`. That branch is [PR #35](https://github.com/numtip/RAE-Attendance-System-V2/pull/35) (Draft, OPEN, base `integration/attendance-sso-hip`), which this file and the 12 Oct handoff did not previously record. PR #35 CI at `2bc999c` was **6/8 (lint failure)**; fixed locally in `82e2847`. Local-only commits after `2bc999c`: `f4b672a` and `82e2847`, both unpushed. Sections below stay the 2026-10-09 record.
+**Next start (2026-10-14, VPS `10.1.245.190`):** `docs/J2_SSO_EOD_HANDOFF_20261012.md` on branch `phase-d/sso-security-remediation`. That branch is [PR #35](https://github.com/numtip/RAE-Attendance-System-V2/pull/35) (Draft, OPEN, base `integration/attendance-sso-hip`), which this file and the 12 Oct handoff did not previously record. PR #35 CI at `2bc999c` was **6/8 (lint failure)**; fixed in `82e2847`, and `f4b672a`/`82e2847`/`90f7b53` were pushed fast-forward — **CI on `90f7b53` is 8/8 green**. The 14 Oct read-only host pass (J2 handoff section 11) answered auto-pull and auto-migrate as **no** and cleared the 017 `SUPER` item (`log_bin=0`). **Owner decisions 2026-10-14: do not merge any PR yet, and do not migrate any database.** Sections below stay the 2026-10-09 record.
 
 ## 1. Repo and working branch
 

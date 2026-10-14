@@ -4,7 +4,9 @@ Host: `10.1.245.190` (`raeserver`). Repo: `/home/rae_admin/RAE-Attendance-System
 Branch: `phase-d/sso-security-remediation`. Prior baseline: `a6a18d5`.
 No production migration, restart, deploy, SSO enable, Cloudflare change, or credential creation.
 
-**Update (2026-10-14, read-only verification).** This branch is [PR #35](https://github.com/numtip/RAE-Attendance-System-V2/pull/35) (Draft, OPEN, base `integration/attendance-sso-hip`, head `phase-d/sso-security-remediation`, 27 files +1432/-53) — an earlier revision of this handoff did not record that the PR exists. CI on `2bc999c` was **6/8, red**: `backend` and `backend-mariadb` both failed at the lint step (see the QA correction below). Local commits after `2bc999c`: `f4b672a` (Phase C evidence docs + ignore `.local/`) and `82e2847` (the lint fix). Both are **unpushed**.
+**Update (2026-10-14, verification + approved push).** This branch is [PR #35](https://github.com/numtip/RAE-Attendance-System-V2/pull/35) (Draft, OPEN, base `integration/attendance-sso-hip`, 30 files +1766/-54) — earlier revisions of this handoff did not record that the PR exists. CI on `2bc999c` was **6/8, red**: `backend` and `backend-mariadb` both failed at the lint step (see the QA correction below). It was fixed in `82e2847`. With approval, `f4b672a`, `82e2847` and `90f7b53` were pushed fast-forward (`2bc999c..90f7b53`), and **CI on `90f7b53` is 8/8 green** with `mergeStateStatus: CLEAN`. Read-only host checks the same day closed the auto-pull and auto-migrate question and cleared the 017 privilege item; see section 11.
+
+**Owner decisions (2026-10-14):** **do not merge any PR yet** and **do not migrate any database**, production or otherwise. The read-only preflights were run and passed; that is not approval to apply.
 
 Prior evidence, not rewritten: `docs/SESSION_HANDOFF.md` (2026-10-09), `docs/SSO_PROTOCOL_EVIDENCE.md`, `docs/SSO_IDENTITY_FLOW.md` (Pass 9 handoff, Pass 10 deferral), `docs/SSO_PHASE_D_SECURITY_REMEDIATION.md`, `docs/MIGRATION_017_PRIVILEGES.md`. Local notes that stay untracked: `.local/J2_SSO_BLOCKER_REMEDIATION.md`, `.local/J2_SSO_017_DBA_CHECKLIST.md`.
 
@@ -17,13 +19,15 @@ Prior evidence, not rewritten: `docs/SESSION_HANDOFF.md` (2026-10-09), `docs/SSO
 | Migration 019 schema file | **DONE** (not applied) |
 | In-memory SSO default | **REUSED** |
 | `ac` replay table `sso_consumed_code` | **REUSED** (not used for binding or handoff) |
-| Migration 017 | **BLOCKED** |
+| Migration 017 | **Privilege item CLEARED 2026-10-14** (`log_bin=0`); a real apply is still **NOT APPROVED** |
 | Jev authenticated decision | **BLOCKED** |
 | MJU subject / `ac` certification | **BLOCKED** |
 | Staging | **NO-GO** |
 | Production | **NO-GO** |
 | PR #35 (this branch) | Draft, OPEN, base `integration/attendance-sso-hip` |
-| PR #35 CI at `2bc999c` | **6/8 - lint failure** (fixed in `82e2847`, unpushed) |
+| PR #35 CI at `90f7b53` | **8/8 green**, `mergeStateStatus: CLEAN` (was 6/8 at `2bc999c`) |
+| Merge of any PR (2026-10-14) | **NOT APPROVED** by owner decision |
+| Migration of any DB (2026-10-14) | **NOT APPROVED** by owner decision |
 
 ## QA
 
@@ -64,12 +68,13 @@ Token, userinfo, and the stable subject are not certified. `humanID` remains a c
 
 ## Next tasks
 
-1. Push `f4b672a` and `82e2847` to `origin/phase-d/sso-security-remediation` (fast-forward, no force), then confirm PR #35 CI is 8/8. **Needs explicit approval.** Do not push as part of any other task.
-2. Operator: Cloudflare Access grant, then project-token handoff. Dependency: Jev smoke. Do not call port 8787 or bypass Access.
-3. DBA: sign the 017 checklist, then a staging-only apply. Dependency: zero collisions from `database/preflight/017_preflight.sql`. Do not grant `SUPER` while `log_bin=0`.
-4. Staging database: apply `019` only there, set `SSO_SHARED_CLAIM_STORE=true` on that process, rerun the disposable two-process test against that database. Do not point it at `rae-v2-mariadb`.
-5. Production-shaped identifier change: use the additive 013 script only under a separate approval. Do not run historical `013_employee_identifier_foundation.sql` there.
-6. MJU IT: `ac` lifetime and which field is the stable subject. Dependency for any live login.
+1. ~~Push and confirm CI.~~ **DONE 2026-10-14:** pushed `2bc999c..90f7b53` fast-forward; CI on `90f7b53` is 8/8 green. No further push is pending.
+2. Merge: **NOT APPROVED.** The auto-pull/auto-migrate blocker is now answered "no" (section 11.1) and the merge dry-run is in 11.3, but the owner decided on 2026-10-14 not to merge yet. When it is approved, the order is `#30` -> resolve `#33`'s `.gitignore` -> `#33` -> `#34`/`#35`, each with its own approval.
+3. Operator: Cloudflare Access grant, then project-token handoff. Dependency: Jev smoke. Do not call port 8787 or bypass Access.
+4. DBA: the `SUPER` question is moot while `log_bin=0` (section 11.2). Any staging-only apply still needs its own approval; `database/preflight/017_preflight.sql` returns zero collisions today.
+5. Staging database: apply `019` only there, set `SSO_SHARED_CLAIM_STORE=true` on that process, rerun the disposable two-process test against that database. Do not point it at `rae-v2-mariadb`.
+6. Production-shaped identifier change: use the additive 013 script only under a separate approval. Do not run historical `013_employee_identifier_foundation.sql` there.
+7. MJU IT: `ac` lifetime and which field is the stable subject. Dependency for any live login.
 
 ## Do not repeat
 
@@ -79,3 +84,45 @@ Token, userinfo, and the stable subject are not certified. `humanID` remains a c
 * Do not store binding or handoff rows in `sso_consumed_code`.
 * Do not enable SSO, restart production, or change Cloudflare from this repo.
 * Do not treat `docs/SESSION_HANDOFF.md` sections 1–10 as the current SHA. They are the 2026-10-09 record.
+
+## 11. Read-only host verification (2026-10-14)
+
+Run on `raeserver` itself (this workspace is the VPS checkout, so no SSH was needed). No write, no restart, no pull, no migration, no flag change. These readings change no status above except where named.
+
+### 11.1 Auto-pull and auto-migrate — both **NO**
+
+This is the item the 2026-10-09 audit left **ACCESS BLOCKED**, and it is the decision-rule input that blocked the first merge.
+
+| Check | Reading |
+|---|---|
+| `crontab -l` (non-comment lines) | Three jobs, all backup or collect: `backup_db.sh`, `risk/kri_collect.sh`, and an unrelated `/opt/raenew2026/scripts/backup.sh`. **No `git pull`, no `git fetch`, no migrate.** |
+| `/etc/cron.d`, `cron.daily`, `cron.hourly` | `certbot`, `e2scrub_all`, `php`, `ssh_monitor` and distro defaults. No pull, deploy or migrate match. |
+| webhook / watchtower / CI-runner processes | None running. |
+| Runtime compose (`/home/rae_admin/rae-attendance-v2-runtime/docker-compose.yml`) | Services `mariadb`, `backend`, `frontend` only. **No `migrate` service.** `pull_policy: never` on mariadb and frontend; backend pinned to the local tag `rae-attendance-v2-backend:abb2792`. |
+| Backend container | `Cmd ["node","src/server.js"]`, entrypoint `docker-entrypoint.sh`. No migrate step. |
+| Runtime directory | Still **not** a git checkout (no `.git`), so it cannot pull a branch. |
+
+**Answer: nothing on this host pulls or deploys `main` automatically, and nothing migrates at container start-up.** Remaining gap, accepted by owner decision on 2026-10-14: the **root crontab is still unread** (`sudo` requires a password). Treat this as "no auto-pull/auto-migrate as far as a non-root read can see", not as a host-wide proof. If a future merge coincides with an unexplained schema change, re-open this.
+
+### 11.2 Preflights on the live database — **pass**, nothing applied
+
+Read-only `SELECT` on `attendance_v2` in `rae-v2-mariadb` (MariaDB 11.4.10). Counts only; no identifier values were selected.
+
+* `database/preflight/015_preflight.sql`: `national_id_rows_pre_015=0`, `legacy_plaintext_national_rows=0`, `thirteen_digit_values_in_other_types=0`, `employees_with_multiple_national_rows=0`, `duplicate_type_value_groups=0`, `orphan_identifier_rows=0`, `missing_unique_key_from_013=0`.
+* `database/preflight/017_preflight.sql`: `cross_employee_namespace_collisions=0`, `values_in_both_namespaces_same_or_other_employee=0`, `employee_identifier_table_present=1`, `id_value_collation=utf8mb4_unicode_ci`.
+* `log_bin=0`, `log_bin_trust_function_creators=0`, `binlog_format=MIXED`. Triggers in `attendance_v2`: 0.
+* Ledger `schema_migrations` ends at `013_personnel_identifier.sql`; `011`, `012`, `014`–`019` are all unapplied.
+
+**Consequence:** because `log_bin` is OFF, the error-1419 row does not apply, so `CREATE TRIGGER` needs no `SUPER` and the "DBA decision: `SUPER` or set `log_bin_trust_function_creators=1`" item is **moot on this host**. The remaining requirement is only `TRIGGER`, held by the account used for the read (`root@localhost`, `ALL PRIVILEGES`). Details: `docs/MIGRATION_017_PRIVILEGES.md`. This is a privilege answer, **not** approval to apply.
+
+### 11.3 Merge dry-run
+
+* `#30` (`docs/mju-subject-evidence-pack`) into `main`: **clean**, no conflicted path.
+* `#33` (`feat/facescan-ingestion-phase-a`) against a tree that already contains `#30`: conflicts on **`.gitignore` only** — exactly the single conflict the 2026-10-09 handoff predicted. The resolution stays: keep every `#30` rule and append `mju-person-enrich.zip`.
+
+### 11.4 Still open after this pass
+
+1. Root crontab (11.1) — accepted risk, not closed.
+2. The stock runner is still unsafe against this database: a `migrate.mjs` run would attempt `013_employee_identifier_foundation.sql`, which conflicts with the live unique key and enum order (see `docs/SSO_SCHEMA_RECONCILIATION.md`). Applying 017 is not a one-command operation.
+3. `#33`'s `.gitignore` conflict is proven but **not yet resolved**; it must be resolved before `#33` merges second.
+4. Everything in sections 3–6 that was BLOCKED before is still BLOCKED.
