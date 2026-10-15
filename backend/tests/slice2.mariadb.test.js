@@ -47,10 +47,14 @@ test('migration 022/023 DDL, real DATETIME parity, and the full calculate chain'
   const holidayName = `${TEST_PREFIX}-HOLIDAY`;
 
   t.after(async () => {
-    // Order matters for the FKs: events reference staging + batches; links cascade from daily_attendance.
+    // FK order matters. `daily_attendance_source_event` references BOTH tables: it cascades from
+    // daily_attendance but NOT from attendance_events, so deleting the events first fails the constraint.
+    // Delete the daily rows first (which cascades their links away), then the events.
+    await pool.query(
+      'DELETE FROM daily_attendance WHERE employee_uid = ? AND date BETWEEN ? AND ?',
+      [EMPLOYEE_UID, '2026-09-01', '2026-09-30'],
+    );
     await pool.query('DELETE FROM attendance_events WHERE facescan_id LIKE ?', [`${TEST_PREFIX}%`]);
-    await pool.query('DELETE FROM daily_attendance_source_event');
-    await pool.query('DELETE FROM daily_attendance WHERE employee_uid = ?', [EMPLOYEE_UID]);
     await pool.query('DELETE FROM staging_facescan_raw WHERE facescan_id LIKE ?', [`${TEST_PREFIX}%`]);
     await pool.query('DELETE FROM facescan_import_batches WHERE source_reference LIKE ?', [`${TEST_PREFIX}%`]);
     await pool.query('DELETE FROM employee_identifier WHERE id_value LIKE ?', [`${TEST_PREFIX}%`]);
