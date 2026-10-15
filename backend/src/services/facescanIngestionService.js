@@ -6,7 +6,7 @@ const {
   normalizeCheckinoutRow,
   buildSourceEventKey,
 } = require('../domain/facescanIngestion');
-const { formatBangkokWall } = require('../utils/bangkokTime');
+const { formatBangkokWall, wallDateOnly } = require('../utils/bangkokTime');
 
 function createFacescanIngestionService({ repositories }) {
   const store = repositories.facescanIngestion;
@@ -87,7 +87,9 @@ function createFacescanIngestionService({ repositories }) {
 
         const employeeUid = await resolveFacescanUid(normalized.facescanId, {
           // Effective-dated mapping: resolve through the identifier that was valid on the event date.
-          onDate: String(normalized.checkTime).slice(0, 10),
+          // wallDateOnly, not String().slice(), because the stored value is a Date on MariaDB and a string
+          // in the fixture repository.
+          onDate: wallDateOnly(normalized.checkTime),
         });
         const resolutionStatus = employeeUid ? 'resolved' : 'unmapped';
         const event = await store.insertRawEvent({
@@ -144,7 +146,7 @@ function createFacescanIngestionService({ repositories }) {
         // Effective-dated mapping: the re-resolve path must use the SAME window rule as the ingest path,
         // otherwise a re-run would attribute a scan through a mapping that was not effective on that day.
         const employeeUid = await resolveFacescanUid(row.facescanId, {
-          onDate: row.checkTime ? String(row.checkTime).slice(0, 10) : null,
+          onDate: wallDateOnly(row.checkTime),
         });
         if (!employeeUid) {
           stillUnmapped += 1;

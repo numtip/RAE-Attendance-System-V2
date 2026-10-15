@@ -20,6 +20,7 @@ const {
 const { createFixtureRepositories } = require('../src/repositories/fixtureRepositories');
 const { createEmployeeIdentityService } = require('../src/services/employeeIdentityService');
 const { createFacescanIngestionService } = require('../src/services/facescanIngestionService');
+const { wallDateOnly } = require('../src/utils/bangkokTime');
 
 const USER_UID = '22222222-2222-2222-2222-222222222222';
 
@@ -276,6 +277,23 @@ test('a non-string onDate is normalized, so the window is never silently skipped
     () => identity.resolveUid('facescan_id', 'FS-WINDOW-300', { onDate: '31/08/2026' }),
     (error) => error.status === 400 && error.code === 'IDENTIFIER_INVALID_EFFECTIVE_DATE',
   );
+});
+
+test('wallDateOnly reads a stored wall timestamp as the same day from a string or a Date', () => {
+  // The pool sets timezone 'Z', so a stored '2026-03-01 08:00:00' comes back as a Date at UTC 08:00.
+  assert.equal(wallDateOnly('2026-03-01 08:00:00'), '2026-03-01');
+  assert.equal(wallDateOnly(new Date('2026-03-01T08:00:00.000Z')), '2026-03-01');
+  // A late-evening wall time must stay on its own day, not roll forward by the +7h offset.
+  assert.equal(wallDateOnly(new Date('2026-03-01T23:30:00.000Z')), '2026-03-01');
+  assert.equal(wallDateOnly('2026-03-01T08:00:00'), '2026-03-01');
+  assert.equal(wallDateOnly(null), null);
+  assert.equal(wallDateOnly(''), null);
+  assert.equal(wallDateOnly('not-a-date'), null);
+  assert.equal(wallDateOnly(new Date('invalid')), null);
+
+  // Why this helper exists: the naive expression produced a weekday name, which the window validator
+  // rejects (this is the CI failure it fixes).
+  assert.notEqual(String(new Date('2026-03-01T08:00:00.000Z')).slice(0, 10), '2026-03-01');
 });
 
 test('reResolveUnmapped applies the same window rule as ingestion', async () => {

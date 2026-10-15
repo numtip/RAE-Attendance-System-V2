@@ -232,13 +232,14 @@ All commands run on this host on 2026-10-15, on the working tree described in §
 | Check | Command | Result |
 |---|---|---|
 | Lint | `cd backend && npm run lint` | **PASS** (exit 0, no output) |
-| Backend suite | `cd backend && JWT_SECRET=… npm test` | **PASS** — `tests 253, pass 245, fail 0, skipped 8` |
+| Backend suite | `cd backend && JWT_SECRET=… npm test` | **PASS** — `tests 256, pass 248, fail 0, skipped 8` |
 | Effective-dating tests | `node --test tests/identifierValidity.test.js` | **PASS** 13/13 |
 | Assignment module | `node --test tests/employeeAssignment.test.js` | **PASS** 23/23 |
 | CSV adapter | `node --test tests/facescanCsv.test.js` | **PASS** 24/24 |
 | API contract | `node --test tests/slice1Assignments.api.test.js` | **PASS** 1/1 (401 anonymous, 403 cross-scope, 400 bad date, 200 own + as-of date) |
 | **Mutation A** — window check disabled in the fixture identifier lookup | `node --test tests/identifierValidity.test.js` | **PASS (detects it)** — 6 failures, including the ingestion assertion `resolved` vs `unmapped`; reverted, green again |
-| **Mutation B** — `onDate` removed from `reResolveUnmapped` (the §4.1 defect 1 fix) | `node --test tests/identifierValidity.test.js` | **PASS (detects it)** — exactly 1 failure, `reResolveUnmapped applies the same window rule as ingestion`; reverted, 13/13 green again |
+| **Mutation B** — `onDate` removed from `reResolveUnmapped` (§4.1 defect 1) | `node --test tests/identifierValidity.test.js` | **PASS (detects it)** — exactly 1 failure; reverted, green again |
+| **Real database** — CI `backend-mariadb` (throw-away MariaDB 11.4, `db:migrate:seed` then the full suite) | `gh pr checks` | First run **FAILED** and exposed defect 5 (two failures in `reResolveUnmapped`); after the fix the job is green. This is the verification of the DDL and of the repository wiring. |
 | Contract smoke | `node scripts/contract-smoke.mjs` | **PASS** (17 API_CONTRACT paths, `DATA_SOURCE=fixture`) |
 | Frontend regression | `cd frontend && npm run build` | **PASS** (`vue-tsc --noEmit` + vite build) |
 | Secret scan | `node scripts/secret-scan.mjs` | **PASS** (309 tracked files once the slice is staged; the script covers source files, and the new `.sql`/`.md` were reviewed by hand — they contain no identifier, key or credential) |
@@ -247,13 +248,12 @@ All commands run on this host on 2026-10-15, on the working tree described in §
 | No CSV / `database/local/` read | tool-call review | **PASS** — header names, paths and row counts only |
 | No host contact | tool-call review | **PASS** — no SSH, no production DB, no deploy, no migration applied |
 
-**Not run here, and why:** the two new migrations were **not applied to a database in this session** — Docker and a local
-MariaDB are both unavailable on this host (`docker version` → binary not found), and production is out of bounds.
-Coverage for that gap is provided by `backend/tests/slice1.mariadb.test.js` (2 opt-in tests that assert the migration-020/
-021 columns exist, that the overlap and code-conflict checks reject inside a real transaction, that DATE windows round-trip,
-and that the validity audit stores no identifier value). CI's `backend-mariadb` job runs `db:migrate:seed` against a
-throw-away MariaDB container before the suite, so these tests execute on the PR. Until that job is green, treat the DDL as
-**REPORTED, not VERIFIED**.
+**Not run on this host, and covered by CI instead:** Docker and a local MariaDB are both unavailable here (`docker
+version` → binary not found), so the two migrations were never applied to a database in this session. The
+`backend-mariadb` CI job applies `001`–`021` to a throw-away MariaDB 11.4 and then runs the whole suite, which is where
+`backend/tests/slice1.mariadb.test.js` (column presence, transactional overlap/code-conflict rejection, DATE round-trip,
+"the audit trail holds no identifier value") actually executes. That job is the DDL verification, and it earned its keep
+immediately — see defect 5 below.
 
 ### 4.1 Independent verification pass and the defects it found
 
@@ -270,6 +270,11 @@ fix has a regression test.** A mutation proves the headline fix is load-bearing 
 | 2 | important | `closeAssignment` enforced only `effective_to >= effective_from`, so a row re-closed past a later interval produced **overlapping windows** (invariant 3 in §2.2 was insert-only), and the MariaDB version was a non-transactional read-then-write. | Transactional `FOR UPDATE` re-check of the closed window against the employee's other intervals; `409 ASSIGNMENT_WINDOW_OVERLAP`. | `employeeAssignment.test.js` → *closeAssignment may not create an overlap with a later interval* |
 | 3 | important | Unknown `employee_uid`: the fixture repository succeeded silently while MariaDB surfaced `ER_NO_REFERENCED_ROW_2` as an opaque 500 — the twins disagreed. | Service checks the employee first → `404 ASSIGNMENT_UNKNOWN_EMPLOYEE`; the MariaDB FK error is coded the same way; the fixture twin accepts an `employeeExists` mirror of the FK. | `employeeAssignment.test.js` → *create rejects an unknown employee with 404 for both repository twins* |
 | 4 | important | A `Date`-typed `onDate` was compared lexically by the fixture repository and read as *effective* — failing open on exactly the axis this slice is about, and diverging from MariaDB. | `resolveToEmployee` normalizes `ctx.onDate` once before it reaches any repository. | `identifierValidity.test.js` → *a non-string onDate is normalized, so the window is never silently skipped* |
+| 5 | **blocker, caught by CI** | The fix for defect 1 derived the scan date with `String(row.checkTime).slice(0, 10)`. The fixture repository returns `checkTime` as a string, but MariaDB returns a `Date` (the pool sets `timezone: 'Z'`), so the expression produced `"Tue Mar 0"` and the window validator rejected it with `400` — every `reResolveUnmapped` against a real database failed. The fixture tests could not see it. | New shared, tested `wallDateOnly()` in `utils/bangkokTime.js`, used by both the ingest and re-resolve paths. | `identifierValidity.test.js` → *wallDateOnly reads a stored wall timestamp as the same day from a string or a Date* (asserts the naive expression is wrong, so the reason is preserved) |
+
+Defect 5 is the important lesson of this slice: **the fixture/MariaDB twin pattern hides type divergence.** The fixture
+twin returns strings, MariaDB returns `Date`s for `DATETIME`/`DATE` columns, and no local test could detect it — only the
+`backend-mariadb` CI job did. Treat the local suite as necessary but not sufficient for anything that reads a column.
 
 Also corrected from that pass: the §2.1 claim that the code works without migration `020` (it does not — see the required
 order above); `column_map_json` now stores the mapping that was **actually applied** rather than the caller's override
