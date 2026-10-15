@@ -164,6 +164,7 @@ dependency. `agent/agentCoreClient.js`, `decisionSchema.js` and `policy.js` were
 | Never send PII to Agent Core | `agent/sanitize.js`: `FORBIDDEN_PAYLOAD_KEYS` (names, e-mails, national/personnel/facescan/employee ids, tokens, cookies, rows, raw logs), `sanitizeContext()` with depth/length/array bounds, cycle handling and a **path-only** redaction list, plus `assertNoSensitiveContent()` which rejects a surviving forbidden key or a JWT/email/13-digit-run **string** and names only the key path |
 | Offline contract + mocked tests | `agent/tests/agentBoundary.test.js`, no network |
 | Optional live smoke with existing credentials | **Not run** — no credentials exist locally (§1.3) |
+| Static checks for this folder | `agent/eslint.config.js` added: `agent/` is a separate package and had **no** ESLint config, so none of this code was linted. The rules mirror `backend/eslint.config.js`. Running it surfaced one genuine finding (an unused `AgentCoreError` import in the pre-existing `agent/tests/decisions.test.js`, now removed) and two `require-atomic-updates` false positives on intentional patterns (`process.exitCode` at the end of `main()`, and a test's `finally` restore), which is why that rule is explicitly not enabled here. **See §6 item 8: CI still does not enforce it.** |
 
 **Boundary guarantee under test:** a fake `fetch` records every URL the decision path calls, and the test
 asserts every one ends with `/v1/decision`. The unsupported endpoints are data (`UNAVAILABLE_ENDPOINTS`),
@@ -293,8 +294,12 @@ real fix, and it is treated here as authoritative rather than as a formality.
    proxy routes. It is now redundant for daily calculation, and retiring it is a separate decision —
    removing it would change an existing API contract.
 6. **Live Agent Core was never contacted.** No credentials locally; the Gateway scope map is verified from
-   source, not by probing.
-7. **Carried-over blockers, untouched:** `D-01` employee-master source, `D-02` legacy DB recovery, `D-04`
+   source, not by probing. Backlog item S2-G covers a one-credential live smoke.
+7. **The `agent/` folder is still not linted by CI.** `agent/eslint.config.js` now exists and the folder
+   lints clean, but the `agent-core` CI job runs `npm test` only. Enforcing lint needs an `eslint`
+   devDependency **and a lockfile** for that package (it has neither, and no `node_modules`), which is a
+   build-system change that should not be smuggled into a feature slice. Tracked as item 8 below.
+8. **Carried-over blockers, untouched:** `D-01` employee-master source, `D-02` legacy DB recovery, `D-04`
    HIP ID evidence, `D-06` MJU `ac` semantics, `DT-03` the pre-`013` ledger gap, and the `S-01`–`S-13`
    security items.
 
@@ -309,7 +314,8 @@ real fix, and it is treated here as authoritative rather than as a formality.
 | S2-E | Employee-scoped schedule onboarding (approved only) | M | P-02 | A pending schedule is reported, never applied; tests cover the boundary |
 | S2-F | Retire the donor Attendance Core proxy routes behind a documented contract change | M | — | The contract change is documented and announced; no consumer breaks silently |
 | S2-G | Verify the live Gateway decision path with one consenting credential (read-only smoke) | S | credentials | One `NEXT_ACTION` and one `QA_DISPOSITION` decision, secret never printed |
-| S2-H | Leave-remark classification as an opt-in, owner-approved policy token set | M | P-07 | Tokens come from an approved rule version, not a hardcoded list; false-positive cases tested |
+| S2-H | Add an `eslint` devDependency + lockfile to the `agent/` package and enforce `eslint .` in the `agent-core` CI job | S | — | CI fails on a lint error in `agent/`; the missing lockfile is resolved deliberately, not by an unpinned `npx` |
+| S2-I | Leave-remark classification as an opt-in, owner-approved policy token set | M | P-07 | Tokens come from an approved rule version, not a hardcoded list; false-positive cases tested |
 
 ## 8. Review checklist
 

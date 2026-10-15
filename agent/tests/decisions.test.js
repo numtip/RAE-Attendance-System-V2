@@ -13,7 +13,6 @@ const {
   createMockAgentCoreProvider,
   approvalRequiredResponse,
   unavailableError,
-  AgentCoreError,
 } = require('../mockAgentCore');
 const { createUseCaseHelpers, USE_CASES } = require('../useCases');
 const { DEFAULT_AGENT_CORE_PROJECT } = require('../constants');
