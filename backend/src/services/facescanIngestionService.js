@@ -141,7 +141,11 @@ function createFacescanIngestionService({ repositories }) {
 
       for (const row of rows) {
         const before = { ...row };
-        const employeeUid = await resolveFacescanUid(row.facescanId);
+        // Effective-dated mapping: the re-resolve path must use the SAME window rule as the ingest path,
+        // otherwise a re-run would attribute a scan through a mapping that was not effective on that day.
+        const employeeUid = await resolveFacescanUid(row.facescanId, {
+          onDate: row.checkTime ? String(row.checkTime).slice(0, 10) : null,
+        });
         if (!employeeUid) {
           stillUnmapped += 1;
           continue;

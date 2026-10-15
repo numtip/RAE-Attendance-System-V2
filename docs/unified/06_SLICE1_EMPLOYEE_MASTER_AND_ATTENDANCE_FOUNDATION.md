@@ -78,9 +78,15 @@ those prefixes for `018_sso_consumed_code.sql` and `019_sso_shared_claim.sql`, a
 **Do not rename either file after it has been applied anywhere.**
 
 Every statement is `information_schema`-guarded, so a partial failure (DDL auto-commits and the runner's ledger is per
-file) is repaired by re-running the same file. Both migrations are additive and NULLable, so **the current code keeps
-working on a database where they have not been applied** (the new features simply stay inert). Migrations are
-**NOT APPROVED for production**: the live ledger is pre-`013` (REPORTED), so no apply order exists yet.
+file) is repaired by re-running the same file. Both migrations are **additive** (new table, NULLable columns, one extra
+enum value) and change no existing key or constraint.
+
+**Required apply order — important.** `020` must be applied **before** this code is deployed. The identifier repository
+selects `effective_from`/`effective_to` unconditionally and the audit insert names those columns, so on a database
+without `020` **every** identifier lookup fails (`ER_BAD_FIELD_ERROR`) — including the MJU SSO national-ID lookup and
+every FaceScan resolve. This is the same contract migration `015` already imposes on the same repository. The
+migrations are therefore **NOT APPROVED for production**: the live ledger is pre-`013` (REPORTED), so no apply order
+exists yet, and none is proposed here.
 
 ### 2.2 `employee_assignment` (new, migration 020)
 
@@ -226,16 +232,18 @@ All commands run on this host on 2026-10-15, on the working tree described in §
 | Check | Command | Result |
 |---|---|---|
 | Lint | `cd backend && npm run lint` | **PASS** (exit 0, no output) |
-| Backend suite | `cd backend && JWT_SECRET=… npm test` | **PASS** — `tests 251, pass 243, fail 0, skipped 8` |
-| Effective-dating tests | `node --test tests/identifierValidity.test.js` | **PASS** 11/11 |
-| Assignment module | `node --test tests/employeeAssignment.test.js` | **PASS** 21/21 |
+| Backend suite | `cd backend && JWT_SECRET=… npm test` | **PASS** — `tests 253, pass 245, fail 0, skipped 8` |
+| Effective-dating tests | `node --test tests/identifierValidity.test.js` | **PASS** 13/13 |
+| Assignment module | `node --test tests/employeeAssignment.test.js` | **PASS** 23/23 |
 | CSV adapter | `node --test tests/facescanCsv.test.js` | **PASS** 24/24 |
 | API contract | `node --test tests/slice1Assignments.api.test.js` | **PASS** 1/1 (401 anonymous, 403 cross-scope, 400 bad date, 200 own + as-of date) |
-| **Mutation** — window check disabled in the fixture identifier lookup | `node --test tests/identifierValidity.test.js` | **PASS (detects it)** — 6 failures, including the ingestion assertion `resolved` vs `unmapped`; mutation reverted, 11/11 green again |
+| **Mutation A** — window check disabled in the fixture identifier lookup | `node --test tests/identifierValidity.test.js` | **PASS (detects it)** — 6 failures, including the ingestion assertion `resolved` vs `unmapped`; reverted, green again |
+| **Mutation B** — `onDate` removed from `reResolveUnmapped` (the §4.1 defect 1 fix) | `node --test tests/identifierValidity.test.js` | **PASS (detects it)** — exactly 1 failure, `reResolveUnmapped applies the same window rule as ingestion`; reverted, 13/13 green again |
 | Contract smoke | `node scripts/contract-smoke.mjs` | **PASS** (17 API_CONTRACT paths, `DATA_SOURCE=fixture`) |
 | Frontend regression | `cd frontend && npm run build` | **PASS** (`vue-tsc --noEmit` + vite build) |
-| Secret scan | `node scripts/secret-scan.mjs` | **PASS** (292 tracked files; the Slice 1 files are scanned after they are staged — see the note below) |
+| Secret scan | `node scripts/secret-scan.mjs` | **PASS** (309 tracked files once the slice is staged; the script covers source files, and the new `.sql`/`.md` were reviewed by hand — they contain no identifier, key or credential) |
 | PII review of every Slice 1 file | ripgrep for 13-digit runs and e-mail addresses | **PASS** — only synthetic `*@example.test` addresses and synthetic `9900…`/`9999…` test constants already present in the repo. One assignment test uses the marker `pii-marker-1180200015351` **specifically to prove** validator messages do not echo it. |
+| Independent verification | separate verifier agent, asked to falsify §1–§4 | **4 defects found and fixed**, each with a regression test (§4.1) |
 | No CSV / `database/local/` read | tool-call review | **PASS** — header names, paths and row counts only |
 | No host contact | tool-call review | **PASS** — no SSH, no production DB, no deploy, no migration applied |
 
@@ -246,6 +254,34 @@ Coverage for that gap is provided by `backend/tests/slice1.mariadb.test.js` (2 o
 and that the validity audit stores no identifier value). CI's `backend-mariadb` job runs `db:migrate:seed` against a
 throw-away MariaDB container before the suite, so these tests execute on the PR. Until that job is green, treat the DDL as
 **REPORTED, not VERIFIED**.
+
+### 4.1 Independent verification pass and the defects it found
+
+This slice was reviewed by a separate verifier agent that was told to falsify the claims above. It reproduced the lint and
+suite numbers, confirmed no security regression (the migration-015 keys, the national-ID CHECK and the migration-017
+triggers are untouched; no new path can move a mapping between employees; no identifier value, national ID, password hash
+or token leaks into a response, log, error or audit row) and then found four real defects. **All four were fixed and each
+fix has a regression test.** A mutation proves the headline fix is load-bearing (removing the `onDate` from
+`reResolveUnmapped` fails `reResolveUnmapped applies the same window rule as ingestion`).
+
+| # | Severity | Defect | Fix | Test |
+|---|---|---|---|---|
+| 1 | important | `reResolveUnmapped` resolved **without** `onDate`, so a re-run attributed a scan through a mapping that was not effective on the scan date — falsifying this slice's headline guarantee. The ingest path was fixed; the sibling re-resolve path was missed. | Pass the scan date, as the ingest path does. | `identifierValidity.test.js` → *reResolveUnmapped applies the same window rule as ingestion* |
+| 2 | important | `closeAssignment` enforced only `effective_to >= effective_from`, so a row re-closed past a later interval produced **overlapping windows** (invariant 3 in §2.2 was insert-only), and the MariaDB version was a non-transactional read-then-write. | Transactional `FOR UPDATE` re-check of the closed window against the employee's other intervals; `409 ASSIGNMENT_WINDOW_OVERLAP`. | `employeeAssignment.test.js` → *closeAssignment may not create an overlap with a later interval* |
+| 3 | important | Unknown `employee_uid`: the fixture repository succeeded silently while MariaDB surfaced `ER_NO_REFERENCED_ROW_2` as an opaque 500 — the twins disagreed. | Service checks the employee first → `404 ASSIGNMENT_UNKNOWN_EMPLOYEE`; the MariaDB FK error is coded the same way; the fixture twin accepts an `employeeExists` mirror of the FK. | `employeeAssignment.test.js` → *create rejects an unknown employee with 404 for both repository twins* |
+| 4 | important | A `Date`-typed `onDate` was compared lexically by the fixture repository and read as *effective* — failing open on exactly the axis this slice is about, and diverging from MariaDB. | `resolveToEmployee` normalizes `ctx.onDate` once before it reaches any repository. | `identifierValidity.test.js` → *a non-string onDate is normalized, so the window is never silently skipped* |
+
+Also corrected from that pass: the §2.1 claim that the code works without migration `020` (it does not — see the required
+order above); `column_map_json` now stores the mapping that was **actually applied** rather than the caller's override
+(which made the provenance column useless for the default alias path); the two `toIsoDate` helpers and the two
+date-input parsers were unified so the twins cannot drift; `describeValidity(record, null)` reports `effective` rather
+than `unbounded` for a filtered-out-but-open query; and the `020` rollback documents that narrowing the `action` enum
+fails loudly (error 1265) if `effective_change` rows exist, which is the safe behaviour.
+
+Known remaining nits, deliberately not changed: `includeFuture` has no caller yet and reads "today" in UTC rather than
+Asia/Bangkok; `CSV_NO_VALID_ROWS` triggers on *projected* rows, so a file whose every row has a bad timestamp still
+creates a batch with `rowsFailed` set; `idx_employee_identifier_effective` cannot serve an `effective_from` predicate.
+They are listed in §6.
 
 ## 5. Explicitly NOT done / unresolved in this slice
 

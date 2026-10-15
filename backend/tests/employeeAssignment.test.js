@@ -39,9 +39,16 @@ function makeRepo(rows = []) {
 
 function serviceWith(rows = []) {
   const employeeAssignments = makeRepo(rows);
+  // Minimal employee directory stub: the service checks the employee exists before inserting, so both
+  // repository twins answer 404 for an unknown employee instead of one silently succeeding.
+  const employees = {
+    async findByUid(employeeUid) {
+      return employeeUid === EMP_A ? { employeeUid: EMP_A } : null;
+    },
+  };
   return {
     employeeAssignments,
-    service: createEmployeeAssignmentService({ repositories: { employeeAssignments } }),
+    service: createEmployeeAssignmentService({ repositories: { employeeAssignments, employees } }),
   };
 }
 
@@ -277,4 +284,28 @@ test('validator errors never echo the rejected value', () => {
   for (const thrower of throwers) {
     assert.throws(thrower, (error) => error.status === 400 && !String(error.message).includes(marker));
   }
+});
+
+// --- regressions found while verifying this slice -----------------------------
+
+test('closeAssignment may not create an overlap with a later interval', async () => {
+  const { service } = serviceWith();
+  const first = await service.create(ADMIN, baseInput({ effectiveFrom: '2026-01-01', effectiveTo: '2026-06-30' }));
+  await service.create(ADMIN, baseInput({ employeeCode: 'E-0002', effectiveFrom: '2026-07-01', effectiveTo: null }));
+
+  // Extending the first interval past the second one would silently produce two overlapping windows.
+  await assert.rejects(
+    () => service.close(ADMIN, first.assignmentUid, { employeeUid: EMP_A, effectiveTo: '2026-12-31' }),
+    (error) => error.status === 409 && error.code === 'ASSIGNMENT_WINDOW_OVERLAP',
+  );
+  const inside = await service.close(ADMIN, first.assignmentUid, { employeeUid: EMP_A, effectiveTo: '2026-06-15' });
+  assert.equal(inside.effectiveTo, '2026-06-15');
+});
+
+test('create rejects an unknown employee with 404 for both repository twins', async () => {
+  const { service } = serviceWith();
+  await assert.rejects(
+    () => service.create(ADMIN, baseInput({ employeeUid: '00000000-0000-0000-0000-000000000000' })),
+    (error) => error.status === 404 && error.code === 'ASSIGNMENT_UNKNOWN_EMPLOYEE',
+  );
 });

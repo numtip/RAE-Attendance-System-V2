@@ -24,13 +24,18 @@ function codedError(code) {
   return error;
 }
 
-/** DATE columns come back as a JS Date or a string depending on the pool settings; always expose 'YYYY-MM-DD'. */
+/**
+ * DATE columns come back as a JS Date or a string depending on the pool settings. The pool sets
+ * timezone 'Z' (see src/db/pool.js), so a DATE arrives as UTC midnight and toISOString() is the
+ * lossless conversion. The twin repository in mariadb/employeeAssignmentMariaDbRepository.js uses the
+ * same rule on purpose: the two must not disagree west of UTC.
+ */
 function toIsoDate(value) {
   if (value == null) return null;
   if (typeof value === 'string') return value.slice(0, 10);
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) return null;
-    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+    return value.toISOString().slice(0, 10);
   }
   return String(value).slice(0, 10);
 }

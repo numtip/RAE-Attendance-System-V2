@@ -29,8 +29,12 @@ function normalizeWindow(input) {
 /**
  * In-memory twin of the MariaDB employee_assignment repository. Same method names, return shapes and
  * error codes, so services and tests can run without a database.
+ *
+ * `employeeExists` mirrors the fk_employee_assignment_employee foreign key. Pass it wherever the fixture
+ * stands in for the real repository, otherwise a bad employee_uid silently succeeds here but fails the FK
+ * in MariaDB (and the twins would disagree).
  */
-function createFixtureEmployeeAssignmentRepository(initialRows = []) {
+function createFixtureEmployeeAssignmentRepository(initialRows = [], { employeeExists = null } = {}) {
   const rows = initialRows.map((row) => ({ ...row }));
 
   return {
@@ -62,6 +66,10 @@ function createFixtureEmployeeAssignmentRepository(initialRows = []) {
       }
 
       const now = new Date().toISOString();
+      // Mirrors the FK firing at INSERT time in MariaDB (after the duplicate/overlap/code checks).
+      if (employeeExists && !employeeExists(input.employeeUid)) {
+        throw new HttpError(404, 'ASSIGNMENT_UNKNOWN_EMPLOYEE', 'Employee was not found');
+      }
       const record = {
         assignmentUid: input.assignmentUid || randomUUID(),
         employeeUid: input.employeeUid,
@@ -112,6 +120,14 @@ function createFixtureEmployeeAssignmentRepository(initialRows = []) {
       if (!row) return null;
       if (date < row.effectiveFrom) {
         throw new HttpError(400, 'ASSIGNMENT_INVALID_WINDOW', 'effective_to must not be earlier than effective_from');
+      }
+      // Closing must not CREATE an overlap with another interval owned by the same employee.
+      const closed = { effectiveFrom: row.effectiveFrom, effectiveTo: date };
+      const clash = rows.find((item) => item.assignmentUid !== assignmentUid
+        && item.employeeUid === employeeUid
+        && windowsOverlapWithinEmployee(item, closed));
+      if (clash) {
+        throw new HttpError(409, ASSIGNMENT_CONFLICT_CODES.OVERLAP, 'Closing the window would overlap another assignment for this employee');
       }
       row.effectiveTo = date;
       row.updatedAt = new Date().toISOString();

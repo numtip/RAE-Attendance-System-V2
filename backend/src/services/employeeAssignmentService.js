@@ -28,6 +28,12 @@ function createEmployeeAssignmentService({ repositories }) {
     async create(auth, input) {
       assertAdmin(auth);
       const normalized = normalizeAssignmentInput(input);
+      // Check the employee up front so both repository twins answer 404 instead of one succeeding silently
+      // and the other surfacing a raw foreign-key error.
+      const employee = await repositories.employees.findByUid(normalized.employeeUid);
+      if (!employee) {
+        throw new HttpError(404, 'ASSIGNMENT_UNKNOWN_EMPLOYEE', 'Employee was not found');
+      }
       return repositories.employeeAssignments.insert({ ...normalized, actor: auth.employeeUid });
     },
 

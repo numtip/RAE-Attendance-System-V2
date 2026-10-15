@@ -250,3 +250,67 @@ test('FaceScan ingestion resolves through the mapping effective on the scan date
   assert.equal(results[1].outcome, 'inserted');
   assert.equal(results[1].resolutionStatus, 'unmapped', 'a scan outside the window must not be attributed');
 });
+
+test('a non-string onDate is normalized, so the window is never silently skipped', async () => {
+  const { identity } = context();
+  await identity.linkIdentifier({
+    employeeUid: USER_UID,
+    idType: 'facescan_id',
+    idValue: 'FS-WINDOW-300',
+    sourceSystem: 'import',
+    effectiveFrom: '2026-01-01',
+    effectiveTo: '2026-06-30',
+  });
+
+  // A Date would compare lexically as an object in the fixture repository and read as "effective".
+  await assert.rejects(
+    () => identity.resolveUid('facescan_id', 'FS-WINDOW-300', { onDate: new Date(2026, 7, 1) }),
+    (error) => error.status === 404 && error.code === 'EMPLOYEE_NOT_FOUND',
+    'a Date onDate past the window must still be filtered out',
+  );
+  assert.equal(await identity.resolveUid('facescan_id', 'FS-WINDOW-300', { onDate: new Date(2026, 2, 1) }), USER_UID);
+
+  // A blank/absent value keeps meaning "no filter"; a malformed one is rejected, not ignored.
+  assert.equal(await identity.resolveUid('facescan_id', 'FS-WINDOW-300', { onDate: '' }), USER_UID);
+  await assert.rejects(
+    () => identity.resolveUid('facescan_id', 'FS-WINDOW-300', { onDate: '31/08/2026' }),
+    (error) => error.status === 400 && error.code === 'IDENTIFIER_INVALID_EFFECTIVE_DATE',
+  );
+});
+
+test('reResolveUnmapped applies the same window rule as ingestion', async () => {
+  const { identity, ingestion, repositories } = context();
+
+  // Both scans are ingested while NO mapping exists, so both start out unmapped.
+  const batch = await ingestion.startBatch({});
+  const first = await ingestion.ingestCheckinoutBatch(batch.batchUid, [
+    { USERID: 'FS-RE-WINDOW', CHECKTIME: '2026-03-01 08:00:00', SensorID: 'S1' },
+    { USERID: 'FS-RE-OPEN', CHECKTIME: '2026-03-01 08:00:00', SensorID: 'S1' },
+  ]);
+  assert.equal(first.batch.rowsUnmapped, 2);
+
+  // A mapping that starts AFTER the scan date must never resolve that scan; ...
+  await identity.linkIdentifier({
+    employeeUid: USER_UID,
+    idType: 'facescan_id',
+    idValue: 'FS-RE-WINDOW',
+    sourceSystem: 'import',
+    effectiveFrom: '2026-07-01',
+  });
+  // ... a mapping that covers the scan date must.
+  await identity.linkIdentifier({
+    employeeUid: USER_UID,
+    idType: 'facescan_id',
+    idValue: 'FS-RE-OPEN',
+    sourceSystem: 'import',
+    effectiveFrom: '2026-01-01',
+  });
+
+  const reResolved = await ingestion.reResolveUnmapped({ importBatchUid: batch.batchUid });
+  assert.equal(reResolved.resolved, 1, 'only the scan inside its mapping window may be attributed');
+
+  const stillUnmapped = await repositories.facescanIngestion.listUnmapped({ importBatchUid: batch.batchUid });
+  assert.equal(stillUnmapped.length, 1);
+  assert.equal(stillUnmapped[0].facescanId, 'FS-RE-WINDOW');
+  assert.equal(stillUnmapped[0].employeeUid, null);
+});

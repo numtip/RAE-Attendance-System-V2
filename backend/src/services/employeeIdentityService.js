@@ -59,6 +59,11 @@ function createEmployeeIdentityService({ repositories }) {
       }
       throw new HttpError(400, 'VALIDATION_ERROR', 'identifier value is required');
     }
+    // Normalize here, once, so a Date/blank onDate cannot silently switch the window filter off and no
+    // repository has to guess: the fixture comparison is lexical, so a Date would compare as "effective".
+    const resolveCtx = ctx.onDate == null
+      ? ctx
+      : { ...ctx, onDate: normalizeValidityDate(ctx.onDate, 'onDate') };
 
     if (idType === 'employee_id') {
       const byColumn = employees.findByEmployeeId
@@ -71,7 +76,7 @@ function createEmployeeIdentityService({ repositories }) {
 
     let link;
     try {
-      link = await employeeIdentifiers.findActiveByTypeAndValue(idType, normalized, ctx);
+      link = await employeeIdentifiers.findActiveByTypeAndValue(idType, normalized, resolveCtx);
     } catch (error) {
       throw mapProtectionError(error) || error;
     }

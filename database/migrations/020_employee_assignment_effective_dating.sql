@@ -23,6 +23,9 @@
 --     migration-017 namespace triggers all keep their exact behaviour.
 --   * No row is deleted, rewritten or backfilled. Existing identifier rows keep NULL windows, which
 --     read as "unbounded" and therefore resolve exactly as before this migration.
+--   * ORDER: this file must be applied BEFORE the code that reads the new columns. The identifier
+--     repository selects effective_from/effective_to unconditionally, so without 020 every identifier
+--     lookup fails (ER_BAD_FIELD_ERROR) — the same contract migration 015 already imposes.
 --   * Requires MariaDB >= 10.2.3 for enforced CHECK constraints, the same floor as migration 015.
 --   * Not applied to any host by this change.
 --

@@ -245,7 +245,10 @@ test('ingestCsv real run creates one batch with provenance and stores rows', asy
   assert.equal(result.batch.fileName, 'hip.csv');
   assert.equal(result.batch.inputSha256, result.report.inputSha256);
   assert.equal(result.batch.parserVersion, CSV_PARSER_VERSION);
-  assert.equal(result.batch.columnMapJson, '{}');
+  // Provenance records the mapping that was ACTUALLY applied, not the (empty) caller override.
+  assert.equal(result.batch.columnMapJson, JSON.stringify(result.report.columnMap));
+  assert.equal(JSON.parse(result.batch.columnMapJson).facescanId, 'USERID');
+  assert.equal(JSON.parse(result.batch.columnMapJson).checkTime, 'CHECKTIME');
   assert.equal(result.batch.rowsRead, 3);
   assert.equal(result.batch.rowsInserted, 2);
   assert.equal(result.batch.rowsDuplicate, 1);

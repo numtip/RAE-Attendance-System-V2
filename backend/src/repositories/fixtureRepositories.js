@@ -47,7 +47,9 @@ function createFixtureRepositories({ nationalId = null, identifiers = null } = {
     },
     identityLinks: createFixtureIdentityLinkRepository(),
     employeeIdentifiers: createFixtureEmployeeIdentifierRepository(identifiers || fixtures.employeeIdentifiers, { nationalId }),
-    employeeAssignments: createFixtureEmployeeAssignmentRepository(fixtures.employeeAssignments),
+    employeeAssignments: createFixtureEmployeeAssignmentRepository(fixtures.employeeAssignments, {
+      employeeExists: (employeeUid) => fixtures.employees.some((row) => row.employeeUid === employeeUid),
+    }),
     facescanIngestion: createFixtureFacescanIngestionRepository(),
     attendanceEvents: createFixtureAttendanceEventRepository(),
   };

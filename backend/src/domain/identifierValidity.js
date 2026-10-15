@@ -70,14 +70,15 @@ function isEffectiveOnDate(record, onDate) {
 
 /**
  * Why a mapping is or is not usable on a date. Used for diagnostics only; never returns the identifier value.
- * 'unbounded' = open on both ends, 'effective' = inside the window, 'not_yet_effective' = starts later,
+ * 'unbounded' = the row itself is open on both ends, 'effective' = the row applies (either because a window
+ * contains the date, or because no date filter was requested), 'not_yet_effective' = starts later,
  * 'expired' = ended earlier.
  */
 function describeValidity(record, onDate) {
   const from = record?.effectiveFrom ?? null;
   const to = record?.effectiveTo ?? null;
   if (from == null && to == null) return 'unbounded';
-  if (onDate == null) return 'unbounded';
+  if (onDate == null) return 'effective';
   if (from != null && from > onDate) return 'not_yet_effective';
   if (to != null && to < onDate) return 'expired';
   return 'effective';

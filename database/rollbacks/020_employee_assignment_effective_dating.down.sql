@@ -1,6 +1,9 @@
 -- Rollback for 020_employee_assignment_effective_dating.sql.
 -- Reverses the DDL only. Any employee_assignment rows are dropped with the table, so export them first
 -- if they carry real history:  SELECT * FROM employee_assignment;
+-- WARNING: the final MODIFY narrows `action` back to the six pre-020 values. If any 'effective_change'
+-- audit row exists, a strict-mode server rejects it (error 1265) rather than rewriting history — that is
+-- deliberate: decide what to do with those rows first (archive them, or leave the column widened).
 -- Idempotent: safe to run when part of the migration was already reversed.
 
 DROP TABLE IF EXISTS employee_assignment;

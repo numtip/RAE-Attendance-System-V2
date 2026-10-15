@@ -121,6 +121,10 @@ function createEmployeeAssignmentMariaDbRepository(pool) {
           if (error.code === 'ER_DUP_ENTRY' && String(error.sqlMessage || '').includes('uk_employee_assignment_employee_from')) {
             throw new HttpError(409, DUPLICATE_CODE, 'An assignment with that effective_from already exists for this employee');
           }
+          // fk_employee_assignment_employee. Coded so the fixture twin and this repo agree.
+          if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+            throw new HttpError(404, 'ASSIGNMENT_UNKNOWN_EMPLOYEE', 'Employee was not found');
+          }
           throw error;
         }
 
@@ -171,24 +175,53 @@ function createEmployeeAssignmentMariaDbRepository(pool) {
       if (date == null) {
         throw new HttpError(400, 'ASSIGNMENT_INVALID_DATE', 'effective_to must be an ISO date (YYYY-MM-DD)');
       }
-      const [rows] = await pool.query(
-        `SELECT ${COLUMNS} FROM employee_assignment WHERE assignment_uid = ? AND employee_uid = ? LIMIT 1`,
-        [assignmentUid, employeeUid],
-      );
-      const existing = mapAssignment(rows[0]);
-      if (!existing) return null;
-      if (date < existing.effectiveFrom) {
-        throw new HttpError(400, 'ASSIGNMENT_INVALID_WINDOW', 'effective_to must not be earlier than effective_from');
+      const now = new Date();
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        const [rows] = await connection.query(
+          `SELECT ${COLUMNS} FROM employee_assignment
+           WHERE assignment_uid = ? AND employee_uid = ? LIMIT 1 FOR UPDATE`,
+          [assignmentUid, employeeUid],
+        );
+        const existing = mapAssignment(rows[0]);
+        if (!existing) {
+          await connection.rollback();
+          return null;
+        }
+        if (date < existing.effectiveFrom) {
+          throw new HttpError(400, 'ASSIGNMENT_INVALID_WINDOW', 'effective_to must not be earlier than effective_from');
+        }
+        // Closing must not CREATE an overlap: the closed row must still not intersect any other interval
+        // owned by the same employee. Without this check a row could be re-closed past a later interval.
+        const [overlap] = await connection.query(
+          `SELECT assignment_uid FROM employee_assignment
+            WHERE employee_uid = ? AND assignment_uid <> ?
+              AND (effective_to IS NULL OR effective_to >= ?)
+              AND effective_from <= ?
+            LIMIT 1 FOR UPDATE`,
+          [employeeUid, assignmentUid, existing.effectiveFrom, date],
+        );
+        if (overlap.length > 0) {
+          throw new HttpError(409, ASSIGNMENT_CONFLICT_CODES.OVERLAP, 'Closing the window would overlap another assignment for this employee');
+        }
+        await connection.query(
+          `UPDATE employee_assignment SET effective_to = ?, updated_at = ?
+           WHERE assignment_uid = ? AND employee_uid = ?`,
+          [date, now, assignmentUid, employeeUid],
+        );
+        await connection.commit();
+        const [updated] = await connection.query(
+          `SELECT ${COLUMNS} FROM employee_assignment WHERE assignment_uid = ? LIMIT 1`,
+          [assignmentUid],
+        );
+        return mapAssignment(updated[0]);
+      } catch (error) {
+        try { await connection.rollback(); } catch { /* nothing to roll back */ }
+        throw error;
+      } finally {
+        connection.release();
       }
-      await pool.query(
-        `UPDATE employee_assignment SET effective_to = ?, updated_at = ? WHERE assignment_uid = ? AND employee_uid = ?`,
-        [date, new Date(), assignmentUid, employeeUid],
-      );
-      const [updated] = await pool.query(
-        `SELECT ${COLUMNS} FROM employee_assignment WHERE assignment_uid = ? LIMIT 1`,
-        [assignmentUid],
-      );
-      return mapAssignment(updated[0]);
     },
   };
 }

@@ -1,4 +1,5 @@
 const { HttpError } = require('../utils/httpError');
+const { normalizeValidityDate } = require('./identifierValidity');
 
 const EMPLOYEE_TYPES = Object.freeze(['university', 'department', 'contract']);
 
@@ -7,33 +8,24 @@ const ASSIGNMENT_CONFLICT_CODES = Object.freeze({
   CODE_CONFLICT: 'ASSIGNMENT_CODE_CONFLICT',
 });
 
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
 function invalidDate(fieldName) {
   // The offending value is never included: these messages may be surfaced or logged.
   return new HttpError(400, 'ASSIGNMENT_INVALID_DATE', `${fieldName} must be an ISO date (YYYY-MM-DD)`);
 }
 
-function isRealCalendarDate(text) {
-  const [year, month, day] = text.split('-').map(Number);
-  const probe = new Date(Date.UTC(year, month - 1, day));
-  return probe.getUTCFullYear() === year
-    && probe.getUTCMonth() === month - 1
-    && probe.getUTCDate() === day;
-}
-
 /** Normalize a date-only value to 'YYYY-MM-DD', or null for empty input. */
+/**
+ * Delegates to the shared validity-date parser so the assignment and identifier features cannot drift
+ * (they previously disagreed on a Date input: UTC vs local midnight). Only the error code differs, and the
+ * message stays value-free.
+ */
 function normalizeEffectiveDate(value, fieldName = 'date') {
-  if (value == null || value === '') return null;
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) throw invalidDate(fieldName);
-    return value.toISOString().slice(0, 10);
+  try {
+    return normalizeValidityDate(value, fieldName);
+  } catch (error) {
+    if (error && error.code === 'IDENTIFIER_INVALID_EFFECTIVE_DATE') throw invalidDate(fieldName);
+    throw error;
   }
-  if (typeof value === 'string') {
-    const text = value.trim();
-    if (ISO_DATE_PATTERN.test(text) && isRealCalendarDate(text)) return text;
-  }
-  throw invalidDate(fieldName);
 }
 
 /** Closed-interval overlap with null effectiveTo meaning "+infinity". */

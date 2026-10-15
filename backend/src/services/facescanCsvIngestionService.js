@@ -147,7 +147,9 @@ function createFacescanCsvIngestionService({ repositories }) {
       fileName: report.fileName,
       inputSha256: report.inputSha256,
       parserVersion: report.parserVersion,
-      columnMapJson: JSON.stringify(columnMap),
+      // The mapping that was ACTUALLY used (with overrides resolved against the real header), not the raw
+      // caller override: that is the whole point of the provenance column.
+      columnMapJson: JSON.stringify(report.columnMap),
       windowFrom: report.windowFrom,
       windowTo: report.windowTo,
     });
