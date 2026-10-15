@@ -23,6 +23,11 @@ Default `DATA_SOURCE=fixture`. The MariaDB adapter does not connect while ERROR 
 | GET | `/api/v1/leave` | 200 / 403 | Own rows unless `employeeUid` is allowed. |
 | GET | `/api/v1/leave/balance/:employeeUid` | 200 / 403 / 404 | Query `year`. |
 | GET | `/api/v1/leave/history/:employeeUid` | 200 / 403 / 404 | |
+| GET | `/api/v1/attendance/daily-computed/:employeeUid/:date` | 200 / 401 / 403 | Slice 2. The stored computed day with its rule version, computation status and provenance. `null` data when the day has not been calculated. Own records, or any records within the caller's resolved scope. |
+| GET | `/api/v1/attendance/daily-computed/:employeeUid` | 200 / 401 / 403 | Slice 2. Stored computed days for one employee. Query `from` and `to` are inclusive `YYYY-MM-DD`. |
+| GET | `/api/v1/attendance/explain/:employeeUid/:date` | 200 / 400 / 401 / 403 | Slice 2. Recalculates WITHOUT storing, and reports why (`pending_policy` when no approved rule covers the date). Includes `stale` when the stored row disagrees with a fresh calculation. |
+| POST | `/api/v1/attendance/recalculate` | 200 / 400 / 401 / 403 | Slice 2. Manager or admin only. Body `from`, `to`, optional `employeeUid` and `sourceSystem`. Deterministic and idempotent. With no `employeeUid` it only rebuilds employees that have scans in the range. |
+| POST | `/api/v1/attendance/recalculate/:employeeUid` | 200 / 400 / 401 / 403 | Slice 2. As above, scoped to the path employee. An admin without an explicit authorization grant cannot recalculate another employee's record. |
 | GET | `/api/v1/auth/sso/login` | 302 / 403 / 503 | Redirects to MJU authorization URL when `SSO_ENABLED=true`, `SSO_CALLBACK_CONFIRMED=true`, and config is complete. Otherwise `SSO_DISABLED` or `SSO_NOT_READY`. Default deploy: **403**. |
 | GET | `/api/v1/auth/sso/callback` | 302 / 4xx | OAuth callback. Validates `state`, exchanges `code`, maps MJU user to `employees`, issues V2 tokens, redirects to `APP_URL/?sso=success`. Not callable against real MJU until registration is confirmed. |
 | GET | `/api/v1/auth/sso/me` | 200 / 401 / 403 / 503 | Bearer access token (same envelope as `/auth/me`). Closed until SSO gates pass. |

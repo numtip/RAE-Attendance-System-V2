@@ -51,6 +51,40 @@ function createAttendanceEventMariaDbRepository(pool) {
       return mapEvent(rows[0]);
     },
 
+    /**
+     * Slice 2: the scans for one employee over an inclusive date range, ordered so the caller can take the
+     * first arrival and the last departure directly. The range is expressed on DATE(event_time) because
+     * event_time is a naive Asia/Bangkok wall timestamp, and a day's events must be grouped by that wall
+     * date rather than by a UTC instant.
+     */
+    async listForEmployeeRange({ employeeUid, from, to }) {
+      const [rows] = await pool.query(
+        `SELECT id, event_uid, employee_uid, staging_facescan_raw_id, import_batch_uid,
+                source_system, source_event_key, source_type, facescan_id, event_time,
+                check_type, verify_code, sensor_id, work_code, timezone_label,
+                normalized_at, created_at
+         FROM attendance_events
+         WHERE employee_uid = ? AND DATE(event_time) BETWEEN ? AND ?
+         ORDER BY event_time ASC, id ASC`,
+        [employeeUid, from, to],
+      );
+      return rows.map((row) => mapEvent(row));
+    },
+
+    /**
+     * Slice 2: the distinct employees that have any normalized scan in an inclusive date range, so a range
+     * recalculation knows which employee-days to (re)build without scanning every employee in the table.
+     */
+    async listEmployeeUidsWithEvents({ from, to }) {
+      const [rows] = await pool.query(
+        `SELECT DISTINCT employee_uid FROM attendance_events
+         WHERE employee_uid IS NOT NULL AND DATE(event_time) BETWEEN ? AND ?
+         ORDER BY employee_uid`,
+        [from, to],
+      );
+      return rows.map((row) => row.employee_uid);
+    },
+
     async insert(event) {
       const now = new Date();
       const eventUid = event.eventUid || randomUUID();

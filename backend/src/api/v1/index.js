@@ -14,6 +14,8 @@ const { createLeaveService } = require('../../services/leaveService');
 const { createSsoService } = require('../../services/ssoService');
 const { createAttendanceComputeService } = require('../../services/attendanceComputeService');
 const { createAttendanceComputeController } = require('../../controllers/attendanceComputeController');
+const { createDailyAttendanceController } = require('../../controllers/dailyAttendanceController');
+const { createDailyAttendanceService } = require('../../services/dailyAttendanceService');
 
 function createV1Router(container) {
   const authService = createAuthService(container);
@@ -29,6 +31,13 @@ function createV1Router(container) {
   const attendance = createAttendanceController(attendanceService);
   const leave = createLeaveController(leaveService);
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
+  // Slice 2. The advisory is injected through the container, NOT imported from the `agent/` folder: that
+  // folder is documented as agent-only and is not part of the Express runtime. It is optional by design, so
+  // a missing or failing advisory can never block a calculation.
+  const dailyAttendance = createDailyAttendanceController(createDailyAttendanceService({
+    repositories: container.repositories,
+    agentAdvisory: container.agentAdvisory ?? null,
+  }));
 
   const router = express.Router();
   router.use('/health', healthRoutes);
@@ -58,6 +67,13 @@ function createV1Router(container) {
   router.get('/leave', authenticate, leave.list);
   router.get('/leave/balance/:employeeUid', authenticate, leave.balance);
   router.get('/leave/history/:employeeUid', authenticate, leave.history);
+
+  // Slice 2: computed daily attendance (versioned rules + provenance).
+  router.get('/attendance/daily-computed/:employeeUid/:date', authenticate, dailyAttendance.stored);
+  router.get('/attendance/daily-computed/:employeeUid', authenticate, dailyAttendance.range);
+  router.get('/attendance/explain/:employeeUid/:date', authenticate, dailyAttendance.explain);
+  router.post('/attendance/recalculate', authenticate, dailyAttendance.recalculate);
+  router.post('/attendance/recalculate/:employeeUid', authenticate, dailyAttendance.recalculate);
 
   return router;
 }

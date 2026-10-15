@@ -6,6 +6,8 @@ const { LeaveRepository } = require('./leaveRepository');
 const { createFixtureIdentityLinkRepository } = require('./fixtureIdentityLinkRepository');
 const { createFixtureEmployeeIdentifierRepository } = require('./fixtureEmployeeIdentifierRepository');
 const { createFixtureEmployeeAssignmentRepository } = require('./fixtureEmployeeAssignmentRepository');
+const { createFixtureAttendanceRuleRepository } = require('./fixtureAttendanceRuleRepository');
+const { createFixtureDailyAttendanceRepository } = require('./fixtureDailyAttendanceRepository');
 const { createFixtureFacescanIngestionRepository } = require('./fixtureFacescanIngestionRepository');
 const { createFixtureAttendanceEventRepository } = require('./fixtureAttendanceEventRepository');
 
@@ -50,6 +52,15 @@ function createFixtureRepositories({ nationalId = null, identifiers = null } = {
     employeeAssignments: createFixtureEmployeeAssignmentRepository(fixtures.employeeAssignments, {
       employeeExists: (employeeUid) => fixtures.employees.some((row) => row.employeeUid === employeeUid),
     }),
+    attendanceRules: createFixtureAttendanceRuleRepository({
+      ruleVersions: fixtures.attendanceRuleVersions,
+      holidays: fixtures.attendanceHolidays,
+      schedules: fixtures.attendanceSchedules,
+    }, {
+      // Mirrors the FK on attendance_schedule, so the fixture twin fails like MariaDB does.
+      employeeExists: (employeeUid) => fixtures.employees.some((row) => row.employeeUid === employeeUid),
+    }),
+    dailyAttendance: createFixtureDailyAttendanceRepository(fixtures.dailyAttendance),
     facescanIngestion: createFixtureFacescanIngestionRepository(),
     attendanceEvents: createFixtureAttendanceEventRepository(),
   };

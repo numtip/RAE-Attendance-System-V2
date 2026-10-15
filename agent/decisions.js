@@ -1,13 +1,13 @@
-const { DEFAULT_AGENT_CORE_PROJECT, USE_CASE_DECISION_TYPES } = require('./constants');
+const { USE_CASE_DECISION_TYPES } = require('./constants');
+const { resolveAgentCoreConfig } = require('./config');
 const { createAgentCoreClient } = require('./agentCoreClient');
 const { normalizeAgentCoreResponse } = require('./decisionSchema');
 const { assertAllowedDecisionRequest, applyApprovalGate } = require('./policy');
 const { AgentCoreError } = require('./errors');
 
 function resolveProjectId(options = {}) {
-  return options.projectId
-    || process.env.AGENT_CORE_PROJECT
-    || DEFAULT_AGENT_CORE_PROJECT;
+  const env = options.env || process.env;
+  return resolveAgentCoreConfig(env, options).projectId;
 }
 
 function mapUseCaseToDecisionType(useCase) {
@@ -103,25 +103,24 @@ function createDecisionsApi({ client, projectId = resolveProjectId() } = {}) {
 }
 
 function createDecisionsFromEnv(options = {}) {
-  const baseUrl = options.baseUrl ?? process.env.AGENT_CORE_URL ?? '';
   if (options.client) {
-    return createDecisionsApi({ client: options.client, projectId: options.projectId });
+    return createDecisionsApi({ client: options.client, projectId: resolveProjectId(options) });
   }
-  if (!String(baseUrl).trim()) {
+  const env = options.env || process.env;
+  const config = resolveAgentCoreConfig(env, options);
+  if (!config.configured) {
     return null;
   }
-  const projectId = resolveProjectId(options);
-  const projectToken = options.projectToken ?? process.env.AGENT_CORE_PROJECT_TOKEN ?? '';
   return createDecisionsApi({
     client: createAgentCoreClient({
-      baseUrl,
-      projectId,
-      projectToken,
+      baseUrl: config.baseUrl,
+      projectId: config.projectId,
+      projectToken: config.projectToken,
       fetchImpl: options.fetchImpl,
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries,
     }),
-    projectId,
+    projectId: config.projectId,
   });
 }
 
