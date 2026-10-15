@@ -15,11 +15,13 @@ origin/main                              3244553
   └─ integration/attendance-sso-hip      7d810d8   (base of PR #36)
        └─ feat/slice1-employee-master-foundation   5910819   PR #36  Draft
             └─ feat/slice2-attendance-engine       d279bba   PR #37  Draft
+                 └─ docs/daily-closeout-20261015   9e17f05   PR #38  Draft  (memory docs)
 ```
 
 | Ref | SHA | Tracks origin? | Notes |
 |---|---|---|---|
-| `feat/slice2-attendance-engine` | `d279bba` | in sync | working branch |
+| `docs/daily-closeout-20261015` | `9e17f05` | in sync | documentation branch; carries the memory docs, stacked on Slice 2 |
+| `feat/slice2-attendance-engine` | `d279bba` | in sync | working branch for code |
 | `feat/slice1-employee-master-foundation` | `5910819` | in sync | base of #37 |
 | `integration/attendance-sso-hip` | `7d810d8` | in sync | base of #36 |
 | `main` (local) | `e3cef26` | **behind 3** | **stale — do not use as a reference** |
@@ -37,9 +39,10 @@ on the Slice 1/2 chain.**
 |---|---|---|---|---|---|---|
 | [#36](https://github.com/numtip/RAE-Attendance-System-V2/pull/36) | Slice 1 — employee master + attendance data foundation | `integration/attendance-sso-hip` | `5910819` | **yes** | 8/8 pass | CLEAN, unmerged |
 | [#37](https://github.com/numtip/RAE-Attendance-System-V2/pull/37) | Slice 2 — versioned attendance engine + Agent Core | `feat/slice1-employee-master-foundation` | `d279bba` | **yes** | 8/8 pass | CLEAN, unmerged |
+| [#38](https://github.com/numtip/RAE-Attendance-System-V2/pull/38) | Daily closeout + project memory (docs only) | `feat/slice2-attendance-engine` | `9e17f05` | **yes** | 8/8 pass | CLEAN, unmerged |
 
-Stacked deliberately: `#37 → #36 → integration/attendance-sso-hip`. **Do not retarget or merge** until the
-lower stack (`#30 → #33 → #34/#35`) is decided — see `docs/SESSION_HANDOFF.md` §2 for that flow.
+Stacked deliberately: `#38 → #37 → #36 → integration/attendance-sso-hip`. **Do not retarget or merge** until
+the lower stack (`#30 → #33 → #34/#35`) is decided — see `docs/SESSION_HANDOFF.md` §2 for that flow.
 
 ## 3. Feature status
 

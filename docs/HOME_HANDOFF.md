@@ -11,15 +11,19 @@ Goal: reproduce Slice 1 + Slice 2, run the full local QA, and continue from the 
 
 | Branch | Tip SHA | Contains |
 |---|---|---|
-| `feat/slice2-attendance-engine` | `d279bba` | **Slice 1 + Slice 2 (everything)** |
-| `feat/slice1-employee-master-foundation` | `5910819` | Slice 1 only (base of PR #37) |
+| `docs/daily-closeout-20261015` | `9e17f05` | **Slice 1 + Slice 2 + these memory docs (everything)** — PR #38 |
+| `feat/slice2-attendance-engine` | `d279bba` | Slice 1 + Slice 2 (the code; **no** memory docs) — PR #37 |
+| `feat/slice1-employee-master-foundation` | `5910819` | Slice 1 only (base of PR #37) — PR #36 |
 | `integration/attendance-sso-hip` | `7d810d8` | the pre-existing stack baseline |
 
-Both slice branches are **in sync with origin** (VERIFIED with `git rev-parse` + `git ls-remote`).
-`origin/main` is `3244553` and does **not** yet contain Slice 1/2 — that is expected, since PRs #36/#37 are
+All four are **in sync with origin** (VERIFIED with `git rev-parse` + `git ls-remote`).
+`origin/main` is `3244553` and does **not** yet contain Slice 1/2 — expected, since PRs #36/#37/#38 are
 Draft and unmerged.
 
-**Working branch to use at home: `feat/slice2-attendance-engine`.** It is the only branch with both slices.
+**Which branch to use at home:** check out **`docs/daily-closeout-20261015`**. It is the Slice 2 code plus
+this documentation set, so the `docs/memory/*` files referenced below are actually present. Checking out
+`feat/slice2-attendance-engine` gives the identical code but **without** the memory docs (they live only on
+the docs branch, deliberately, so PR #37 stays code-only).
 
 ## 2. Setup — PowerShell, copy-paste
 
@@ -29,10 +33,10 @@ cd G:\ProjectAI
 git clone https://github.com/numtip/RAE-Attendance-System-V2.git rae-attendance-system-v2
 cd rae-attendance-system-v2
 
-# 2. See every branch, then check out the slice tip
+# 2. See every branch, then check out the slice tip (code + these docs)
 git fetch --all --prune
-git checkout feat/slice2-attendance-engine
-git log --oneline -8          # expect d279bba at the top, 7d810d8 as the base
+git checkout docs/daily-closeout-20261015
+git log --oneline -8          # expect 9e17f05 at the top, then d279bba, ... 7d810d8 as the base
 
 # 3. Install dependencies. Root, backend and frontend each have a package-lock.json -> use npm ci.
 npm ci
@@ -128,7 +132,8 @@ The stashes likewise cannot be transferred; if they matter, take a patch from th
 
 | Check | Expected | If it fails |
 |---|---|---|
-| `git rev-parse HEAD` | `d279bba…` | you are on the wrong branch |
+| `git rev-parse HEAD` | `9e17f05…` on `docs/daily-closeout-20261015`, or `d279bba…` on `feat/slice2-attendance-engine` | you are on the wrong branch |
+| `Test-Path docs/memory/PROJECT_STATE.md` | `True` (docs branch only) | check out `docs/daily-closeout-20261015` |
 | `cd backend; npm test` | 342 tests, 333 pass, **0 fail**, 9 skipped | confirm `node --version` is ≥ 20 |
 | `node scripts/contract-smoke.mjs` | `ok (22 API_CONTRACT paths)` | run it from the repo root |
 | `cd agent; node --test tests/*.test.js` | 46/46 | — |
@@ -138,7 +143,8 @@ The stashes likewise cannot be transferred; if they matter, take a patch from th
 ## 6. Copy-ready RESUME prompt
 
 > Continue the RAE Attendance System V2 work. Workspace `G:\ProjectAI\rae-attendance-system-v2`, branch
-> `feat/slice2-attendance-engine` (tip `d279bba`).
+> `docs/daily-closeout-20261015` (tip `9e17f05`) — or `feat/slice2-attendance-engine` (tip `d279bba`) for
+> the code without the memory docs.
 >
 > First read, in this order: `docs/memory/PROJECT_STATE.md`, `docs/memory/NEXT_ACTIONS.md`,
 > `docs/memory/DECISIONS.md`, then `docs/unified/07_SLICE2_ATTENDANCE_ENGINE.md` and
