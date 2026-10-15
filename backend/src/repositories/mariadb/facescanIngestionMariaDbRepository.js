@@ -8,6 +8,13 @@ function mapBatch(row) {
     sourceSystem: m.sourceSystem,
     sourceType: m.sourceType,
     sourceReference: m.sourceReference,
+    fileName: m.fileName ?? null,
+    inputSha256: m.inputSha256 ?? null,
+    parserVersion: m.parserVersion ?? null,
+    // The column is JSON: mysql2 hands it back parsed, the fixture store keeps a string.
+    columnMapJson: m.columnMapJson == null
+      ? null
+      : (typeof m.columnMapJson === 'string' ? m.columnMapJson : JSON.stringify(m.columnMapJson)),
     windowFrom: m.windowFrom,
     windowTo: m.windowTo,
     status: m.status,
@@ -53,14 +60,19 @@ function createFacescanIngestionMariaDbRepository(pool) {
       const now = new Date();
       await pool.query(
         `INSERT INTO facescan_import_batches (
-           batch_uid, source_system, source_type, source_reference, window_from, window_to,
+           batch_uid, source_system, source_type, source_reference, file_name, input_sha256,
+           parser_version, column_map_json, window_from, window_to,
            started_at, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           input.batchUid,
           input.sourceSystem,
           input.sourceType,
           input.sourceReference ?? null,
+          input.fileName ?? null,
+          input.inputSha256 ?? null,
+          input.parserVersion ?? null,
+          input.columnMapJson ?? null,
           input.windowFrom ?? null,
           input.windowTo ?? null,
           now,
@@ -73,7 +85,8 @@ function createFacescanIngestionMariaDbRepository(pool) {
 
     async findBatch(batchUid) {
       const [rows] = await pool.query(
-        `SELECT batch_uid, source_system, source_type, source_reference, window_from, window_to,
+        `SELECT batch_uid, source_system, source_type, source_reference, file_name, input_sha256,
+                parser_version, column_map_json, window_from, window_to,
                 status, rows_read, rows_inserted, rows_duplicate, rows_unmapped, rows_failed,
                 started_at, completed_at, error_summary, created_at, updated_at
          FROM facescan_import_batches WHERE batch_uid = ? LIMIT 1`,

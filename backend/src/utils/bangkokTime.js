@@ -35,4 +35,25 @@ function normalizeCheckTimeBangkok(value) {
   return formatBangkokWall(new Date(parsed));
 }
 
-module.exports = { normalizeCheckTimeBangkok, formatBangkokWall };
+/**
+ * 'YYYY-MM-DD' of a stored naive Asia/Bangkok wall timestamp.
+ *
+ * The same stored value can reach us two ways and both must yield the SAME calendar day:
+ *   * a string, exactly as normalizeCheckTimeBangkok wrote it ('YYYY-MM-DD HH:MM:SS');
+ *   * a Date, because mysql2 parses a DATETIME and the pool sets timezone 'Z', so the naive wall time
+ *     round-trips through UTC. Taking the UTC day is therefore correct; adding the +7h offset here (as
+ *     formatBangkokWall does) would move the date.
+ * Returns null when the value cannot be interpreted, so the caller can decide instead of guessing.
+ */
+function wallDateOnly(value) {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return value.toISOString().slice(0, 10);
+  }
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+  return null;
+}
+
+module.exports = { normalizeCheckTimeBangkok, formatBangkokWall, wallDateOnly };

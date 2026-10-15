@@ -8,6 +8,7 @@ const { createAttendanceController } = require('../../controllers/attendanceCont
 const { createLeaveController } = require('../../controllers/leaveController');
 const { createAuthService } = require('../../services/authService');
 const { createEmployeeService } = require('../../services/employeeService');
+const { createEmployeeAssignmentService } = require('../../services/employeeAssignmentService');
 const { createAttendanceService } = require('../../services/attendanceService');
 const { createLeaveService } = require('../../services/leaveService');
 const { createSsoService } = require('../../services/ssoService');
@@ -17,13 +18,14 @@ const { createAttendanceComputeController } = require('../../controllers/attenda
 function createV1Router(container) {
   const authService = createAuthService(container);
   const employeeService = createEmployeeService(container);
+  const employeeAssignmentService = createEmployeeAssignmentService(container);
   const attendanceService = createAttendanceService(container);
   const leaveService = createLeaveService(container);
   const attendanceComputeService = createAttendanceComputeService(container);
   const ssoService = createSsoService(container);
   const auth = createAuthController(authService);
   const sso = createSsoController(ssoService, container);
-  const employees = createEmployeeController(employeeService, attendanceService);
+  const employees = createEmployeeController(employeeService, attendanceService, employeeAssignmentService);
   const attendance = createAttendanceController(attendanceService);
   const leave = createLeaveController(leaveService);
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
@@ -44,6 +46,7 @@ function createV1Router(container) {
 
   router.get('/employees', authenticate, employees.list);
   router.get('/employees/:employeeUid/attendance', authenticate, employees.attendance);
+  router.get('/employees/:employeeUid/assignments', authenticate, employees.assignments);
   router.get('/employees/:employeeUid', authenticate, employees.detail);
 
   router.get('/attendance/daily/:date', authenticate, attendance.daily);

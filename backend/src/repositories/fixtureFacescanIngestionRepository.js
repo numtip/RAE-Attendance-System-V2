@@ -16,6 +16,11 @@ function createFixtureFacescanIngestionRepository() {
         sourceSystem: input.sourceSystem,
         sourceType: input.sourceType,
         sourceReference: input.sourceReference ?? null,
+        // File provenance (migration 021). Nullable: an array-based import leaves them null.
+        fileName: input.fileName ?? null,
+        inputSha256: input.inputSha256 ?? null,
+        parserVersion: input.parserVersion ?? null,
+        columnMapJson: input.columnMapJson ?? null,
         windowFrom: input.windowFrom ?? null,
         windowTo: input.windowTo ?? null,
         status: 'open',

@@ -5,6 +5,7 @@ const { AttendanceRepository } = require('./attendanceRepository');
 const { LeaveRepository } = require('./leaveRepository');
 const { createFixtureIdentityLinkRepository } = require('./fixtureIdentityLinkRepository');
 const { createFixtureEmployeeIdentifierRepository } = require('./fixtureEmployeeIdentifierRepository');
+const { createFixtureEmployeeAssignmentRepository } = require('./fixtureEmployeeAssignmentRepository');
 const { createFixtureFacescanIngestionRepository } = require('./fixtureFacescanIngestionRepository');
 const { createFixtureAttendanceEventRepository } = require('./fixtureAttendanceEventRepository');
 
@@ -46,6 +47,9 @@ function createFixtureRepositories({ nationalId = null, identifiers = null } = {
     },
     identityLinks: createFixtureIdentityLinkRepository(),
     employeeIdentifiers: createFixtureEmployeeIdentifierRepository(identifiers || fixtures.employeeIdentifiers, { nationalId }),
+    employeeAssignments: createFixtureEmployeeAssignmentRepository(fixtures.employeeAssignments, {
+      employeeExists: (employeeUid) => fixtures.employees.some((row) => row.employeeUid === employeeUid),
+    }),
     facescanIngestion: createFixtureFacescanIngestionRepository(),
     attendanceEvents: createFixtureAttendanceEventRepository(),
   };

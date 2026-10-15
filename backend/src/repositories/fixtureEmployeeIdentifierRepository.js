@@ -2,6 +2,7 @@ const {
   normalizeIdentifierValue,
   isStoredIdentifierType,
 } = require('../domain/employeeIdentifier');
+const { isEffectiveOnDate } = require('../domain/identifierValidity');
 const { NAMESPACE_PAIR } = require('../domain/identityKind');
 const {
   IdentifierCryptoError,
@@ -21,6 +22,8 @@ function mapRecord(record) {
     isPrimary: record.isPrimary,
     status: record.status,
     verifiedAt: record.verifiedAt,
+    effectiveFrom: record.effectiveFrom ?? null,
+    effectiveTo: record.effectiveTo ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -43,6 +46,8 @@ function createFixtureEmployeeIdentifierRepository(initialRows = [], { nationalI
     status: 'active',
     sourceSystem: null,
     verifiedAt: null,
+    effectiveFrom: null,
+    effectiveTo: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...row,
@@ -72,23 +77,28 @@ function createFixtureEmployeeIdentifierRepository(initialRows = [], { nationalI
     ) || null;
   }
 
-  function findActiveRow(idType, idValue) {
+  function findActiveRow(idType, idValue, onDate = null) {
+    let row = null;
     if (idType === 'national_id') {
       if (!idValue) throw new IdentifierCryptoError('INVALID_IDENTIFIER');
-      return findActiveNational(idValue);
+      row = findActiveNational(idValue);
+    } else {
+      const normalizedValue = normalizeIdentifierValue(idType, idValue);
+      row = rows.find(
+        (item) => item.status === 'active'
+          && item.idType === idType
+          && item.idValue === normalizedValue,
+      ) || null;
     }
-    const normalizedValue = normalizeIdentifierValue(idType, idValue);
-    return rows.find(
-      (row) => row.status === 'active'
-        && row.idType === idType
-        && row.idValue === normalizedValue,
-    ) || null;
+    if (!row) return null;
+    // Effective-dated mapping: onDate === null keeps the pre-020 behaviour (no date filter).
+    return isEffectiveOnDate(row, onDate) ? row : null;
   }
 
   return {
     async findActiveByTypeAndValue(idType, idValue, ctx = {}) {
       const normalized = idType === 'national_id' ? normalizeIdentifierValue(idType, idValue) : idValue;
-      const row = findActiveRow(idType, normalized);
+      const row = findActiveRow(idType, normalized, ctx.onDate ?? null);
       if (idType === 'national_id') {
         audit({
           action: 'lookup',
@@ -149,6 +159,8 @@ function createFixtureEmployeeIdentifierRepository(initialRows = [], { nationalI
           isPrimary: Boolean(input.isPrimary),
           status: 'active',
           verifiedAt: input.verifiedAt ?? null,
+          effectiveFrom: input.effectiveFrom ?? null,
+          effectiveTo: input.effectiveTo ?? null,
           createdAt: stamp,
           updatedAt: stamp,
         };
@@ -160,6 +172,8 @@ function createFixtureEmployeeIdentifierRepository(initialRows = [], { nationalI
           keyVersion: current.key_version,
           employeeUid: input.employeeUid,
           identifierId: record.id,
+          effectiveFrom: record.effectiveFrom,
+          effectiveTo: record.effectiveTo,
         });
         return mapRecord(record);
       }
@@ -192,6 +206,8 @@ function createFixtureEmployeeIdentifierRepository(initialRows = [], { nationalI
         isPrimary: Boolean(input.isPrimary),
         status: 'active',
         verifiedAt: input.verifiedAt ?? null,
+        effectiveFrom: input.effectiveFrom ?? null,
+        effectiveTo: input.effectiveTo ?? null,
         createdAt: now,
         updatedAt: now,
       };
@@ -199,14 +215,57 @@ function createFixtureEmployeeIdentifierRepository(initialRows = [], { nationalI
       return mapRecord(record);
     },
 
-    async deactivate(id, employeeUid) {
+    async deactivate(id, employeeUid, { effectiveTo = null } = {}) {
       const row = rows.find((item) => item.id === id && item.employeeUid === employeeUid);
       if (!row || row.status === 'inactive') {
         return false;
       }
       row.status = 'inactive';
+      // Optional: close the validity window at the same time as the deactivation.
+      if (effectiveTo != null) row.effectiveTo = effectiveTo;
       row.updatedAt = new Date().toISOString();
       return true;
+    },
+
+    /** Metadata-only validity change (no identifier value). Mirrors the MariaDB audit append. */
+    async recordValidityEvent(input) {
+      const event = buildAuditEvent({
+        action: 'effective_change',
+        actor: input.actor || 'system:identity-service',
+        reason: input.reason || 'validity:change',
+        employeeUid: input.employeeUid ?? null,
+        identifierId: input.identifierId ?? null,
+        effectiveFrom: input.effectiveFrom ?? null,
+        effectiveTo: input.effectiveTo ?? null,
+      });
+      auditLog.push(event);
+      return {
+        action: event.action,
+        actor: event.actor,
+        reason: event.reason,
+        employeeUid: event.employee_uid,
+        identifierId: event.identifier_id,
+        effectiveFrom: event.effective_from,
+        effectiveTo: event.effective_to,
+      };
+    },
+
+    async listValidityEvents({ employeeUid = null, limit = 50 } = {}) {
+      return auditLog
+        .filter((event) => event.action === 'effective_change')
+        .filter((event) => !employeeUid || event.employee_uid === employeeUid)
+        .slice(-Number(limit))
+        .reverse()
+        .map((event) => ({
+          identifierId: event.identifier_id ?? null,
+          employeeUid: event.employee_uid ?? null,
+          action: event.action,
+          effectiveFrom: event.effective_from ?? null,
+          effectiveTo: event.effective_to ?? null,
+          actor: event.actor,
+          reason: event.reason,
+          createdAt: event.created_at,
+        }));
     },
   };
 }

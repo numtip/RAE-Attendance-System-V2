@@ -6,15 +6,15 @@ const {
   normalizeCheckinoutRow,
   buildSourceEventKey,
 } = require('../domain/facescanIngestion');
-const { formatBangkokWall } = require('../utils/bangkokTime');
+const { formatBangkokWall, wallDateOnly } = require('../utils/bangkokTime');
 
 function createFacescanIngestionService({ repositories }) {
   const store = repositories.facescanIngestion;
   const identity = createEmployeeIdentityService({ repositories });
 
-  async function resolveFacescanUid(facescanId) {
+  async function resolveFacescanUid(facescanId, { onDate = null } = {}) {
     try {
-      return await identity.resolveUid('facescan_id', facescanId);
+      return await identity.resolveUid('facescan_id', facescanId, { onDate });
     } catch (error) {
       if (error.code === 'EMPLOYEE_NOT_FOUND') {
         return null;
@@ -31,6 +31,11 @@ function createFacescanIngestionService({ repositories }) {
         sourceSystem: input.sourceSystem || SOURCE_SYSTEM_HIP,
         sourceType: input.sourceType || 'checkinout',
         sourceReference: input.sourceReference ?? null,
+        // File provenance (migration 021); optional so array callers are unaffected.
+        fileName: input.fileName ?? null,
+        inputSha256: input.inputSha256 ?? null,
+        parserVersion: input.parserVersion ?? null,
+        columnMapJson: input.columnMapJson ?? null,
         windowFrom: input.windowFrom ?? null,
         windowTo: input.windowTo ?? null,
       });
@@ -80,7 +85,12 @@ function createFacescanIngestionService({ repositories }) {
           continue;
         }
 
-        const employeeUid = await resolveFacescanUid(normalized.facescanId);
+        const employeeUid = await resolveFacescanUid(normalized.facescanId, {
+          // Effective-dated mapping: resolve through the identifier that was valid on the event date.
+          // wallDateOnly, not String().slice(), because the stored value is a Date on MariaDB and a string
+          // in the fixture repository.
+          onDate: wallDateOnly(normalized.checkTime),
+        });
         const resolutionStatus = employeeUid ? 'resolved' : 'unmapped';
         const event = await store.insertRawEvent({
           sourceSystem,
@@ -133,7 +143,11 @@ function createFacescanIngestionService({ repositories }) {
 
       for (const row of rows) {
         const before = { ...row };
-        const employeeUid = await resolveFacescanUid(row.facescanId);
+        // Effective-dated mapping: the re-resolve path must use the SAME window rule as the ingest path,
+        // otherwise a re-run would attribute a scan through a mapping that was not effective on that day.
+        const employeeUid = await resolveFacescanUid(row.facescanId, {
+          onDate: wallDateOnly(row.checkTime),
+        });
         if (!employeeUid) {
           stillUnmapped += 1;
           continue;
