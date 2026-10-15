@@ -99,6 +99,46 @@ const employeeIdentifiers = [
 const authorizationGrants = [];
 const orgMemberships = [];
 
+// ---------------------------------------------------------------------------
+// Slice 2: versioned attendance rules, holiday calendar and schedules.
+//
+// The rule values below are the DRAFT candidate carried over from the donor project (08:30-16:30, late
+// after 08:30, early before 16:30). They are deliberately seeded as `pending_approval`, NOT `approved`:
+// no owner has signed these values off, and the engine refuses to compute against an unapproved rule.
+// Everything here is synthetic.
+// ---------------------------------------------------------------------------
+const attendanceRuleVersions = [
+  {
+    ruleVersionCode: 'AR-0001',
+    name: 'Default work hours (candidate, awaiting owner approval)',
+    status: 'pending_approval',
+    effectiveFrom: '2026-01-01',
+    effectiveTo: null,
+    workStart: '08:30:00',
+    workEnd: '16:30:00',
+    lateAfter: '08:30:00',
+    earlyBefore: '16:30:00',
+    overnightShift: false,
+    maxShiftSpanMinutes: 960,
+    ignoreHolidays: true,
+    workDays: [1, 2, 3, 4, 5],
+    leaveTypesJson: JSON.stringify(['sick', 'personal', 'vacation', 'other']),
+    leaveAliasesJson: JSON.stringify({}),
+    businessStatusesJson: JSON.stringify([]),
+    sourceOfTruth: 'donor attendance-core config/settings.yaml (NOT owner-approved)',
+    approvedBy: null,
+    approvedAt: null,
+    notes: 'Candidate only. Promote to approved (with approvedBy/approvedAt) only after owner sign-off.',
+  },
+];
+
+const attendanceHolidays = [];
+
+const attendanceSchedules = [];
+
+// One stored daily_attendance row so the fixture/review mode shows a computed day with provenance.
+const dailyAttendance = [];
+
 // Slice 1: effective-dated employment attributes. Synthetic only; this is the fixture twin of the
 // employee_assignment table. One current (open-ended) row per fixture employee, plus one closed row so
 // the effective-dated lookup is exercised in fixture/review mode.
@@ -165,6 +205,10 @@ module.exports = {
   employees,
   employeeIdentifiers,
   employeeAssignments,
+  attendanceRuleVersions,
+  attendanceHolidays,
+  attendanceSchedules,
+  dailyAttendance,
   attendance,
   monthly,
   leave,

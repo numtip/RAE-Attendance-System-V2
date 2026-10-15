@@ -1,13 +1,14 @@
-const { DEFAULT_AGENT_CORE_PROJECT, USE_CASE_DECISION_TYPES } = require('./constants');
+const { USE_CASE_DECISION_TYPES } = require('./constants');
+const { resolveAgentCoreConfig } = require('./config');
 const { createAgentCoreClient } = require('./agentCoreClient');
 const { normalizeAgentCoreResponse } = require('./decisionSchema');
 const { assertAllowedDecisionRequest, applyApprovalGate } = require('./policy');
+const { sanitizeContext, assertNoSensitiveContent } = require('./sanitize');
 const { AgentCoreError } = require('./errors');
 
 function resolveProjectId(options = {}) {
-  return options.projectId
-    || process.env.AGENT_CORE_PROJECT
-    || DEFAULT_AGENT_CORE_PROJECT;
+  const env = options.env || process.env;
+  return resolveAgentCoreConfig(env, options).projectId;
 }
 
 function mapUseCaseToDecisionType(useCase) {
@@ -66,11 +67,17 @@ function createDecisionsApi({ client, projectId = resolveProjectId() } = {}) {
   }) {
     assertAllowedDecisionRequest({ intent, context });
 
+    // ENFORCEMENT POINT. Everything sent to Agent Core is sanitized and then verified free of names,
+    // identifiers, secrets and raw logs. This lives here, in the single decision path, so no caller (the
+    // CLI, a script or a future API hook) can bypass it by passing a context straight through.
+    const { value: safeContext } = sanitizeContext(context);
+    assertNoSensitiveContent(safeContext);
+
     const requestBody = buildAgentCoreRequest({
       projectId,
       useCase,
       intent,
-      context,
+      context: safeContext,
       question,
     });
 
@@ -103,25 +110,24 @@ function createDecisionsApi({ client, projectId = resolveProjectId() } = {}) {
 }
 
 function createDecisionsFromEnv(options = {}) {
-  const baseUrl = options.baseUrl ?? process.env.AGENT_CORE_URL ?? '';
   if (options.client) {
-    return createDecisionsApi({ client: options.client, projectId: options.projectId });
+    return createDecisionsApi({ client: options.client, projectId: resolveProjectId(options) });
   }
-  if (!String(baseUrl).trim()) {
+  const env = options.env || process.env;
+  const config = resolveAgentCoreConfig(env, options);
+  if (!config.configured) {
     return null;
   }
-  const projectId = resolveProjectId(options);
-  const projectToken = options.projectToken ?? process.env.AGENT_CORE_PROJECT_TOKEN ?? '';
   return createDecisionsApi({
     client: createAgentCoreClient({
-      baseUrl,
-      projectId,
-      projectToken,
+      baseUrl: config.baseUrl,
+      projectId: config.projectId,
+      projectToken: config.projectToken,
       fetchImpl: options.fetchImpl,
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries,
     }),
-    projectId,
+    projectId: config.projectId,
   });
 }
 

@@ -1,4 +1,5 @@
 const { randomUUID } = require('node:crypto');
+const { wallDateOnly } = require('../utils/bangkokTime');
 
 function createFixtureAttendanceEventRepository() {
   const byStagingRawId = new Map();
@@ -45,6 +46,34 @@ function createFixtureAttendanceEventRepository() {
       return [...byStagingRawId.values()]
         .filter((row) => row.employeeUid === employeeUid)
         .map((row) => ({ ...row }));
+    },
+
+    /**
+     * Slice 2: scans for one employee over an inclusive date range, ordered by wall date+time.
+     * Mirrors `DATE(event_time) BETWEEN ? AND ?` in the MariaDB twin. It uses `wallDateOnly` rather than
+     * `String(eventTime).slice(0, 10)` because a test may (and MariaDB always does) hand back a Date.
+     */
+    async listForEmployeeRange({ employeeUid, from, to }) {
+      return [...byStagingRawId.values()]
+        .filter((row) => row.employeeUid === employeeUid)
+        .filter((row) => {
+          const day = wallDateOnly(row.eventTime);
+          return Boolean(day) && day >= from && day <= to;
+        })
+        .sort((a, b) => (String(a.eventTime) < String(b.eventTime) ? -1
+          : String(a.eventTime) > String(b.eventTime) ? 1
+            : (a.id ?? 0) - (b.id ?? 0)))
+        .map((row) => ({ ...row }));
+    },
+
+    /** Slice 2: distinct employees with any scan in the inclusive range. Sorted for a deterministic run. */
+    async listEmployeeUidsWithEvents({ from, to }) {
+      const uids = new Set();
+      for (const row of byStagingRawId.values()) {
+        const day = wallDateOnly(row.eventTime);
+        if (row.employeeUid && day && day >= from && day <= to) uids.add(row.employeeUid);
+      }
+      return Array.from(uids).sort();
     },
   };
 }
