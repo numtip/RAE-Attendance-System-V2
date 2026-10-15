@@ -69,7 +69,14 @@ Files sort in this order. "Depends on" means the file will fail or be meaningles
 **ADR-008 (carried from the handoff): never rename an applied migration.** A rename is a ledger change and
 needs its own coordinated plan, because `schema_migrations` stores the filename.
 
-## 4. Deploy-order constraints (the ones that can break a running system)
+## 4. Deploy-order constraints and standing hazards (the ones that can break a running system)
+
+**Standing hazard — `Date` versus string.** MariaDB returns a JS `Date` for a `DATE`/`DATETIME` column
+(the pool sets `timezone: 'Z'`), while the fixture repositories return strings. **This has now caused a
+defect in two consecutive slices** (Slice 1's CI failure; Slice 2's `groupEventsByDate`). Any code that
+formats a stored date-like value must use `wallDateOnly()` / `splitWallDateTime()` from
+`backend/src/utils/bangkokTime.js` and never `String(value).slice(0, 10)`. The fixture/MariaDB twin pattern
+hides this class of bug from local tests, so the `backend-mariadb` CI job is the real check.
 
 | Constraint | Consequence if violated | Evidence |
 |---|---|---|

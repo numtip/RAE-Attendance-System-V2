@@ -215,6 +215,35 @@ the datetime sort is **defensive, not load-bearing**, and this document does not
 The behaviour is still covered by tests (`an overnight shift is not misreported as an early departure`, and
 the two "counted once" tests); only the *mutation* claim was wrong.
 
+### 4.1 Independent verification pass and the defects it found
+
+A separate verifier agent was asked to falsify §1–§4. It reproduced the lint and suite numbers, confirmed
+the honesty gate held at every branch (no non-`calculated` path produces a number), confirmed determinism
+and the idempotent link replacement, and then found two **blockers** plus two important issues. **All four
+were fixed, each with a regression test.**
+
+| # | Severity | Defect | Fix | Test |
+|---|---|---|---|---|
+| 1 | **blocker** | `groupEventsByDate` keyed the day with `String(event.eventTime).slice(0, 10)`. MariaDB returns a **`Date`** for `event_time`, so the key became `"Thu Sep 10"`, matched no ISO date, and **every recalculated day was stored `absent` with zero provenance**. This is the same class of bug that broke Slice 1's CI, and the repo's own MariaDB test would have failed on it. | Use the existing `wallDateOnly()` helper, exactly as the engine already does. | `a Date-shaped eventTime is grouped by its wall date` (feeds real `Date` values), `groupEventsByDate reads a Date and a string to the same day` |
+| 2 | **blocker** (authorization) | `POST /attendance/recalculate` with no `employeeUid` skipped the scope check entirely and rebuilt — and returned — **every** employee with scans. Any manager or admin could read the whole organization's attendance by omitting a parameter, falsifying §2.4's scope claim. | Resolve the caller's data scope and require `all`/`broad`; otherwise 403. Restrict an org-wide run to the resolved scope's UIDs. | `an organization-wide recalculation requires a broad data scope`, `a broad scope may run an organization-wide recalculation`, `an executive with a broad grant is read-only for recalculation` (3 new tests) |
+| 3 | important | Overnight support was **unreachable through the service**: `calculateDay` loaded only `[date, date]` and `recalculateRange` passed only that day's scans, so the engine's carry-over set was always empty and a night shift stored `insufficient_data` on both days. The documented night-shift example was true only for the pure-engine unit test. | Widen the scan window to `[date, date + 1]` in both call paths, and pass the next day's scans to the engine (which ignores them unless the rule enables overnight). | `an overnight shift is reachable through the service, not only the pure engine` |
+| 4 | important | The "no PII leaves the process" claim was enforced only in the CLI: `decide()` passed the caller's context straight into the request, so `employeeUid`/`nationalId` reached Agent Core verbatim. `sanitizeContext` and `assertNoSensitiveContent` were also **not composable** — the documented sequence always threw on a redacted key. | Sanitize **and** assert inside `decide()`, the single decision path; make the assertion skip keys already redacted. | `the decision path sanitizes the caller context before it leaves the process`, `…refuses a context that still looks like a credential`, `sanitizeContext and assertNoSensitiveContent compose` |
+
+Also fixed from that pass: `explain.stale` compared timestamps (so it was always `true` and meant nothing)
+and now compares the **decision** fields; the hardcoded 960-minute span guard is now **flagged** like the
+working-week default; and the `023` rollback documents that it deliberately does **not** narrow the `status`
+ENUM back, with the exact statement to run if that is ever wanted.
+
+Two things the verifier flagged are **accepted as-is** rather than "fixed": the `DEFAULT_WORK_DAYS` Mon–Fri
+fallback is a deliberate, flagged default (`workDaysDefaulted`), and the `960` guard only ever *refuses* a
+result, never fabricates one.
+
+**On the verification pass itself:** the verifier could not run the MariaDB suite (no Docker locally) and
+said so; it also listed four behaviours claimed but untested, three of which are now covered by the tests
+above. This is the second slice in a row where an independent pass found a defect the author's own tests had
+missed, and in both cases it was a `Date`-versus-string assumption. That pattern is now a standing hazard
+recorded in `08_MIGRATION_DEPENDENCY_GRAPH.md` §4.
+
 **MariaDB CI:** migrations `001`–`023` are applied to a throw-away MariaDB 11.4 by the `backend-mariadb`
 job, which then runs `backend/tests/slice2.mariadb.test.js`. That suite asserts the migration `022`/`023`
 DDL, the real `DATETIME` round-trip (`mysql2` returns a `Date`, which is exactly the hazard that broke
@@ -223,7 +252,6 @@ new `pending` ENUM value. **This is the verification of the DDL.** The job is th
 real fix, and it is treated here as authoritative rather than as a formality.
 
 **Synthetic calculation examples** (fixture rule approved for illustration; threshold `08:30`–`16:30`):
-
 | Case | Scans (synthetic) | Result |
 |---|---|---|
 | On time | `08:00` in, `17:00` out | `calculated` / `present`, `late=0`, `early=0`, `work_duration=9`, 2 source events |
@@ -240,7 +268,6 @@ real fix, and it is treated here as authoritative rather than as a formality.
 | Foreign scan | a scan attributed to another employee | excluded, `foreignEventsExcluded=true`, the other employee's id never appears in the output |
 
 ## 5. Documentation and corrections made in this slice
-
 * New: [`../ATTENDANCE_RULES.md`](../ATTENDANCE_RULES.md) — the rule contract, the honesty gate, the
   precedence order, the verified-leave rule, and the eight **open policy questions** (P-01…P-08).
 * New: [`08_MIGRATION_DEPENDENCY_GRAPH.md`](08_MIGRATION_DEPENDENCY_GRAPH.md) — the ordered dependency

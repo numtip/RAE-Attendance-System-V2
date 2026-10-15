@@ -30,7 +30,9 @@ const { HttpError } = require('../utils/httpError');
 const { calculateDailyAttendance } = require('../domain/dailyAttendanceCalculation');
 const { normalizeValidityDate } = require('../domain/identifierValidity');
 const { assertCanReadEmployee } = require('./access');
-const { canonicalRole, ROLES } = require('./authorizationService');
+const { canonicalRole, ROLES, resolveScope } = require('./authorizationService');
+const { wallDateOnly } = require('../utils/bangkokTime');
+const { nextIsoDate } = require('../domain/dailyAttendanceCalculation');
 
 /**
  * The caller may declare the source; when it does not, the engine derives it from the scans. There is no
@@ -50,16 +52,44 @@ function enumerateDates(from, to) {
   return dates;
 }
 
+/** The fields that represent a DECISION (not a timestamp). Used to decide whether a stored row is stale. */
+const DECISION_FIELDS = Object.freeze([
+  'status',
+  'computationStatus',
+  'dayClassification',
+  'isLate',
+  'lateMinutes',
+  'earlyMinutes',
+  'workDuration',
+  'isLeave',
+  'leaveType',
+  'isOvernight',
+  'sourceEventCount',
+  'ruleVersionCode',
+  'scheduleCode',
+]);
+
+function sameDecision(stored, fresh) {
+  return DECISION_FIELDS.every((field) => stored?.[field] === fresh?.[field]);
+}
+
 function assertCanRecalculate(auth) {
   const role = canonicalRole(auth && auth.role);
   if (role === ROLES.ADMIN || role === ROLES.MANAGER) return role;
   throw new HttpError(403, 'FORBIDDEN', 'Attendance calculation requires a manager or admin role');
 }
 
+/**
+ * Group scans by their Asia/Bangkok wall date.
+ *
+ * MUST use `wallDateOnly`, not `String(value).slice(0, 10)`: the MariaDB twin returns a JS `Date` for the
+ * `event_time` DATETIME (the pool sets timezone 'Z'), and `String(new Date(...))` gives "Thu Sep 10", which
+ * would never match an ISO date. That mismatch silently produced `absent` rows with no provenance.
+ */
 function groupEventsByDate(events) {
   const byDate = new Map();
   for (const event of Array.isArray(events) ? events : []) {
-    const day = String(event?.eventTime ?? '').slice(0, 10);
+    const day = wallDateOnly(event?.eventTime);
     if (!day) continue;
     if (!byDate.has(day)) byDate.set(day, []);
     byDate.get(day).push(event);
@@ -74,8 +104,13 @@ function createDailyAttendanceService({ repositories, agentAdvisory = null, now 
   const leaves = repositories.leave;
 
   async function loadDayInputs(employeeUid, date) {
+    // The scan window is [date, date + 1] on purpose: a shift that starts on `date` may legitimately END
+    // on the next calendar day, and the engine needs those early-morning scans as the departure. The engine
+    // ignores them when the rule does not enable overnight shifts (counting them as `nextDayEventsIgnored`),
+    // so widening the load cannot change a result on its own.
+    const windowEnd = nextIsoDate(date) || date;
     const [dayEvents, rule, schedule, holiday, leaveRows] = await Promise.all([
-      events.listForEmployeeRange({ employeeUid, from: date, to: date }),
+      events.listForEmployeeRange({ employeeUid, from: date, to: windowEnd }),
       rules.findEffectiveRuleVersion(date),
       rules.findEffectiveSchedule(employeeUid, date),
       rules.findHolidayOn(date),
@@ -148,7 +183,7 @@ function createDailyAttendanceService({ repositories, agentAdvisory = null, now 
    * the range. Deterministic and idempotent: re-running produces the same rows.
    */
   async function recalculateRange({
-    employeeUid = null, from, to, sourceSystem = DECLARED_SOURCE_SYSTEM, actor = null,
+    employeeUid = null, from, to, sourceSystem = DECLARED_SOURCE_SYSTEM, actor = null, allowedUids = null,
   }) {
     const start = normalizeValidityDate(from, 'from');
     const end = normalizeValidityDate(to, 'to');
@@ -159,11 +194,18 @@ function createDailyAttendanceService({ repositories, agentAdvisory = null, now 
       throw new HttpError(400, 'DAILY_CALC_INVALID_RANGE', 'to must not be earlier than from');
     }
 
-    const targetUids = employeeUid
+    const targetedUids = employeeUid
       ? [employeeUid]
       : await events.listEmployeeUidsWithEvents({ from: start, to: end });
+    // `allowedUids === null` means "every target is permitted"; a Set restricts an organization-wide run to
+    // the caller's resolved scope so the unscoped route cannot exceed what a scoped read would return.
+    const targetUids = allowedUids == null
+      ? targetedUids
+      : targetedUids.filter((uid) => allowedUids.has(uid));
 
-    // A single timestamp for the whole run: makes a run comparable and its output reproducible.
+    // The window is widened by one day so an overnight departure is available to `date`. Events on later
+    // days are never enumerated, so no extra row is written.
+    const windowEnd = nextIsoDate(end) || end;
     const calculatedAt = now().toISOString();
     const days = [];
     const summary = {
@@ -179,7 +221,7 @@ function createDailyAttendanceService({ repositories, agentAdvisory = null, now 
     };
 
     for (const uid of targetUids) {
-      const rangeEvents = await events.listForEmployeeRange({ employeeUid: uid, from: start, to: end });
+      const rangeEvents = await events.listForEmployeeRange({ employeeUid: uid, from: start, to: windowEnd });
       const byDate = groupEventsByDate(rangeEvents);
       const leaveRows = await leaves.list(uid);
 
@@ -191,10 +233,14 @@ function createDailyAttendanceService({ repositories, agentAdvisory = null, now 
             rules.findEffectiveSchedule(uid, date),
             rules.findHolidayOn(date),
           ]);
+          // The engine must see the next calendar day too: it is where an overnight departure lives. It
+          // ignores those scans when the rule does not enable overnight shifts.
+          const carryDate = nextIsoDate(date);
+          const dayEvents = (byDate.get(date) || []).concat(carryDate ? (byDate.get(carryDate) || []) : []);
           const row = calculateDailyAttendance({
             employeeUid: uid,
             date,
-            events: byDate.get(date) || [],
+            events: dayEvents,
             rule,
             schedule,
             holiday,
@@ -254,12 +300,25 @@ function createDailyAttendanceService({ repositories, agentAdvisory = null, now 
 
     async recalculate(auth, { employeeUid = null, from, to, sourceSystem }) {
       const role = assertCanRecalculate(auth);
-      // A non-admin may only recalculate their own record; a manager only within their resolved scope.
+      let allowedUids = null;
       if (employeeUid) {
         await assertCanReadEmployee(auth, employeeUid, repositories, 'data');
+      } else {
+        // An organization-wide rebuild must not be reachable by role alone. Reuse the same scope resolver
+        // every other read uses, and require a BROAD data scope; otherwise the caller could rebuild and read
+        // every employee's attendance just by omitting the parameter.
+        const scope = await resolveScope(auth, repositories, 'data');
+        if (!scope.all && !scope.broad) {
+          throw new HttpError(
+            403,
+            'FORBIDDEN',
+            'Organization-wide recalculation requires a broad data scope (an authorization grant)',
+          );
+        }
+        allowedUids = scope.all ? null : scope.uids;
       }
       const result = await recalculateRange({
-        employeeUid, from, to, sourceSystem, actor: auth?.employeeUid ?? null,
+        employeeUid, from, to, sourceSystem, actor: auth?.employeeUid ?? null, allowedUids,
       });
       const advisory = await requestAdvisory({ summary: result.summary });
       return { ...result, role, advisory };
@@ -284,8 +343,9 @@ function createDailyAttendanceService({ repositories, agentAdvisory = null, now 
         diagnosis,
         calculation: row,
         stored,
-        // A stored row that disagrees with a fresh calculation means the inputs changed after the write.
-        stale: stored ? stored.calculatedAt !== row.calculatedAt : true,
+        // `stale` compares the DECISION, not the timestamps: `calculatedAt` necessarily differs because
+        // this is a fresh run, so comparing it would report every row as stale and mean nothing.
+        stale: stored ? !sameDecision(stored, row) : true,
       };
     },
 
@@ -293,6 +353,7 @@ function createDailyAttendanceService({ repositories, agentAdvisory = null, now 
     recalculateRange,
     requestAdvisory,
     calculateAndStore,
+    sameDecision,
   };
 }
 

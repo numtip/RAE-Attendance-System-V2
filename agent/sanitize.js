@@ -194,7 +194,10 @@ function assertNoSensitiveContent(payload) {
     }
     for (const key of Object.keys(node)) {
       const childPath = path ? `${path}.${key}` : key;
-      if (isForbiddenKey(key)) {
+      // Composable with sanitizeContext(): a key that was already redacted is reported by that function's
+      // `redactions` list, not re-flagged here. Without this the documented sequence
+      // `assertNoSensitiveContent(sanitizeContext(x).value)` would always throw, which is a trap.
+      if (isForbiddenKey(key) && node[key] !== REDACTED) {
         throw unsafe(`forbidden key at "${childPath}"`);
       }
       walk(node[key], childPath, depth + 1);

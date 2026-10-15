@@ -1,4 +1,5 @@
 const { randomUUID } = require('node:crypto');
+const { wallDateOnly } = require('../utils/bangkokTime');
 
 function createFixtureAttendanceEventRepository() {
   const byStagingRawId = new Map();
@@ -49,15 +50,15 @@ function createFixtureAttendanceEventRepository() {
 
     /**
      * Slice 2: scans for one employee over an inclusive date range, ordered by wall date+time.
-     * Mirrors `DATE(event_time) BETWEEN ? AND ?` in the MariaDB twin; the fixture stores eventTime as a
-     * naive wall string, so a lexical slice of the first 10 characters is the equivalent predicate.
+     * Mirrors `DATE(event_time) BETWEEN ? AND ?` in the MariaDB twin. It uses `wallDateOnly` rather than
+     * `String(eventTime).slice(0, 10)` because a test may (and MariaDB always does) hand back a Date.
      */
     async listForEmployeeRange({ employeeUid, from, to }) {
       return [...byStagingRawId.values()]
         .filter((row) => row.employeeUid === employeeUid)
         .filter((row) => {
-          const day = String(row.eventTime ?? '').slice(0, 10);
-          return day && day >= from && day <= to;
+          const day = wallDateOnly(row.eventTime);
+          return Boolean(day) && day >= from && day <= to;
         })
         .sort((a, b) => (String(a.eventTime) < String(b.eventTime) ? -1
           : String(a.eventTime) > String(b.eventTime) ? 1
@@ -69,7 +70,7 @@ function createFixtureAttendanceEventRepository() {
     async listEmployeeUidsWithEvents({ from, to }) {
       const uids = new Set();
       for (const row of byStagingRawId.values()) {
-        const day = String(row.eventTime ?? '').slice(0, 10);
+        const day = wallDateOnly(row.eventTime);
         if (row.employeeUid && day && day >= from && day <= to) uids.add(row.employeeUid);
       }
       return Array.from(uids).sort();

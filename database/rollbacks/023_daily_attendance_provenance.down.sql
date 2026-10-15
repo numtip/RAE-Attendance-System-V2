@@ -6,6 +6,15 @@
 -- The link table is dropped first so its FK to daily_attendance disappears before the columns do.
 -- Idempotent: safe to run when part of the migration was already reversed.
 
+-- WARNING: this does NOT narrow the `status` ENUM back to its original five values. A row whose status is
+-- 'pending' would be rejected (or silently truncated) by a narrowed ENUM in strict mode, so the widening is
+-- deliberately left in place: it is additive and harmless to keep. Narrow it only after every 'pending' row
+-- has been dealt with:
+--   SELECT COUNT(*) FROM daily_attendance WHERE status = 'pending';
+--   ALTER TABLE daily_attendance MODIFY COLUMN status
+--     ENUM('present','late','absent','leave','holiday') NOT NULL;
+-- Idempotent: safe to run when part of the migration was already reversed.
+
 DROP TABLE IF EXISTS daily_attendance_source_event;
 
 SET @idx = (

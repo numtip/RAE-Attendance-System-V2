@@ -485,6 +485,10 @@ function calculateDailyAttendance(input = {}) {
     return finish(base, notes);
   }
 
+  if (!Number.isInteger(input.rule.maxShiftSpanMinutes)) {
+    // An unflagged default would be a silent policy assumption, so it is recorded like workDaysDefaulted.
+    reconciliation.spanGuardDefaulted = true;
+  }
   const maxSpanMinutes = Number.isInteger(input.rule.maxShiftSpanMinutes)
     ? input.rule.maxShiftSpanMinutes
     : 960;

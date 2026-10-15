@@ -347,3 +347,76 @@ test('the decision path never touches an unsupported endpoint', async () => {
   }
   assert.equal(JSON.parse(sink.get()).disposition, 'EXECUTE');
 });
+
+// --- Slice 2 additions: the enforcement point lives in the decision path, not only in the CLI ---
+
+test('the decision path sanitizes the caller context before it leaves the process', async () => {
+  const { createDecisionsApi } = require('../decisions');
+  const urls = [];
+  let sentBody = null;
+  const client = {
+    kind: 'fake',
+    async postDecision(body) {
+      sentBody = body;
+      urls.push('/v1/decision');
+      return {
+        decision_type: 'NEXT_ACTION',
+        result: 'ok',
+        disposition: 'EXECUTE',
+        confidence: 0.9,
+      };
+    },
+  };
+  const decisions = createDecisionsApi({ client });
+  await decisions.decide({
+    useCase: 'architecture_review',
+    context: {
+      summary: 'Slice 2 synthetic summary',
+      employeeUid: '22222222-2222-2222-2222-222222222222',
+      nationalId: '9900000000001',
+      nested: { rows: [{ employeeId: 'E-1' }], note: 'kept' },
+    },
+  });
+
+  const serialized = JSON.stringify(sentBody);
+  assert.equal(serialized.includes('22222222-2222-2222-2222-222222222222'), false);
+  assert.equal(serialized.includes('9900000000001'), false);
+  assert.equal(serialized.includes('E-1'), false);
+  assert.equal(serialized.includes('<redacted>'), true, 'redaction stays visible');
+  assert.equal(serialized.includes('kept'), true, 'benign context is preserved');
+  assert.equal(urls.every((url) => url === '/v1/decision'), true);
+});
+
+test('the decision path refuses a context that still looks like a credential', async () => {
+  const { createDecisionsApi } = require('../decisions');
+  const decisions = createDecisionsApi({
+    client: { kind: 'fake', async postDecision() { throw new Error('must not be called'); } },
+  });
+  await assert.rejects(
+    () => decisions.decide({
+      useCase: 'architecture_review',
+      context: { summary: 'bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U' },
+    }),
+    (error) => error.code === 'AGENT_CORE_PAYLOAD_UNSAFE',
+  );
+  await assert.rejects(
+    () => decisions.decide({
+      useCase: 'architecture_review',
+      context: { summary: 'contact synthetic.person@example.test for details' },
+    }),
+    (error) => error.code === 'AGENT_CORE_PAYLOAD_UNSAFE',
+  );
+});
+
+test('sanitizeContext and assertNoSensitiveContent compose', () => {
+  const { value, redactions } = sanitizeContext({
+    summary: 'kept',
+    employeeUid: 'x',
+    nested: { citizenId: 'y' },
+  });
+  // The documented sequence must not throw: a key that was already redacted is reported by `redactions`,
+  // not re-flagged by the assertion.
+  assert.equal(assertNoSensitiveContent(value), true);
+  assert.ok(redactions.length >= 2);
+  assert.equal(JSON.stringify(redactions).includes('"x"'), false, 'paths only, never values');
+});

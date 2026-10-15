@@ -278,6 +278,147 @@ test('recalculateRange rejects an inverted or malformed range', async () => {
   );
 });
 
+// --- regressions found by independent verification ---------------------------
+
+test('a Date-shaped eventTime is grouped by its wall date, not by String(Date)', async () => {
+  const repositories = createFixtureRepositories();
+  await repositories.attendanceRules.insertRuleVersion(APPROVED_RULE);
+  const service = serviceWith(repositories);
+
+  // MariaDB hands back a JS Date for the event_time DATETIME. `String(date).slice(0, 10)` yields
+  // "Mon Mar 02", which matched no ISO date and silently produced an `absent` row with zero provenance.
+  await addScan(repositories, {
+    employeeUid: USER_UID, eventTime: new Date('2026-03-02T08:45:00.000Z'), checkType: 'I',
+  });
+  await addScan(repositories, {
+    employeeUid: USER_UID, eventTime: new Date('2026-03-02T16:30:00.000Z'), checkType: 'O',
+  });
+
+  const result = await service.recalculateRange({ employeeUid: USER_UID, from: MONDAY, to: MONDAY });
+  assert.equal(result.summary.calculated, 1);
+  assert.equal(result.summary.noData, 0, 'the scans must not be lost');
+  const stored = await repositories.dailyAttendance.findForEmployeeDate(USER_UID, MONDAY);
+  assert.equal(stored.status, 'late');
+  assert.equal(stored.lateMinutes, 15);
+  assert.equal(stored.sourceEventCount, 2, 'provenance survives a Date-shaped timestamp');
+  assert.equal(stored.sourceEventIds.length, 2);
+  assert.equal(stored.checkIn, `${MONDAY} 08:45:00`);
+});
+
+test('groupEventsByDate reads a Date and a string to the same day', () => {
+  const { groupEventsByDate } = require('../src/services/dailyAttendanceService');
+  const grouped = groupEventsByDate([
+    { id: 1, eventTime: new Date('2026-03-02T08:45:00.000Z') },
+    { id: 2, eventTime: '2026-03-02 16:30:00' },
+    { id: 3, eventTime: new Date('2026-03-03T06:00:00.000Z') },
+    { id: 4, eventTime: 'not-a-timestamp' },
+  ]);
+  assert.deepEqual([...grouped.keys()].sort(), ['2026-03-02', '2026-03-03']);
+  assert.equal(grouped.get('2026-03-02').length, 2, 'a Date and a string land in the same bucket');
+  assert.equal(grouped.get('2026-03-03').length, 1);
+});
+
+test('an overnight shift is reachable through the service, not only the pure engine', async () => {
+  const repositories = createFixtureRepositories();
+  await repositories.attendanceRules.insertRuleVersion({ ...APPROVED_RULE, overnightShift: true });
+  const service = serviceWith(repositories);
+
+  // 22:00 on Monday, 06:00 on Tuesday.
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${MONDAY} 22:00:00`, checkType: 'I' });
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: '2026-03-03 06:00:00', checkType: 'O' });
+
+  const result = await service.recalculateRange({ employeeUid: USER_UID, from: MONDAY, to: MONDAY });
+  const monday = result.days[0];
+  assert.equal(monday.computationStatus, 'calculated');
+  assert.equal(monday.isOvernight, true);
+  assert.equal(monday.workDuration, 8, 'the night shift span is reachable end to end');
+  assert.equal(monday.lateMinutes, 0);
+  assert.equal(monday.reconciliationJson.overnightLatenessPolicyMissing, true);
+  assert.deepEqual(monday.sourceEventIds, [1, 2]);
+  // Only the requested day is written: Tuesday has no row, so the shift cannot be counted twice.
+  const tuesday = await repositories.dailyAttendance.findForEmployeeDate(USER_UID, '2026-03-03');
+  assert.equal(tuesday, null);
+});
+
+test('an organization-wide recalculation requires a broad data scope', async () => {
+  const repositories = createFixtureRepositories();
+  await repositories.attendanceRules.insertRuleVersion(APPROVED_RULE);
+  const service = serviceWith(repositories);
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${MONDAY} 08:45:00`, checkType: 'I' });
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${MONDAY} 16:30:00`, checkType: 'O' });
+
+  // A manager with no grant, and an admin, must NOT be able to rebuild (or read back) every employee just
+  // by omitting employeeUid. Role alone does not widen data scope.
+  await assert.rejects(
+    () => service.recalculate({ employeeUid: ADMIN_UID, role: 'manager' }, { from: MONDAY, to: MONDAY }),
+    (error) => error.status === 403 && error.code === 'FORBIDDEN',
+  );
+  await assert.rejects(
+    () => service.recalculate({ employeeUid: ADMIN_UID, role: 'admin' }, { from: MONDAY, to: MONDAY }),
+    (error) => error.status === 403 && error.code === 'FORBIDDEN',
+  );
+  // The narrow, own-scope path still works.
+  const own = await service.recalculate(
+    { employeeUid: ADMIN_UID, role: 'admin' },
+    { employeeUid: ADMIN_UID, from: MONDAY, to: MONDAY },
+  );
+  assert.equal(own.summary.dates, 1);
+});
+
+test('a broad scope may run an organization-wide recalculation', async () => {
+  const repositories = createFixtureRepositories();
+  await repositories.attendanceRules.insertRuleVersion(APPROVED_RULE);
+  // A MANAGER holding an org_unit grant resolves to a broad data scope (an EXECUTIVE is deliberately
+  // read-only for this operation, so it is not the right actor for a rebuild).
+  repositories.authorization.grantsFor = async () => [
+    { employeeUid: ADMIN_UID, scopeType: 'org_unit', role: 'MANAGER', orgUnitCode: 'DEPT-01' },
+  ];
+  repositories.authorization.uidsInOrgUnits = async (codes) => (codes.includes('DEPT-01') ? [USER_UID] : []);
+  const service = serviceWith(repositories);
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${MONDAY} 08:45:00`, checkType: 'I' });
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${MONDAY} 16:30:00`, checkType: 'O' });
+
+  const result = await service.recalculate(
+    { employeeUid: ADMIN_UID, role: 'manager' },
+    { from: MONDAY, to: MONDAY },
+  );
+  assert.equal(result.summary.employees, 1, 'the one employee inside the granted unit was rebuilt');
+  assert.equal(result.summary.calculated, 1);
+  assert.equal(result.role, 'MANAGER');
+});
+
+test('an executive with a broad grant is read-only for recalculation', async () => {
+  const repositories = createFixtureRepositories();
+  repositories.authorization.grantsFor = async () => [
+    { employeeUid: ADMIN_UID, scopeType: 'organization', role: 'EXECUTIVE' },
+  ];
+  const service = serviceWith(repositories);
+  await assert.rejects(
+    () => service.recalculate({ employeeUid: ADMIN_UID, role: 'EXECUTIVE' }, { from: MONDAY, to: MONDAY }),
+    (error) => error.status === 403,
+  );
+});
+
+test('explain reports stale from the decision, not from the timestamp', async () => {
+  const repositories = createFixtureRepositories();
+  await repositories.attendanceRules.insertRuleVersion(APPROVED_RULE);
+  const service = serviceWith(repositories);
+  const auth = { employeeUid: USER_UID, role: 'user' };
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${MONDAY} 08:45:00`, checkType: 'I' });
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${MONDAY} 16:30:00`, checkType: 'O' });
+  await service.recalculateRange({ employeeUid: USER_UID, from: MONDAY, to: MONDAY });
+
+  const fresh = await service.explain(auth, USER_UID, MONDAY);
+  assert.equal(fresh.stale, false, 'a row that agrees with a fresh calculation is not stale');
+
+  // A new scan changes the decision, so the stored row is genuinely stale.
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${MONDAY} 18:00:00`, checkType: 'O' });
+  const changed = await service.explain(auth, USER_UID, MONDAY);
+  assert.equal(changed.stale, true);
+  assert.ok(changed.calculation.workDuration > fresh.calculation.workDuration);
+});
+
+
 // --- API -------------------------------------------------------------------
 
 function listen(app) {
@@ -333,15 +474,14 @@ test('the calculation endpoints are authenticated and scope-bound', async () => 
     });
     assert.equal(userRecalc.status, 403);
 
-    // An unscoped range has no employees WITH SCANS to rebuild, so it is a no-op rather than a full scan of
-    // every employee in the table.
+    // An organization-wide rebuild (no employeeUid) requires a BROAD data scope. An admin holds no
+    // authorization grant here, so role alone must not be enough: 403, not a silent full-org rebuild.
     const unscopedRecalc = await api(port, 'POST', '/api/v1/attendance/recalculate', {
       token: admin.accessToken,
       body: { from: MONDAY, to: MONDAY },
     });
-    assert.equal(unscopedRecalc.status, 200);
-    assert.equal(unscopedRecalc.body.data.summary.employees, 0);
-    assert.equal(unscopedRecalc.body.data.summary.dates, 0);
+    assert.equal(unscopedRecalc.status, 403);
+    assert.equal(unscopedRecalc.body.error.code, 'FORBIDDEN');
 
     // An admin may recalculate their OWN record. Fixture mode ships a pending rule only, so the outcome is
     // pending_policy: nothing may be claimed as calculated.

@@ -3,6 +3,7 @@ const { resolveAgentCoreConfig } = require('./config');
 const { createAgentCoreClient } = require('./agentCoreClient');
 const { normalizeAgentCoreResponse } = require('./decisionSchema');
 const { assertAllowedDecisionRequest, applyApprovalGate } = require('./policy');
+const { sanitizeContext, assertNoSensitiveContent } = require('./sanitize');
 const { AgentCoreError } = require('./errors');
 
 function resolveProjectId(options = {}) {
@@ -66,11 +67,17 @@ function createDecisionsApi({ client, projectId = resolveProjectId() } = {}) {
   }) {
     assertAllowedDecisionRequest({ intent, context });
 
+    // ENFORCEMENT POINT. Everything sent to Agent Core is sanitized and then verified free of names,
+    // identifiers, secrets and raw logs. This lives here, in the single decision path, so no caller (the
+    // CLI, a script or a future API hook) can bypass it by passing a context straight through.
+    const { value: safeContext } = sanitizeContext(context);
+    assertNoSensitiveContent(safeContext);
+
     const requestBody = buildAgentCoreRequest({
       projectId,
       useCase,
       intent,
-      context,
+      context: safeContext,
       question,
     });
 
