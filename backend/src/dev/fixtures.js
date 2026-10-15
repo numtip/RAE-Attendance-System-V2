@@ -99,6 +99,45 @@ const employeeIdentifiers = [
 const authorizationGrants = [];
 const orgMemberships = [];
 
+// Slice 1: effective-dated employment attributes. Synthetic only; this is the fixture twin of the
+// employee_assignment table. One current (open-ended) row per fixture employee, plus one closed row so
+// the effective-dated lookup is exercised in fixture/review mode.
+const employeeAssignments = [
+  {
+    employeeUid: '11111111-1111-1111-1111-111111111111',
+    employeeCode: 'E-ADMIN',
+    department: 'สำนักงาน',
+    position: 'ผู้ดูแล',
+    employeeType: 'university',
+    effectiveFrom: '2024-10-01',
+    effectiveTo: null,
+    sourceSystem: 'fixture',
+    sourceReference: 'synthetic',
+  },
+  {
+    employeeUid: '22222222-2222-2222-2222-222222222222',
+    employeeCode: 'E-USER-A',
+    department: 'งานบริการ',
+    position: 'เจ้าหน้าที่',
+    employeeType: 'department',
+    effectiveFrom: '2023-10-01',
+    effectiveTo: '2025-09-30',
+    sourceSystem: 'fixture',
+    sourceReference: 'synthetic',
+  },
+  {
+    employeeUid: '22222222-2222-2222-2222-222222222222',
+    employeeCode: 'E-USER',
+    department: 'ภาควิชา',
+    position: 'เจ้าหน้าที่',
+    employeeType: 'department',
+    effectiveFrom: '2025-10-01',
+    effectiveTo: null,
+    sourceSystem: 'fixture',
+    sourceReference: 'synthetic',
+  },
+];
+
 const leave = [
   {
     leaveId: 'LV-1',
@@ -125,6 +164,7 @@ const balances = [
 module.exports = {
   employees,
   employeeIdentifiers,
+  employeeAssignments,
   attendance,
   monthly,
   leave,

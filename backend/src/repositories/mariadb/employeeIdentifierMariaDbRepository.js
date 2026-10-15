@@ -10,10 +10,11 @@ const {
   createNationalIdProtector,
 } = require('../../security/nationalIdContract');
 
-// Requires migration 015 (lookup_key_version, audit table). 015 is additive/NULLable, so it is safe to
-// apply BEFORE deploying this code; deploying this code before 015 fails closed on identifier queries.
+// Requires migration 015 (lookup_key_version, audit table) and migration 020 (effective_from/effective_to
+// on employee_identifier and on the audit table). Both are additive/NULLable, so they are safe to apply
+// BEFORE deploying this code; deploying this code before 015/020 fails closed on identifier queries.
 const COLUMNS = `id, employee_uid, id_type, id_value, lookup_key_version, source_system, is_primary, status,
-  verified_at, created_at, updated_at`;
+  verified_at, effective_from, effective_to, created_at, updated_at`;
 const DEFAULT_ACTOR = 'system:identity-service';
 const LOCK_TIMEOUT_SECONDS = 10;
 
@@ -21,6 +22,17 @@ function codedError(code) {
   const error = new Error(code);
   error.code = code;
   return error;
+}
+
+/** DATE columns come back as a JS Date or a string depending on the pool settings; always expose 'YYYY-MM-DD'. */
+function toIsoDate(value) {
+  if (value == null) return null;
+  if (typeof value === 'string') return value.slice(0, 10);
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }
+  return String(value).slice(0, 10);
 }
 
 function mapIdentifier(row) {
@@ -38,6 +50,8 @@ function mapIdentifier(row) {
     isPrimary: Boolean(mapped.isPrimary),
     status: mapped.status,
     verifiedAt: mapped.verifiedAt ? new Date(mapped.verifiedAt).toISOString() : null,
+    effectiveFrom: toIsoDate(mapped.effectiveFrom),
+    effectiveTo: toIsoDate(mapped.effectiveTo),
     createdAt: new Date(mapped.createdAt).toISOString(),
     updatedAt: new Date(mapped.updatedAt).toISOString(),
   };
@@ -46,12 +60,13 @@ function mapIdentifier(row) {
 function auditValues(event) {
   return [
     event.identifier_id, event.employee_uid, event.action, event.key_version,
-    event.actor, event.reason, event.created_at,
+    event.effective_from, event.effective_to, event.actor, event.reason, event.created_at,
   ];
 }
 
 const AUDIT_SQL = `INSERT INTO employee_identifier_access_audit
-  (identifier_id, employee_uid, action, key_version, actor, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+  (identifier_id, employee_uid, action, key_version, effective_from, effective_to, actor, reason, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /**
  * InnoDB may pick a deadlock victim when several writers race for the same (type,value) unique key (for example
@@ -79,11 +94,19 @@ function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } =
 
   async function findNational(idValue, ctx = {}) {
     const candidates = getProtector().lookupCandidates(idValue); // throws NOT_CONFIGURED: fail closed, no plaintext fallback
+    // onDate = null keeps the pre-020 behaviour (no date filter). Otherwise the mapping must have been
+    // effective on that date; an expired or not-yet-effective window resolves to "not found" (fail closed).
+    const onDate = ctx.onDate ?? null;
+    const windowClause = onDate
+      ? ' AND (effective_from IS NULL OR effective_from <= ?) AND (effective_to IS NULL OR effective_to >= ?)'
+      : '';
+    const params = [candidates.map((c) => c.lookup_hmac)];
+    if (onDate) params.push(onDate, onDate);
     const [rows] = await pool.query(
       `SELECT ${COLUMNS} FROM employee_identifier
-       WHERE id_type = 'national_id' AND id_value IN (?) AND status = 'active'
+       WHERE id_type = 'national_id' AND id_value IN (?) AND status = 'active'${windowClause}
        ORDER BY lookup_key_version DESC LIMIT 1`,
-      [candidates.map((c) => c.lookup_hmac)],
+      params,
     );
     const found = mapIdentifier(rows[0]);
     // Best-effort lookup audit: an audit outage must not take down SSO resolution; create is mandatory.
@@ -138,11 +161,12 @@ function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } =
         const [result] = await connection.query(
           `INSERT INTO employee_identifier (
              employee_uid, id_type, id_value, lookup_key_version, source_system, is_primary, status,
-             verified_at, created_at, updated_at
-           ) VALUES (?, 'national_id', ?, ?, ?, ?, 'active', ?, ?, ?)`,
+             verified_at, effective_from, effective_to, created_at, updated_at
+           ) VALUES (?, 'national_id', ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
           [
             input.employeeUid, current.lookup_hmac, current.key_version, input.sourceSystem ?? null,
-            input.isPrimary ? 1 : 0, input.verifiedAt ?? null, now, now,
+            input.isPrimary ? 1 : 0, input.verifiedAt ?? null,
+            input.effectiveFrom ?? null, input.effectiveTo ?? null, now, now,
           ],
         );
         insertId = result.insertId;
@@ -164,6 +188,8 @@ function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } =
         keyVersion: current.key_version,
         employeeUid: input.employeeUid,
         identifierId: insertId,
+        effectiveFrom: input.effectiveFrom ?? null,
+        effectiveTo: input.effectiveTo ?? null,
         now,
       });
       await connection.query(AUDIT_SQL, auditValues(event)); // mandatory, same transaction
@@ -188,11 +214,17 @@ function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } =
         if (!normalized) throw new IdentifierCryptoError('INVALID_IDENTIFIER');
         return findNational(normalized, ctx);
       }
+      const onDate = ctx.onDate ?? null;
+      const windowClause = onDate
+        ? ' AND (effective_from IS NULL OR effective_from <= ?) AND (effective_to IS NULL OR effective_to >= ?)'
+        : '';
+      const params = [idType, normalized];
+      if (onDate) params.push(onDate, onDate);
       const [rows] = await pool.query(
         `SELECT ${COLUMNS} FROM employee_identifier
-         WHERE id_type = ? AND id_value = ? AND status = 'active'
+         WHERE id_type = ? AND id_value = ? AND status = 'active'${windowClause}
          LIMIT 1`,
-        [idType, normalized],
+        params,
       );
       return mapIdentifier(rows[0]);
     },
@@ -221,8 +253,9 @@ function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } =
       try {
         const [result] = await withDeadlockRetry(() => pool.query(
           `INSERT INTO employee_identifier (
-             employee_uid, id_type, id_value, source_system, is_primary, status, verified_at, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+             employee_uid, id_type, id_value, source_system, is_primary, status, verified_at,
+             effective_from, effective_to, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
           [
             input.employeeUid,
             input.idType,
@@ -230,6 +263,8 @@ function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } =
             input.sourceSystem ?? null,
             input.isPrimary ? 1 : 0,
             input.verifiedAt ?? null,
+            input.effectiveFrom ?? null,
+            input.effectiveTo ?? null,
             now,
             now,
           ],
@@ -258,14 +293,71 @@ function createEmployeeIdentifierMariaDbRepository(pool, { nationalId = null } =
       }
     },
 
-    async deactivate(id, employeeUid) {
+    async deactivate(id, employeeUid, { effectiveTo = null } = {}) {
+      // effectiveTo is optional: when the operator knows the last valid day, it closes the window too.
       const [result] = await pool.query(
         `UPDATE employee_identifier
-         SET status = 'inactive', updated_at = ?
+         SET status = 'inactive', effective_to = COALESCE(?, effective_to), updated_at = ?
          WHERE id = ? AND employee_uid = ? AND status = 'active'`,
-        [new Date(), id, employeeUid],
+        [effectiveTo, new Date(), id, employeeUid],
       );
       return result.affectedRows > 0;
+    },
+
+    /**
+     * Appends an 'effective_change' audit row (migration 020 window columns are in the same table).
+     * Metadata only: identifier values are never written to the audit trail.
+     */
+    async recordValidityEvent(input) {
+      const event = buildAuditEvent({
+        action: 'effective_change',
+        actor: input.actor || DEFAULT_ACTOR,
+        reason: input.reason || 'validity:change',
+        employeeUid: input.employeeUid ?? null,
+        identifierId: input.identifierId ?? null,
+        effectiveFrom: input.effectiveFrom ?? null,
+        effectiveTo: input.effectiveTo ?? null,
+      });
+      await pool.query(AUDIT_SQL, auditValues(event));
+      return {
+        action: event.action,
+        actor: event.actor,
+        reason: event.reason,
+        employeeUid: event.employee_uid,
+        identifierId: event.identifier_id,
+        effectiveFrom: event.effective_from,
+        effectiveTo: event.effective_to,
+      };
+    },
+
+    /** Metadata-only timeline of validity changes. Never returns an identifier value. */
+    async listValidityEvents({ employeeUid = null, limit = 50 } = {}) {
+      const params = [];
+      let clause = " WHERE action = 'effective_change'";
+      if (employeeUid) {
+        clause += ' AND employee_uid = ?';
+        params.push(employeeUid);
+      }
+      params.push(Number(limit));
+      const [rows] = await pool.query(
+        `SELECT identifier_id, employee_uid, action, effective_from, effective_to, actor, reason, created_at
+         FROM employee_identifier_access_audit${clause}
+         ORDER BY created_at DESC, id DESC LIMIT ?`,
+        params,
+      );
+      return rows.map((row) => {
+        const mapped = mapRow(row);
+        return {
+          identifierId: mapped.identifierId ?? null,
+          employeeUid: mapped.employeeUid ?? null,
+          action: mapped.action,
+          effectiveFrom: toIsoDate(mapped.effectiveFrom),
+          effectiveTo: toIsoDate(mapped.effectiveTo),
+          actor: mapped.actor,
+          reason: mapped.reason,
+          createdAt: mapped.createdAt ? new Date(mapped.createdAt).toISOString() : null,
+        };
+      });
     },
   };
 }

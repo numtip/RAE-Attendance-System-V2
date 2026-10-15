@@ -12,9 +12,9 @@ function createFacescanIngestionService({ repositories }) {
   const store = repositories.facescanIngestion;
   const identity = createEmployeeIdentityService({ repositories });
 
-  async function resolveFacescanUid(facescanId) {
+  async function resolveFacescanUid(facescanId, { onDate = null } = {}) {
     try {
-      return await identity.resolveUid('facescan_id', facescanId);
+      return await identity.resolveUid('facescan_id', facescanId, { onDate });
     } catch (error) {
       if (error.code === 'EMPLOYEE_NOT_FOUND') {
         return null;
@@ -31,6 +31,11 @@ function createFacescanIngestionService({ repositories }) {
         sourceSystem: input.sourceSystem || SOURCE_SYSTEM_HIP,
         sourceType: input.sourceType || 'checkinout',
         sourceReference: input.sourceReference ?? null,
+        // File provenance (migration 021); optional so array callers are unaffected.
+        fileName: input.fileName ?? null,
+        inputSha256: input.inputSha256 ?? null,
+        parserVersion: input.parserVersion ?? null,
+        columnMapJson: input.columnMapJson ?? null,
         windowFrom: input.windowFrom ?? null,
         windowTo: input.windowTo ?? null,
       });
@@ -80,7 +85,10 @@ function createFacescanIngestionService({ repositories }) {
           continue;
         }
 
-        const employeeUid = await resolveFacescanUid(normalized.facescanId);
+        const employeeUid = await resolveFacescanUid(normalized.facescanId, {
+          // Effective-dated mapping: resolve through the identifier that was valid on the event date.
+          onDate: String(normalized.checkTime).slice(0, 10),
+        });
         const resolutionStatus = employeeUid ? 'resolved' : 'unmapped';
         const event = await store.insertRawEvent({
           sourceSystem,

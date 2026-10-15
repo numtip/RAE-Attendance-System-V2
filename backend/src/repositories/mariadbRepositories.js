@@ -8,6 +8,7 @@ const { createRefreshTokenMariaDbRepository } = require('./mariadb/refreshTokenM
 const { createAuthorizationMariaDbRepository } = require('./mariadb/authorizationMariaDbRepository');
 const { createIdentityLinkMariaDbRepository } = require('./mariadb/identityLinkMariaDbRepository');
 const { createEmployeeIdentifierMariaDbRepository } = require('./mariadb/employeeIdentifierMariaDbRepository');
+const { createEmployeeAssignmentMariaDbRepository } = require('./mariadb/employeeAssignmentMariaDbRepository');
 const { createFacescanIngestionMariaDbRepository } = require('./mariadb/facescanIngestionMariaDbRepository');
 const { createAttendanceEventMariaDbRepository } = require('./mariadb/attendanceEventMariaDbRepository');
 
@@ -30,6 +31,7 @@ function createMariaDbRepositories(database = config.database) {
       authorization: blockedRepo(),
       identityLinks: blockedRepo(),
       employeeIdentifiers: blockedRepo(),
+      employeeAssignments: blockedRepo(),
       facescanIngestion: blockedRepo(),
       attendanceEvents: blockedRepo(),
     };
@@ -45,6 +47,7 @@ function createMariaDbRepositories(database = config.database) {
     authorization: createAuthorizationMariaDbRepository(pool),
     identityLinks: createIdentityLinkMariaDbRepository(pool),
     employeeIdentifiers: createEmployeeIdentifierMariaDbRepository(pool),
+    employeeAssignments: createEmployeeAssignmentMariaDbRepository(pool),
     facescanIngestion: createFacescanIngestionMariaDbRepository(pool),
     attendanceEvents: createAttendanceEventMariaDbRepository(pool),
   };

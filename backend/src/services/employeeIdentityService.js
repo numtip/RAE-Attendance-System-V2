@@ -12,6 +12,11 @@ const {
   maskIdentifierForLog,
   notFoundMessage,
 } = require('../domain/employeeIdentifier');
+const {
+  normalizeValidityDate,
+  normalizeValidityWindow,
+  describeValidity,
+} = require('../domain/identifierValidity');
 const { HttpError } = require('../utils/httpError');
 const { MJU_PERSONNEL_SOURCE, NAMESPACE_PAIR, deriveIdentityKind, ssoPolicyForKind, attendanceEligibility } = require('../domain/identityKind');
 
@@ -40,6 +45,12 @@ function createEmployeeIdentityService({ repositories }) {
   const employeeIdentifiers = repositories.employeeIdentifiers;
   const employees = repositories.employees;
 
+  /**
+   * `ctx` is audit metadata only ({ actor, reason }) and never carries the identifier value.
+   * `ctx.onDate` ('YYYY-MM-DD', migration 020) additionally requires the mapping to have been effective
+   * on that date; a mapping outside its window is treated as not found (fail closed, never a wrong person).
+   * A missing/undefined `onDate` keeps the pre-020 behaviour.
+   */
   async function resolveToEmployee(idType, idValue, ctx = {}) {
     const normalized = normalizeIdentifierValue(idType, idValue);
     if (!normalized) {
@@ -148,6 +159,9 @@ function createEmployeeIdentityService({ repositories }) {
         }
       }
 
+      // Effective-dated mapping (migration 020). Both bounds are optional and inclusive.
+      const window = normalizeValidityWindow(input);
+
       try {
         return await employeeIdentifiers.insert({
           employeeUid,
@@ -156,6 +170,8 @@ function createEmployeeIdentityService({ repositories }) {
           sourceSystem: input.sourceSystem ?? null,
           isPrimary: Boolean(input.isPrimary),
           verifiedAt: input.verifiedAt ?? null,
+          effectiveFrom: window.effectiveFrom,
+          effectiveTo: window.effectiveTo,
           actor: input.actor,
           reason: input.reason,
         });
@@ -175,15 +191,77 @@ function createEmployeeIdentityService({ repositories }) {
       }
     },
 
-    async unlinkIdentifier({ id, employeeUid }) {
+    async unlinkIdentifier({ id, employeeUid, effectiveTo = null, actor, reason }) {
       if (!id || !employeeUid) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'id and employeeUid are required');
       }
-      const removed = await employeeIdentifiers.deactivate(id, employeeUid);
+      // Optional last-valid day: closes the mapping's validity window at the same time as the deactivation.
+      const closedOn = normalizeValidityDate(effectiveTo, 'effective_to');
+      const removed = await employeeIdentifiers.deactivate(id, employeeUid, { effectiveTo: closedOn });
       if (!removed) {
         throw new HttpError(404, 'IDENTIFIER_NOT_FOUND', 'Identifier not found');
       }
-      return { id, employeeUid, status: 'inactive' };
+      if (closedOn && employeeIdentifiers.recordValidityEvent) {
+        await employeeIdentifiers.recordValidityEvent({
+          identifierId: id,
+          employeeUid,
+          effectiveTo: closedOn,
+          actor,
+          reason: reason || 'unlink:close-window',
+        });
+      }
+      return { id, employeeUid, status: 'inactive', effectiveTo: closedOn };
+    },
+
+    /**
+     * Metadata-only diagnostic: why does this identifier resolve (or not) on a given date?
+     * Performs at most two lookups (dated, then undated) and never returns the identifier value.
+     */
+    async explainResolution(identifierType, identifierValue, { onDate = null } = {}) {
+      const idType = String(identifierType || '').trim();
+      if (!isResolvableIdentifierType(idType)) {
+        throw new HttpError(400, 'VALIDATION_ERROR', `Unsupported identifier type: ${idType}`);
+      }
+      const normalized = normalizeIdentifierValue(idType, identifierValue);
+      if (!normalized) {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'identifier value is required');
+      }
+      const requestedDate = normalizeValidityDate(onDate, 'onDate');
+
+      const dated = await employeeIdentifiers.findActiveByTypeAndValue(idType, normalized, { onDate: requestedDate });
+      if (dated) {
+        return {
+          idType,
+          outcome: 'resolved',
+          reason: describeValidity(dated, requestedDate),
+          employeeUid: dated.employeeUid,
+          identifierId: dated.id,
+          effectiveFrom: dated.effectiveFrom ?? null,
+          effectiveTo: dated.effectiveTo ?? null,
+        };
+      }
+      // Not effective on that date. An undated lookup separates "expired/not yet effective" from "no mapping".
+      const undated = requestedDate
+        ? await employeeIdentifiers.findActiveByTypeAndValue(idType, normalized, { onDate: null })
+        : null;
+      if (!undated) {
+        return { idType, outcome: 'unmapped', reason: 'no_active_mapping', employeeUid: null, identifierId: null };
+      }
+      return {
+        idType,
+        outcome: 'not_effective',
+        reason: describeValidity(undated, requestedDate),
+        employeeUid: undated.employeeUid,
+        identifierId: undated.id,
+        effectiveFrom: undated.effectiveFrom ?? null,
+        effectiveTo: undated.effectiveTo ?? null,
+      };
+    },
+
+    /** Metadata-only validity timeline (migration 020). Never returns an identifier value. */
+    async listValidityEvents({ employeeUid = null, limit = 50 } = {}) {
+      if (!employeeIdentifiers.listValidityEvents) return [];
+      return employeeIdentifiers.listValidityEvents({ employeeUid, limit });
     },
 
     /** Derived identity kind (MJU / HIP / UNRESOLVED) + SSO policy; never creates or links anything. */
@@ -219,6 +297,8 @@ function createEmployeeIdentityService({ repositories }) {
         isPrimary: row.isPrimary,
         status: row.status,
         verifiedAt: row.verifiedAt,
+        effectiveFrom: row.effectiveFrom ?? null,
+        effectiveTo: row.effectiveTo ?? null,
       }));
     },
   };

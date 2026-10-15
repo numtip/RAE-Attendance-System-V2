@@ -26,7 +26,7 @@ const AAD_DOMAIN = 'rae-attendance-v2:identifier-secret:v1';
 const MIN_HMAC_KEY_BYTES = 32;
 const ENCRYPTION_KEY_BYTES = 32;
 const PROTECTED_ID_TYPES = Object.freeze(['national_id']);
-const AUDIT_ACTIONS = Object.freeze(['lookup', 'create', 'decrypt', 'reindex', 'delete', 'key_rotation']);
+const AUDIT_ACTIONS = Object.freeze(['lookup', 'create', 'decrypt', 'reindex', 'delete', 'key_rotation', 'effective_change']);
 const WRITE_LOCK_NAME = 'rae:employee_identifier:national_id:write';
 
 const THAI_DIGITS = '๐๑๒๓๔๕๖๗๘๙';
@@ -223,7 +223,17 @@ const SAFE_TEXT = /^[A-Za-z0-9:_@./ -]{1,255}$/;
  * Builds an audit row. Rejects free text that is not a plain token or that contains a run of 10+ digits
  * (so a raw/partial National ID cannot be smuggled in through actor/reason).
  */
-function buildAuditEvent({ action, actor, reason, keyVersion = null, employeeUid = null, identifierId = null, now = new Date() }) {
+function buildAuditEvent({
+  action,
+  actor,
+  reason,
+  keyVersion = null,
+  employeeUid = null,
+  identifierId = null,
+  effectiveFrom = null,
+  effectiveTo = null,
+  now = new Date(),
+}) {
   if (!AUDIT_ACTIONS.includes(action)) throw new IdentifierCryptoError('AUDIT_ACTION_INVALID');
   for (const text of [actor, reason]) {
     if (!SAFE_TEXT.test(String(text ?? '')) || /\d{10,}/.test(String(text))) {
@@ -236,6 +246,8 @@ function buildAuditEvent({ action, actor, reason, keyVersion = null, employeeUid
     employee_uid: employeeUid,
     action,
     key_version: keyVersion,
+    effective_from: effectiveFrom,
+    effective_to: effectiveTo,
     actor: String(actor),
     reason: String(reason),
     created_at: now,
