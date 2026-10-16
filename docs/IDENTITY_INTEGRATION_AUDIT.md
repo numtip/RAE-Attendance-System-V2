@@ -36,8 +36,47 @@ exotic locations outside those roots**.
 The only trace is a **dangling reference** in this repo: `docs/RAE_ATTENDANCE_UNIFIED_PLATFORM_BLUEPRINT_V1.md`
 lists "Related local reference: `MJU_PERSON_ENRICHMENT_KB.md` (personal-data local-only policy)".
 
+**Search coverage (2 passes).** Pass 1 (the audit workstream): the V2 workspace, the Cursor agent stores,
+`G:\ProjectAI\**`, `F:\projectAi`, `G:\ProjectAI\_backups`, Documents, Desktop, Downloads — 0 hits. Pass 2
+(added after this audit was written): `G:\AI` recursively, and the root-level AI/docs folders
+(`G:\AI`, `G:\AI Project2026`, `G:\ai-Claude`, `G:\ai-Claude-stack`, `G:\Antigravity`, `G:\CodexSand`, `G:\DocF`,
+`G:\docs`, `G:\GIthub`, `G:\Git`, `G:\CrystalReport`) to depth 3 — **0 hits for `ENRICH`**. A full-drive
+recursive sweep of `G:\` and `F:\` was attempted twice and abandoned (it exceeded ~165 s without completing),
+so exotic locations outside the roots above remain **UNKNOWN**, not proven absent.
+
+**A related document set WAS found in pass 2, and it matters** — see §0.2.
+
 **Consequence:** the "personal-data local-only policy" this audit was asked to read is **undocumented at
 source**. Any policy statement attributed to it would be invented. Recorded as gap **A0**.
+
+## 0.2 Related documents found (they are not the KB, but they are binding)
+
+`G:\AI\docs\integrations\` holds **8 documents dated 2026-05-20**: `MJU_API_GOVERNANCE_POLICY.md`,
+`MJU_API_DB_SCHEMA.md`, `MJU_API_INTEGRATION_PLAN.md`, `MJU_API_PLATFORM_ARCHITECTURE.md`,
+`MJU_API_ADMIN_WORKFLOW.md`, `MJU_API_OPERATION_RUNBOOK.md`, `MJU_API_PLATFORM_WITNESS.md`,
+`MJU_API_SERVICE_PORTAL_BLUEPRINT.md`.
+
+**Labelled honestly:** these are **summaries, recommendations and plans** for a *different* consumer (a RAE
+Next.js app), **not** the MJU Person API's OpenAPI spec. They do **not** list the person API's fields, so they
+do **not** answer §1.1/ID-5 (whether a stable `personnelID` exists) and they do not settle whether `/filter/`
+is exact or fuzzy.
+
+**What they DO establish, and why it changes this audit's conclusions:**
+
+* `MJU_API_GOVERNANCE_POLICY.md` states that *"all requests for personal/sensitive data require **DPIA and
+  privacy officer sign-off**"* and that sensitive endpoints need **multi-stakeholder approval (Admin + Data
+  Owner + Privacy Officer)**; it requires **MFA** for Admin/DataOwner, **tokens rotated in Secret Manager**,
+  **quarterly access reviews**, **annual audits**, **data minimisation**, **PII redaction in logs** and
+  **restricted PII export**; and it requires every endpoint to have an **assigned owner and a documented
+  OpenAPI spec**.
+* `MJU_API_INTEGRATION_PLAN.md` requires all MJU API calls to be **server-side only**, credentials from
+  environment only, and **`Cache-Control: no-store`** for personal-data responses.
+* `MJU_API_DB_SCHEMA.md` is a **"recommended"** platform schema (requests / clients / token metadata / audit
+  logs / endpoint catalog / access policies / rate limits) — it does not describe the person API.
+
+**Net effect:** the data-protection gate (§7 below, and contract **G7**) is **documented as a requirement**
+rather than merely absent, and there is now a concrete, citable approval path. No evidence of a *completed*
+DPIA or a registered client was found. The gate does **not** lower: these are proposals, not approvals.
 
 ## 0.1 Method, PII handling and a disclosure
 
@@ -275,8 +314,8 @@ basis for receiving citizen IDs at all.
 | **F7** | medium (injection) | The output writes `citizen_id` as the spreadsheet formula `` ="<id>" `` around an **unvalidated** value — the pattern V2's own export layer deliberately avoids. |
 | **F8** | medium (documentation) | **The README is not the code**: it embeds a stale 10-column script (the live one writes 4 columns) behind a leaked heredoc, and documents an API test that is a **0-byte no-op**. |
 | **F9** | medium (process) | **Not a git repository** — no history, no provenance, no way to tell which run produced which artifact; re-running **appends duplicates**; the resume path **never re-queries** a changed row. |
-| **F10** | medium (missing input) | **`MJU_PERSON_ENRICHMENT_KB.md` does not exist** (§0), yet is referenced as required reading and as the "personal-data local-only policy". |
-| **F11** | low (hygiene) | PII reaches **stdout** and therefore any terminal log; `nationId` is a second national-ID-like field that is never compared with `citizenID`. |
+| **F10** | medium (missing input) | **`MJU_PERSON_ENRICHMENT_KB.md` does not exist** (§0), yet is referenced as required reading and as the "personal-data local-only policy". || **F11** | low (hygiene) | PII reaches **stdout** and therefore any terminal log; `nationId` is a second national-ID-like field that is never compared with `citizenID`. |
+| **F12** | medium (governance) | **An MJU API governance policy exists on this machine and requires a DPIA + privacy-officer sign-off, multi-stakeholder approval, MFA for Admin/DataOwner, Secret-Manager token rotation, quarterly access reviews and a per-endpoint owner + OpenAPI spec** (§0.2). **No evidence of a completed DPIA or a registered V2 client was found.** Any integration must satisfy these first — they were not previously cited in V2's documents. |
 
 ## 10. Open questions
 

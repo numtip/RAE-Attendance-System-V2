@@ -204,6 +204,32 @@ yet effective-dated is the **identity link** itself.
 | **Data minimisation** | The HMAC digest is sufficient to prove sameness. Raw `citizenID` storage stays **disabled** (`EMPLOYEE_IDENTIFIER_RAW_STORAGE_ENABLED=false`) unless a necessity approval names a lawful basis. |
 | **No logs** | No raw identifier in logs, error messages, URLs, screenshots, fixtures, PR text or Agent Core prompts. Existing `HttpError` messages carry a code, not a value. |
 
+### 6.1 MJU API governance obligations (evidence found on this machine)
+
+A **separate**, previously uncited document set exists at `G:\AI\docs\integrations\` (8 files, dated
+2026-05-20). They are **recommendation / plan** documents for a *different* consumer (a RAE Next.js app), **not**
+the MJU Person API's OpenAPI spec — so they do **not** answer whether a stable `personnelID` endpoint exists.
+Two of them are nonetheless directly binding on this design, and were found only while confirming that the
+referenced `MJU_PERSON_ENRICHMENT_KB.md` is missing:
+
+| Source | Requirement | Consequence for this contract |
+|---|---|---|
+| `MJU_API_GOVERNANCE_POLICY.md` | *"All requests for personal/sensitive data require **DPIA and privacy officer sign-off**"*; *"multi-stakeholder approval required for sensitive endpoints (**Admin + Data Owner + Privacy Officer**)"* | **This is the concrete approval path for G7**, and it means the gate is not merely "owner approves" — a DPIA is a prerequisite, not a formality. |
+| same | *"Data minimization: only expose necessary fields; **minimize PII in responses**"*; *"restrict export of PII"*; *"redact or hash direct identifiers in logs"* | Confirms §6 (row-level access, no PII in logs) and §3 (the HMAC digest is sufficient; raw storage stays off). |
+| same | RBAC roles for API access are **Requestor / Developer / Admin / DataOwner / Security / Operations**, with **MFA required for Admin and DataOwner** | These are **platform-access** roles, distinct from V2's employee roles. V2 is a *client*: it needs a registered `api_clients` entry, an owner, and DataOwner/Privacy-Officer approval — not an employee role. |
+| same | *"tokens stored and rotated in Secret Manager; no plaintext in repo or emails"*; quarterly access reviews; annual compliance audits | Aligns with §6 crypto/KMS; adds a **quarterly review** and **annual audit** obligation to the operational side. |
+| same | *"Each API endpoint must have an assigned owner… defining sensitivity"*; *"Maintain OpenAPI spec per version"* | The Person API endpoint should have a documented **owner + sensitivity classification + OpenAPI spec**. Requesting those is a concrete, cheap evidence step before integration. |
+| `MJU_API_INTEGRATION_PLAN.md` | All MJU API calls must be **server-side** through an adapter; credentials only from env (`MJU_API_BASE_URL`, `MJU_API_TOKEN`); **no credential in source**; `Cache-Control: no-store` when the payload is personal data | Already how R-03 treats personal data (`no-store, private`), and consistent with keeping enrichment off any client and off the SSO callback path. |
+
+`MJU_API_DB_SCHEMA.md` is explicitly a **"recommended"** platform schema (requests / clients / token metadata /
+audit logs / endpoint catalog / access policies / rate limits). It does **not** describe the person API's field
+list, so **ID-5 (`personnelID`) remains open**. It does usefully confirm the shape V2 should mirror for audit and
+token metadata (`scope`, `rotation_version`, `last_rotation`, `revoked_at`, append-only audit).
+
+**Not authority:** these are summaries and proposals, and their presence does **not** substitute for a DPIA, a
+privacy-officer sign-off, or the endpoint's own OpenAPI spec. They sharpen *what to request*; they do not lower
+the gate.
+
 ## 7. Fail-closed matrix (what must deny)
 
 | Situation | Required outcome |
@@ -243,10 +269,13 @@ Sequencing constraints: `#30 → #33 → #34/#35` for the lower stack; migration
 | G4 | Whether any raw `citizenID` storage is ever lawful, and the necessity basis | owner + data protection |
 | G5 | The Person-API ingestion path (§3) — build it, or keep enrichment manual? | approve scope |
 | G6 | Whether MJU will certify a **stable, unique subject** (today `humanID` is candidate-only) | MJU IT |
-| G7 | Whether the Person API may be used at all under a written data-protection basis | owner + MJU IT |
+| G7 | **DPIA + privacy-officer sign-off, and multi-stakeholder approval (Admin + Data Owner + Privacy Officer)** for personal/sensitive data access. The *requirement* is documented in `MJU_API_GOVERNANCE_POLICY.md`; **no evidence of a completed DPIA was found.** | owner + privacy officer |
+| G8 | The Person API endpoint's **assigned owner, sensitivity classification and OpenAPI spec** — the governance policy requires all three to exist per endpoint | MJU IT / endpoint owner |
+| G9 | A registered **`api_clients` entry** with an owner and approved scopes for V2, plus token rotation in Secret Manager and the quarterly access review | owner + platform admin |
 
 > ### 🛑 STOP — design/review gate
 >
 > Real identity integration is **not activated**. No live ID-card processing, no import of real identities, no
 > migration executed, no key created or rotated, no production change. Activation requires explicit owner
-> approval of §8 and §9, and the written data-protection basis in **G7**.
+> approval of §8 and §9, a completed **DPIA plus privacy-officer sign-off** (§6.1, **G7**), and the endpoint's
+> own documented owner/sensitivity/OpenAPI spec (**G8**).
