@@ -113,13 +113,23 @@ All three are in `docs/API_CONTRACT.md` and exercised by `contract:smoke` (**36*
 * Authorization uses the **same** `assertCanReadEmployee` guard as R-02, **scope before existence**, before
   any data read — so the two cannot drift.
 
-## 3. `realSourceVerified: false` — the input that is missing
+## 3. `realSourceVerified: false` — the reason has changed
 
-**`G:\ProjectAI\attendance-report-generator` DOES NOT EXIST** (VERIFIED 2026-10-16 by directory check). The
-reference named for FY2569 historical reconciliation is unavailable, so **no FY2569 real-source evidence was
-or could be consulted.**
+**`G:\ProjectAI\attendance-report-generator` was MISSING at ~13:53 and ~14:06** (VERIFIED 2026-10-16 by
+directory check) and is **present at ~14:24**. It has now been audited in
+[`13_REFERENCE_PROJECT_AUDIT.md`](13_REFERENCE_PROJECT_AUDIT.md), which establishes three things that matter to
+this slice:
 
-Every snapshot therefore carries, **inside the payload**:
+1. The reference is a **sibling project** (`numtip/Attendance-Report`, private) that consumes the same
+   `attendance-core` whose rule semantics this repo ports.
+2. Its `CodexWorker/prepared/**` set **does contain FY2569 evidence** — 12 months of aggregate counts
+   (1,600 late / 24 early / 11 half-day / 8 needs-review across 53 employee codes) plus **26 documented
+   person-month discrepancies** between HIP and the monthly report.
+3. That evidence is **aggregate-safe but the repo also holds real names** in 13 tracked files, and this repo is
+   **public** — so any integration must take **counts only**, never rosters or names.
+
+**So the blocker is no longer "the source is missing"; it is "nothing has been integrated".** This slice still
+reads no external data, every snapshot still carries `realSourceVerified: false`:
 
 ```json
 "realSourceVerified": false,
@@ -128,13 +138,18 @@ Every snapshot therefore carries, **inside the payload**:
   original HIP/MJU source data."
 ```
 
+> **Known stale clause (flagged, not silently changed):** *"was available"* is no longer true now that the
+> reference exists; *"consulted"* still is. The note is user-visible output text and should be reworded to say
+> **"not integrated"** rather than **"unavailable"** — see §8. It is left as-is here because changing it is a
+> decision about the honesty contract, not a documentation tidy-up.
+
 This is deliberately machine-visible rather than a sentence in a document: a consumer cannot read a
 `matched` snapshot and believe the original HIP/MJU data was verified. A test asserts the flag is `false` and
 the note is present, so the claim cannot silently change.
 
 **Consequence:** R-04 currently validates V2's *internal* consistency (stored rows vs the rows they were
-derived from). It does **not** validate V2 against the original source system. That half of the requirement
-is **BLOCKED on `R-04-B`**, not done.
+derived from). It does **not** validate V2 against the original source system. That half is **BLOCKED on
+`R-04-C`** (integration), not on availability.
 
 ## 4. Defects found during development (recorded, not hidden)
 
@@ -207,8 +222,10 @@ case), and better closed than assumed.
 
 ## 6. Unresolved / out of scope
 
-1. **`R-04-B`: the reference project is missing**, so no FY2569 real-source verification was possible. This is
-   the largest open item; everything in §5 is fixture-verified only.
+1. **`R-04-C`: the FY2569 evidence exists but is not integrated.** The reference project was audited
+   ([`13_REFERENCE_PROJECT_AUDIT.md`](13_REFERENCE_PROJECT_AUDIT.md)) and does hold FY2569 aggregate evidence,
+   but nothing in this repo reads it, so everything in §5 is fixture-verified only. **Aggregate counts only** may
+   be consumed — the sibling repo is private and holds real names, while this repo is public.
 2. **The fiscal convention needs owner confirmation** (§1.3): Oct–Sep is a stated reporting convention, not an
    approved policy value.
 3. **`mismatched` is not pinned by a scenario test** (§5.4).
@@ -239,7 +256,8 @@ case), and better closed than assumed.
 
 | ID | Task | Note |
 |---|---|---|
-| **R-04-B** | Resolve `G:\ProjectAI\attendance-report-generator`, or formally record that FY2569 real-source reconciliation is out of scope | **Blocks the verification half of R-04** |
+| **R-04-C** | Integrate the FY2569 **aggregate** evidence (12 monthly count totals + the 26 documented person-month discrepancies) as a reconciliation fixture — **counts only, no names or codes** | Replaces "source missing" with real integration; the sibling repo is private and this one is public |
 | R-04-T | Pin a snapshot-level `mismatched` with a scenario test | §5.4 |
 | R-05 | Annual HR form (แบบรายงานประจำปี) | Reuses the R-03 renderer |
-| — | Owner confirmation of the fiscal-year window | §1.3 |
+| — | Owner confirmation of the fiscal-year window | §1.3 — now **corroborated** by the donor's own FY2569 labelling (Oct–Sep) |
+| — | Reword `REAL_SOURCE_NOTE` from "unavailable" to "not integrated" | §3; a decision about the honesty contract, not a tidy-up |
