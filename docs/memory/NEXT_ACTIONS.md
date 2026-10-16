@@ -41,7 +41,8 @@ report names its `ruleVersions`, `dateCutoff` and `population`, and carries `com
 figure. Limitations travel with the number in `report.caveats` (`HOLIDAY_CALENDAR_EMPTY`,
 `NIGHT_SHIFT_LATENESS_WITHHELD`, `APPROVER_IS_SESSION_LABEL`). Detail and the review checklist:
 [`docs/unified/10_SLICE4_ATTENDANCE_REPORTS.md`](../unified/10_SLICE4_ATTENDANCE_REPORTS.md). **No
-migration, no commit, no push yet** — the branch decision is still open.
+migration.** Committed as `9fbca5f` on `feat/slice4-attendance-reports` (off the tip) and opened as
+**Draft PR [#41](https://github.com/numtip/RAE-Attendance-System-V2/pull/41)** — Draft, unmerged.
 
 **The next milestone is R-03 (exports), and it inherits the same honesty rules:**
 

@@ -1,6 +1,7 @@
 # PROJECT_STATE — RAE Attendance System V2
 
-**As of:** 2026-10-15 (Asia/Bangkok). **Supersedes** `docs/SESSION_HANDOFF.md` for current status.
+**As of:** 2026-10-15 (Asia/Bangkok), **updated 2026-10-16** for Slice 4 / R-02 (§1, §2, §3, §6 R9).
+**Supersedes** `docs/SESSION_HANDOFF.md` for current status.
 That file still holds the pre-Slice handoff and carries uncommitted WIP, so it was deliberately left
 untouched — see §7.
 
@@ -16,13 +17,15 @@ origin/main                              3244553
        └─ feat/slice1-employee-master-foundation   5910819   PR #36  Draft
             └─ feat/slice2-attendance-engine       d279bba   PR #37  Draft
                  ├─ feat/slice3-monthly-summary    08b55ba   PR #39  Draft  (R-01)
-                 │    └─ feat/agent-core-live-decisions   PR #40  Draft  (Jev live)  <== TIP
+                 │    └─ feat/agent-core-live-decisions   PR #40  Draft  (Jev live)
+                 │         └─ feat/slice4-attendance-reports  PR #41  Draft  (R-02)  <== TIP
                  └─ docs/daily-closeout-20261015          PR #38  Draft  (memory docs, older snapshot)
 ```
 
 | Ref | SHA | Tracks origin? | Notes |
 |---|---|---|---|
-| `feat/agent-core-live-decisions` | see `git log -1` | in sync | **the tip.** Jev live decisions, the Jev rule, and this memory set |
+| `feat/slice4-attendance-reports` | `9fbca5f` | in sync | **the tip.** Slice 4 / R-02: individual attendance reports; PR #41 |
+| `feat/agent-core-live-decisions` | `fbfb2e4` | in sync | Jev live decisions, the Jev rule, and this memory set; base of #41 |
 | `feat/slice3-monthly-summary` | `08b55ba` | in sync | Slice 3: monthly summary (R-01) |
 | `docs/daily-closeout-20261015` | see `git log -1` | in sync | memory docs, but an **older snapshot without the Jev work** |
 | `feat/slice2-attendance-engine` | `d279bba` | in sync | Slice 2 code |
@@ -31,8 +34,8 @@ origin/main                              3244553
 | `main` (local) | `e3cef26` | **behind 3** | **stale — do not use as a reference** |
 | `origin/main` | `3244553` | — | the real baseline |
 
-**Start a new session from `feat/agent-core-live-decisions`** — it is the only branch that has the Jev work
-and this memory set together.
+**Start a new session from `feat/slice4-attendance-reports`** — it is the tip and holds the Jev work, the
+memory set and the R-02 reports together.
 
 Verified with `git branch -vv`, `git rev-parse`, `git ls-remote`. **No local commit is missing from origin
 on the Slice 1/2 chain.**
@@ -48,10 +51,12 @@ on the Slice 1/2 chain.**
 | [#37](https://github.com/numtip/RAE-Attendance-System-V2/pull/37) | Slice 2 — versioned attendance engine + Agent Core | `feat/slice1-employee-master-foundation` | `d279bba` | **yes** | 8/8 pass | CLEAN, unmerged |
 | [#38](https://github.com/numtip/RAE-Attendance-System-V2/pull/38) | Daily closeout + project memory (docs only) | `feat/slice2-attendance-engine` | this branch | **yes** | 8/8 pass | CLEAN, unmerged |
 | [#39](https://github.com/numtip/RAE-Attendance-System-V2/pull/39) | Slice 3 — monthly summary (R-01) | `feat/slice2-attendance-engine` | `08b55ba` | **yes** | 8/8 pass | CLEAN, unmerged |
-| [#40](https://github.com/numtip/RAE-Attendance-System-V2/pull/40) | Agent Core (Jev) decision path made to work | `feat/slice3-monthly-summary` | see `git log -1` | **yes** | 8/8 pass | CLEAN, unmerged |
+| [#40](https://github.com/numtip/RAE-Attendance-System-V2/pull/40) | Agent Core (Jev) decision path made to work | `feat/slice3-monthly-summary` | `fbfb2e4` | **yes** | 8/8 pass | CLEAN, unmerged |
+| [#41](https://github.com/numtip/RAE-Attendance-System-V2/pull/41) | Slice 4 (R-02) — individual attendance reports that surface completeness | `feat/agent-core-live-decisions` | `9fbca5f` | **yes** | see CI | unmerged |
 
-Stacked deliberately: `#40 → #39 → #37 → #36 → integration/attendance-sso-hip`. **Do not retarget or merge**
-until the lower stack (`#30 → #33 → #34/#35`) is decided — see `docs/SESSION_HANDOFF.md` §2 for that flow.
+Stacked deliberately: `#41 → #40 → #39 → #37 → #36 → integration/attendance-sso-hip`. **Do not retarget or
+merge** until the lower stack (`#30 → #33 → #34/#35`) is decided — see `docs/SESSION_HANDOFF.md` §2 for that
+flow.
 
 ## 3. Feature status
 

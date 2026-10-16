@@ -11,7 +11,7 @@ Builds on [`09_SLICE3_MONTHLY_SUMMARY.md`](09_SLICE3_MONTHLY_SUMMARY.md) (PR
 | Field | Value |
 |---|---|
 | Date | 2026-10-16 (Asia/Bangkok) |
-| Branch | `feat/agent-core-live-decisions` (the tip). No new branch, no commit, no push yet — see §7. |
+| Branch | `feat/slice4-attendance-reports`, off `feat/agent-core-live-decisions` (PR [#40](https://github.com/numtip/RAE-attendance-System-V2/pull/40)). Commit `9fbca5f`, pushed, **Draft PR [#41](https://github.com/numtip/RAE-Attendance-System-V2/pull/41)** with base `feat/agent-core-live-decisions`. Not merged. |
 | Worktree | **None.** Per `AGENTS.md`. |
 | WIP / stashes | Untouched: the 18 pre-existing entries and **2** stashes. |
 | Hosts | **Not contacted.** No SSH, no production DB, no deploy. |
@@ -163,13 +163,13 @@ the existing `backend-mariadb` job is the verification for those columns. No rea
 - [ ] The frontend monthly view reading the report endpoint accepted, including the provisional styling and
       the "never derived" state that shows no figures at all.
 - [ ] The three `caveats` accepted as the mechanism that keeps R2 / R8 / P-03 visible in every report.
-- [ ] Approval to commit and open a **Draft** PR (branch decision still open — see §7).
+- [ ] Kept **Draft** until reviewed (PR [#41](https://github.com/numtip/RAE-Attendance-System-V2/pull/41), base `feat/agent-core-live-decisions`).
 
 ## 7. Next actions
 
 | ID | Task | Note |
 |---|---|---|
-| — | **Decide the branch**: a new `feat/...` branch off the tip, or commit on `feat/agent-core-live-decisions` (PR #40's head). | Needs an owner decision; nothing was committed or pushed. |
-| R-02-FE | Wire the frontend monthly view to the report endpoint so the completeness verdict is visible in the UI | Follows this slice |
-| R-03 | Export layer (XLSX, PDF, annual form), with server-enforced filters and export authorization | R-02 |
+| — | ~~Decide the branch~~ **DONE**: `feat/slice4-attendance-reports` off the tip, Draft PR [#41](https://github.com/numtip/RAE-Attendance-System-V2/pull/41). | Kept Draft; nothing merged, nothing retargeted |
+| R-02-FE | ~~Wire the frontend monthly view~~ **DONE** — the verdict is rendered before the figures | Follows this slice |
+| R-03 | Export layer (XLSX, PDF, annual form), with server-enforced filters and export authorization | R-02; must carry this contract |
 | R-04 | Reconciliation test against a frozen synthetic snapshot | R-02 |
