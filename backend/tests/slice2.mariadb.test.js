@@ -89,11 +89,16 @@ test('migration 022/023 DDL, real DATETIME parity, and the full calculate chain'
   });
 
   await t.test('only an approved rule is selected, and the pending one is still discoverable', async () => {
+    // BOUNDED on purpose. An open-ended approved rule (no effectiveTo) covers EVERY later date, which leaks
+    // into any other MariaDB test that asserts "no approved rule covers this date". CI runs test files in
+    // parallel against one database, so a blanket rule is a real cross-test hazard, not a theoretical one.
+    // Keep this window inside the dates this suite actually uses (WORKDAY is 2026-09-10).
     await repositories.attendanceRules.insertRuleVersion({
       ruleVersionCode: pendingRule,
       name: 'Synthetic pending rule',
       status: 'pending_approval',
-      effectiveFrom: '2026-01-01',
+      effectiveFrom: '2026-09-01',
+      effectiveTo: '2026-09-30',
       workStart: '09:00:00',
       workEnd: '17:00:00',
       lateAfter: '09:00:00',
@@ -104,7 +109,8 @@ test('migration 022/023 DDL, real DATETIME parity, and the full calculate chain'
       ruleVersionCode: approvedRule,
       name: 'Synthetic approved rule',
       status: 'approved',
-      effectiveFrom: '2026-01-01',
+      effectiveFrom: '2026-09-01',
+      effectiveTo: '2026-09-30',
       workStart: '08:30:00',
       workEnd: '16:30:00',
       lateAfter: '08:30:00',
@@ -272,7 +278,10 @@ test('migration 022/023 DDL, real DATETIME parity, and the full calculate chain'
       employeeUid: EMPLOYEE_UID,
       name: 'Synthetic schedule',
       status: 'approved',
-      effectiveFrom: '2026-01-01',
+      // Bounded for the same reason as the rules above: an open-ended schedule for this employee would
+      // follow them into every other MariaDB test that shares the seeded employee.
+      effectiveFrom: '2026-09-01',
+      effectiveTo: '2026-09-30',
       workStart: '09:00:00',
       workEnd: '18:00:00',
       lateAfter: '09:00:00',

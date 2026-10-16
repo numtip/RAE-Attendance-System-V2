@@ -26,13 +26,37 @@ const SKIP = !shouldRunMariaDbIntegration();
 
 const TEST_PREFIX = `SLICE3-${process.pid}`;
 const EMPLOYEE_UID = '22222222-2222-2222-2222-222222222222';
-// November 2026: 30 days, and the dev seed only populates 2026-03, so there is no collision.
-const YEAR = 2026;
+// A far-future period, deliberately. CI runs test FILES IN PARALLEL against one database, so any rule
+// another suite leaves open-ended would cover a nearby date and break the "no approved rule" assertion.
+// Nothing else targets 2031, and the suites that touch 2026 are bounded to their own month.
+const YEAR = 2031;
 const MONTH = 11;
 const RULE_CODE = `${TEST_PREFIX}-AR`;
 
-/** A Monday in the period, so the approved Mon-Fri week makes it a working day. */
-const MONDAY = `${YEAR}-11-02`;
+/** Independently computed expected values, so the assertion does not re-derive them with the module under test. */
+function weekdaysInMonth(year, month) {
+  const total = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  let count = 0;
+  for (let day = 1; day <= total; day += 1) {
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay(); // 0=Sun .. 6=Sat
+    if (weekday >= 1 && weekday <= 5) count += 1;
+  }
+  return count;
+}
+
+/** The first Monday of the month, so the approved Mon-Fri week makes it a working day. */
+function firstMondayOf(year, month) {
+  const total = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  for (let day = 1; day <= total; day += 1) {
+    if (new Date(Date.UTC(year, month - 1, day)).getUTCDay() === 1) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+  throw new Error('no Monday found in the month');
+}
+
+const MONDAY = firstMondayOf(YEAR, MONTH);
+const EXPECTED_WORKING_DAYS = weekdaysInMonth(YEAR, MONTH);
 
 test('migration 024 DDL, real JSON/NULL shapes, and the derived month', { skip: SKIP }, async (t) => {
   process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-only-secret';
@@ -82,8 +106,7 @@ test('migration 024 DDL, real JSON/NULL shapes, and the derived month', { skip: 
     await pool.query('DELETE FROM monthly_summary WHERE employee_uid = ? AND year = ?', [EMPLOYEE_UID, YEAR]);
     await pool.query('DELETE FROM daily_attendance WHERE employee_uid = ? AND date BETWEEN ? AND ?', [
       EMPLOYEE_UID, `${YEAR}-11-01`, `${YEAR}-11-30`,
-    ]);
-    await pool.query('DELETE FROM attendance_rule_version WHERE rule_version_code = ?', [RULE_CODE]);
+    ]);    await pool.query('DELETE FROM attendance_rule_version WHERE rule_version_code = ?', [RULE_CODE]);
     await closePool();
   });
 
@@ -122,7 +145,7 @@ test('migration 024 DDL, real JSON/NULL shapes, and the derived month', { skip: 
   await t.test('an approved rule is required before a month can be judged', async () => {
     await seedDailyRow(MONDAY);
 
-    // No approved rule covers November, so the month is pending_policy with nothing derived from policy.
+    // No approved rule covers 2031, so the month is pending_policy with nothing derived from policy.
     const pending = await service.recalculateMonth(auth, EMPLOYEE_UID, YEAR, MONTH);
     assert.equal(pending.stored.computationStatus, 'pending_policy');
     assert.equal(pending.stored.expectedWorkingDays, null, 'NULL, not 0, when it cannot be derived');
@@ -146,8 +169,11 @@ test('migration 024 DDL, real JSON/NULL shapes, and the derived month', { skip: 
 
     const derived = await service.recalculateMonth(auth, EMPLOYEE_UID, YEAR, MONTH);
     assert.equal(derived.stored.computationStatus, 'calculated');
-    // November 2026 has 21 weekdays (Nov 1 is a Sunday).
-    assert.equal(derived.stored.expectedWorkingDays, 21, 'the real approved calendar, from the DB');
+    assert.equal(
+      derived.stored.expectedWorkingDays,
+      EXPECTED_WORKING_DAYS,
+      'the approved Mon-Fri calendar, counted independently of the module under test',
+    );
     assert.equal(derived.stored.totalLate, 1);
     assert.equal(derived.stored.totalLateMinutes, 15);
     assert.equal(derived.stored.totalWorkHours, 7.75);
