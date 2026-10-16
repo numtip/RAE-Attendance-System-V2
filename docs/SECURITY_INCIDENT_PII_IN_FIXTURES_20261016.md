@@ -38,8 +38,39 @@ person's national ID was copied into this repository as a test fixture.**
 | Files in the working tree | **6** |
 | Present on `origin/main`? | **YES** (1 file) — so it is already public on the default branch |
 | Present on `HEAD` / feature branches? | **yes** (`HEAD`, `feat/slice5-…` 6 files; `integration/attendance-sso-hip` 2) |
-| Introduced by | commit `83aaa53`, **2026-10-09**, *"feat(security): single National ID crypto contract shared by backend, onboarding scripts and resolver"* — **pre-existing, not introduced by the R-03/R-04/R-04-C work** |
+| Introduced by — **`origin/main`** | commit **`3244553`, 2026-10-02**, *"Identity foundation and FaceScan raw ingestion Phase A (#32)"* — the value was **added with the file itself**, and `3244553` is the **current tip of `origin/main`** |
+| Introduced by — **feature chain** | commit `83aaa53`, **2026-10-09**, *"feat(security): single National ID crypto contract…"* |
+| Is `83aaa53` an ancestor of `origin/main`? | **NO** (`git merge-base --is-ancestor` → false). It exists only on the feature chain |
 | Is it one of RAE's 50 in-scope employees? | **NO** — a membership-only test against `database/IDCardRaecsv2027.csv` returned negative |
+
+> ### ⚠️ CORRECTION (2026-10-16, found by the Track C review and independently re-verified)
+>
+> An earlier version of this document recorded the introduction as commit `83aaa53` (2026-10-09). **That is
+> correct only for the feature branch and WRONG for `origin/main`.**
+>
+> **Cause of the error (recorded because it is a process trap):** the introducing commit was looked up with
+> `git log -S<value>` scoped to `backend/tests/nationalIdContract.test.js` — a path that **does not exist on
+> `origin/main` at all**. Git therefore answered about the only line of history that has that file, and the
+> result was silently attributed to main.
+>
+> **Why it mattered:** a history rewrite keyed on `83aaa53` would have **left the value public on the default
+> branch**, while appearing to have succeeded. The correct target set includes the **tip of `origin/main`
+> itself**.
+>
+> Avoid the trap by scoping the search to the ref AND the path that actually exist there:
+> `git log -S<value> origin/main -- backend/tests/employeeIdentity.test.js`.
+
+**Verified ref coverage** (read-only `git` only; counts and ref names, no values):
+
+| Measure | Value |
+|---|---|
+| Refs total | **58** — 19 `refs/heads`, 38 `refs/remotes`, 1 `refs/stash`, 0 tags |
+| Commits on `origin/main` | **83** |
+| Commits on `HEAD` | **133** |
+| Commits across all refs | **151** |
+| Value present at `origin/main:backend/tests/employeeIdentity.test.js` | **YES (still public)** |
+| Value present at `HEAD:backend/tests/employeeIdentity.test.js` | **NO** (redacted by R2) |
+
 
 Files carrying it (paths only; the value is not reproduced):
 
