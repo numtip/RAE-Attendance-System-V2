@@ -264,6 +264,58 @@ test('unattributed + foreign scans are reported and never reassigned', async () 
   assert.equal(snapshot.detail.events.attributedCount, 2, 'the target keeps only its own scans');
 });
 
+// --- missing source ---------------------------------------------------------
+
+test('missing source: an events repository without the range reader is BLOCKED, never matched', async () => {
+  const scenario = await sources.cleanMonth();
+  // Drop the only method reconciliation reads scans through. The service must not assume "no scans".
+  scenario.repositories.attendanceEvents = {};
+  const service = makeService(scenario.repositories);
+
+  const { snapshot } = await service.reconcileDay(scenario.auth, {
+    employeeUid: scenario.employeeUid, date: sources.MARCH_MONDAY,
+  });
+  assert.equal(snapshot.status, 'blocked');
+  assert.equal(checkOf(snapshot, 'scan_presence').status, 'blocked');
+  assert.equal(checkOf(snapshot, 'scan_presence').detail, 'events_source_unavailable');
+
+  const month = await service.reconcileMonth(scenario.auth, {
+    employeeUid: scenario.employeeUid, year: 2026, month: 3,
+  });
+  assert.equal(month.snapshot.status, 'blocked');
+  assert.equal(checkOf(month.snapshot, 'employee_count').detail, 'events_source_unavailable');
+});
+
+test('missing source: absent attendance rules are INCOMPLETE on the day, never matched', async () => {
+  const scenario = await sources.cleanMonth();
+  delete scenario.repositories.attendanceRules;
+  const service = makeService(scenario.repositories);
+
+  const day = await service.reconcileDay(scenario.auth, {
+    employeeUid: scenario.employeeUid, date: sources.MARCH_MONDAY,
+  });
+  assert.notEqual(day.snapshot.status, 'matched');
+  assert.equal(day.snapshot.status, 'incomplete');
+  assert.equal(checkOf(day.snapshot, 'approved_rule').detail, 'no_rule_effective');
+
+  // The month must also never be `matched`. With the rules source absent the month resolves to
+  // `incomplete`, which is the honest verdict: the expected-days figure cannot be derived, so there is
+  // nothing to compare the stored figure against. It previously reported `mismatched` here, which asserted a
+  // disagreement that could not be established, and it disagreed with `daily_row_coverage`, which reports the
+  // SAME condition as `incomplete`. Fixed 2026-10-16 after adversarial QA (see the `QA FINDING` comment in
+  // `backend/src/domain/reconciliation.js`); this test now pins the corrected, consistent behaviour.
+  const month = await service.reconcileMonth(scenario.auth, {
+    employeeUid: scenario.employeeUid, year: 2026, month: 3,
+  });
+  assert.notEqual(month.snapshot.status, 'matched');
+  assert.equal(month.snapshot.status, 'incomplete');
+  assert.equal(
+    checkOf(month.snapshot, 'expected_working_days').detail,
+    'expected_working_days_not_derivable',
+  );
+  assert.equal(checkOf(month.snapshot, 'expected_working_days').status, 'incomplete');
+});
+
 // --- NULL discipline --------------------------------------------------------
 
 test('NULL discipline: an underivable expectedWorkingDays stays null, never zero', async () => {

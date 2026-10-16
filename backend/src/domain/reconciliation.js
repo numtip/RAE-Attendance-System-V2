@@ -497,11 +497,20 @@ function evaluatePeriodChecks(obs = {}) {
       observed: null, expected: null, detail: 'expected_working_days_null_agreed',
     }));
   } else if (derivedExpected == null) {
-    checks.push(makeCheck('expected_working_days', 'mismatched', {
+    // The value CANNOT BE DERIVED right now (no approved rule covering the month, or a working week the
+    // rule does not state), so there is nothing to compare the stored figure against.
+    //
+    // QA FINDING (2026-10-16, adversarial QA): this used to be reported as `mismatched`, which asserts a
+    // disagreement that cannot actually be established - the same over-claim the honesty gate exists to
+    // prevent (DECISIONS.md E51: "nothing to compare is incomplete, never matched"). It also disagreed with
+    // its own sibling `daily_row_coverage`, which reports the SAME condition as `incomplete`. Corrected to
+    // `incomplete`, with the reason in `detail`.
+    checks.push(makeCheck('expected_working_days', 'incomplete', {
       observed: storedExpected, expected: null, detail: 'expected_working_days_not_derivable',
     }));
   } else if (storedExpected == null) {
-    checks.push(makeCheck('expected_working_days', 'mismatched', {
+    // Symmetric case: the stored row carries no figure, so there is nothing to compare it with.
+    checks.push(makeCheck('expected_working_days', 'incomplete', {
       observed: null, expected: derivedExpected, detail: 'expected_working_days_stored_null',
     }));
   } else {
@@ -640,8 +649,11 @@ function evaluateFiscalChecks(obs = {}) {
         detail: numericEqual(storedSum, derivedSum) ? 'expected_working_days_agree' : 'expected_working_days_differ',
       }));
     } else {
-      checks.push(makeCheck('expected_working_days', 'mismatched', {
-        observed: null, expected: null, detail: 'expected_working_days_null_mismatch',
+      // Some months carry a stored figure while the matching derived figure is null (or vice versa). There
+      // is no comparable pair, so this is a gap, not a disagreement - same correction as the month-level
+      // check above (QA FINDING 2026-10-16).
+      checks.push(makeCheck('expected_working_days', 'incomplete', {
+        observed: null, expected: null, detail: 'expected_working_days_not_derivable',
       }));
     }
   }

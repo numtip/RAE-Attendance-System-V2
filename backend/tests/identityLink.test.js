@@ -95,6 +95,50 @@ test('disabled employee is denied even with approved link', async () => {
   );
 });
 
+test('rejected link cannot authenticate', async () => {
+  const service = serviceWithEmployees();
+  const candidate = await service.createCandidate(candidateInput({ providerSubject: 'mju-subject-rejected' }));
+  await service.reject(candidate.id, { rejectedBy: 'reviewer@example.test' });
+  await assert.rejects(
+    () => service.resolve(PROVIDER_MJU_SSO, 'mju-subject-rejected'),
+    (err) => err.status === 403 && err.code === 'IDENTITY_NOT_APPROVED',
+  );
+});
+
+test('one employee cannot hold two approved links for one provider', async () => {
+  const service = serviceWithEmployees();
+  const first = await service.createCandidate(candidateInput({ providerSubject: 'mju-subject-first' }));
+  // The second candidate is created BEFORE the first is approved, so create-time has nothing to object to.
+  const second = await service.createCandidate(candidateInput({ providerSubject: 'mju-subject-second' }));
+  await service.approve(first.id, { approvedBy: 'reviewer@example.test' });
+
+  // The approve path must refuse a second approved link for the same employee+provider.
+  await assert.rejects(
+    () => service.approve(second.id, { approvedBy: 'reviewer@example.test' }),
+    (err) => err.status === 409 && err.code === 'IDENTITY_CONFLICT',
+  );
+
+  // And once an approved link exists, a brand-new candidate for the same employee+provider is refused up front.
+  await assert.rejects(
+    () => service.createCandidate(candidateInput({ providerSubject: 'mju-subject-third' })),
+    (err) => err.status === 409 && err.code === 'IDENTITY_CONFLICT',
+  );
+});
+
+test('low-confidence enrichment cannot be approved', async () => {
+  const service = serviceWithEmployees();
+  const candidate = await service.createCandidate(candidateInput({
+    providerSubject: 'mju-subject-low',
+    source: 'mju_person_enrich',
+    confidence: 'low',
+    enrichmentOutcome: 'found',
+  }));
+  await assert.rejects(
+    () => service.approve(candidate.id, { approvedBy: 'reviewer@example.test' }),
+    (err) => err.status === 403 && err.code === 'IDENTITY_REVIEW_REQUIRED',
+  );
+});
+
 test('ambiguous enrichment cannot be approved', async () => {
   const service = serviceWithEmployees();
   const candidate = await service.createCandidate(candidateInput({

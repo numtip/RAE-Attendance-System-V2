@@ -155,6 +155,7 @@ derived from). It does **not** validate V2 against the original source system. T
 | # | Severity | Defect | Fix |
 |---|---|---|---|
 | 1 | **important (false verdict)** | The fiscal-year `expected_working_days` check summed over **all started months**, mixing `NULL` (never derived) with real figures. A fiscal year where only one month was derived produced a **false `mismatched`** — comparing a 1-month sum against a 12-month sum. Its sibling checks already filtered to commensurable months; this one did not. | Filter to months that were derived, and report `incomplete` when months are missing. **Fixed in the service, not by relaxing the test** — the test's `incomplete` expectation was the honest one. |
+| 2 | **important (over-claiming verdict)** — found by adversarial QA | `expected_working_days` reported **`mismatched` when the figure merely could not be derived** (no approved rule covering the month, or a working week the rule does not state). That asserts a disagreement which cannot be established, and it **contradicted its own sibling** `daily_row_coverage`, which reports the *same* condition as `incomplete` — one missing source, two severities. The same flaw existed in the fiscal rollup (`expected_working_days_null_mismatch`). | Both branches corrected to **`incomplete`** with the reason in `detail`, plus the symmetric `stored == null` case. Consistent with **E51** ("nothing to compare is `incomplete`, never `matched`"). The QA test that had pinned the old behaviour was updated **deliberately**, with the change explained in the test body. A genuine stored-vs-derived difference still reports `mismatched`. |
 
 ## 5. Verification
 
@@ -163,10 +164,10 @@ derived from). It does **not** validate V2 against the original source system. T
 | Gate | Command | Result |
 |---|---|---|
 | Lint | `cd backend && npm run lint` | **PASS** |
-| Reconciliation suites | `node --test tests/reconciliation*.test.js` | **PASS — 27/27** |
-| Full backend suite | `cd backend && npm test` | **PASS — 461 tests, 451 pass, 0 fail, 10 skipped** (was 434) |
-| Contract smoke | `node scripts/contract-smoke.mjs` | **PASS — 36 paths** (was 33) |
-| Secret scan | `node scripts/secret-scan.mjs` | **PASS — 373 files** |
+| Reconciliation suites | `node --test tests/reconciliation*.test.js` | **PASS — 36/36** |
+| Full backend suite | `cd backend && npm test` | **PASS — 473 tests, 463 pass, 0 fail, 10 skipped** |
+| Contract smoke | `node scripts/contract-smoke.mjs` | **PASS — 36 paths** |
+| Secret scan | `node scripts/secret-scan.mjs` | **PASS — 386 files** |
 | Frontend build | `cd frontend && npm run build` | **PASS** |
 | MariaDB / CI | GitHub Actions on the Draft PR | see the PR checks |
 
@@ -253,6 +254,24 @@ snapshot-level `mismatched` case in `reconciliation.test.js`.
 **0** national ids, **0** emails and **0** code-then-name patterns introduced (the only matches anywhere in
 those files are the pre-existing synthetic `@example.test` addresses and synthetic national id in
 `src/dev/fixtures.js`, unchanged from `HEAD`).
+
+### 5.6 Adversarial QA pass (independent workstream, 2026-10-16)
+
+An independent adversarial pass attacked the claims rather than confirming them. Results:
+
+| Claim | Verdict |
+|---|---|
+| **A** Authorization / IDOR on R-02, R-03 and R-04 | **PASS** — 401 anonymous, 403 cross-scope with the JSON envelope, 200 in scope, on all three route families (no file body on a refusal) |
+| **B** Identity negative paths | **PASS, 3 tests added** — `rejected` link, one-employee-one-approved-link (`IDENTITY_CONFLICT`), and low-confidence enrichment were previously untested |
+| **C** A missing source never yields `matched` | **PARTIAL** — true for the events source (`blocked`), but the rules source made the month `mismatched`. **Fixed** — see §4 defect 2 |
+| **D** No data leaks in the changed files | **PASS** — 0 id13 / 0 non-test emails / 0 code+name / 0 JWT in every file of `d7b393f` and `57e0836` |
+| **E** Nothing leaked from the private siblings | **FAIL — one violation**, escalated as its own incident: [`docs/SECURITY_INCIDENT_PII_IN_FIXTURES_20261016.md`](../SECURITY_INCIDENT_PII_IN_FIXTURES_20261016.md). It is **pre-existing**, present on `origin/main`, and **not** introduced by this slice |
+| **F** The fixture PII guard is non-vacuous | **PASS** — a mutated copy in a temp dir was caught by all three guard regexes |
+| **G** Determinism / no external I/O | **PASS** — identical results across two runs; no `fs` in the reconciliation graph |
+| **H** Gates | **PASS** — see §5.1 |
+
+The pass also added a regression test for the events-source-unavailable path (previously untested). Five tests
+were added in total; one of them is the test updated by §4 defect 2.
 
 ## 6. Unresolved / out of scope
 
