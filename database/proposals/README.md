@@ -2,6 +2,26 @@
 
 **These files are not migrations. They are not applied. They are not in the migration ledger.**
 
+> ### ⚠️ These `.sql` files are intentionally NOT committed
+>
+> Two independent repository controls both reject SQL in this directory, and they agree on purpose:
+>
+> | Control | Behaviour |
+> |---|---|
+> | `.gitignore` | `*.sql` is ignored; the negations allow **only** `database/migrations/`, `database/seeds/`, `database/preflight/` and `database/rollbacks/` |
+> | `scripts/secret-scan.mjs` (`isBlockedSqlPath`) | a **tracked** `.sql` outside those four directories fails the CI `secrets` job as a *blocked filename* |
+>
+> The policy is deliberate: **unreviewed operator SQL must not be committable** anywhere except the reviewed,
+> numbered directories. It was **not** weakened to accommodate this proposal.
+>
+> **So the SQL lives only on the workstation that authored it, and the DDL is reproduced verbatim in the
+> tracked design document `docs/IDENTITY_EVIDENCE_MODEL.md` → Appendix A**, which is the durable, reviewable
+> record. Read that appendix, not this directory.
+>
+> To actually commit these files, the first step is to move them into `database/migrations/` as a **separate,
+> approved** change (with the rollback alongside under `database/rollbacks/`) — never by adding an exception
+> to `.gitignore` or to the secret scan.
+
 This directory exists so that a design can be written down as real, reviewable SQL **without** turning it into
 a production hazard. Read this before doing anything with a file in here.
 

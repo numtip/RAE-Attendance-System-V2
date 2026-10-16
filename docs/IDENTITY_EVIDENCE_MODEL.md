@@ -382,3 +382,249 @@ the idempotency constraints, the threat model and the adversarial test plan.
 | E3 | Whether to close the session-revocation gap (§7) | owner — separate design |
 | E4 | Whether the SSO direct-insert should become candidate→approve (§4.1) | owner — separate design (S-01/S-02) |
 | E5 | Whether to `BUILD` the DB-level append-only trigger (§9) despite the privilege cost | DBA |
+
+<!-- BEGIN EMBEDDED-DDL-PROPOSAL -->
+
+## Appendix A — the migration DDL, embedded for review (PROPOSAL ONLY)
+
+### A.1 Why the DDL is embedded here instead of committed as a file
+
+The SQL was authored as `database/proposals/025_identity_evidence.up.sql` and `.down.sql`. Those files are
+**deliberately not committed**, because two independent repository controls both reject SQL in that
+location — and they agree on purpose:
+
+| Control | Behaviour for `database/proposals/*.sql` |
+|---|---|
+| `.gitignore` | `*.sql` is ignored; the negations allow only `database/migrations/`, `database/seeds/`, `database/preflight/` and `database/rollbacks/` |
+| `scripts/secret-scan.mjs` (`isBlockedSqlPath`) | a **tracked** `.sql` file outside those four directories fails the CI `secrets` job as a *blocked filename* |
+
+The policy those controls implement is sound and was **not** weakened to accommodate this proposal:
+unreviewed operator SQL must not be committable anywhere except the reviewed, numbered directories. So the
+files stay untracked on disk, and the DDL is reproduced below verbatim so it is still reviewable in Git.
+
+**Consequence, stated plainly:** the `.sql` files exist only on the workstation that authored them. This
+appendix — not `database/proposals/` — is the durable record. Committing the files requires first moving
+them into `database/migrations/` as a separate, **approved** change (see `database/proposals/README.md`).
+
+### A.2 `025_identity_evidence.up.sql` (NOT APPLIED)
+
+```sql
+-- =============================================================================================
+-- 025_identity_evidence.up.sql  —  ID-6b / S-02
+--
+-- PROPOSAL ONLY.  NOT IN THE MIGRATION LEDGER.  NOT APPLIED.  DO NOT EXECUTE.
+--
+-- This file lives in `database/proposals/`, NOT in `database/migrations/`, on purpose:
+--   * `scripts/migrate.mjs` applies EVERY file in `database/migrations/` and the ledger
+--     (`schema_migrations.version`) keys on the FILENAME with NO CHECKSUM and NO approval step.
+--   * A file that merely LOOKS applyable is therefore a production hazard.
+-- Moving this file into `database/migrations/` is a SEPARATE, APPROVED change, and the filename chosen
+-- at that moment is frozen forever (ADR-008: an applied migration is never renamed).
+--
+-- Numbering: the highest existing migration filename is `024_monthly_summary_provenance.sql`;
+--             `018_*`/`019_*` are reserved by draft PR #35; `020`-`024` are taken.  `025` is the next free
+--             number and no `025_*` file exists in the tree (checked 2026-10-16).
+--
+-- What it adds (design: docs/IDENTITY_EVIDENCE_MODEL.md):
+--   1. `employee_identity_evidence` — an append-only ledger of identity evidence items. The durable,
+--      re-checkable record that a national-ID lookup matched, instead of a caller-asserted boolean.
+--   2. `employee_identity_links.evidence_type` — a nullable, denormalised mirror of the evidence TYPE so a
+--      reviewer does not need a join. The evidence table remains the single source of truth.
+--
+-- Safety
+--   * NO raw national ID, no ciphertext and no key material anywhere. Evidence stores a KEYED DIGEST
+--     (HMAC-SHA-256, lowercase hex), a key version, the algorithm and the lookup domain — the pattern
+--     migration 015 already established for `employee_identifier.id_value`. ADR-004 / ADR-010.
+--   * Additive and idempotent: the table uses IF NOT EXISTS; every change to an EXISTING table is guarded
+--     by information_schema, so a rerun after a partial failure (DDL auto-commits) is safe. Limitation,
+--     stated rather than implied: IF NOT EXISTS does not repair a pre-existing table that is missing one of
+--     its CHECK constraints; that state cannot arise from this file alone.
+--   * No existing table is altered destructively, no row is rewritten, no migration is renamed.
+--   * Requires MariaDB >= 10.2.3 (enforced CHECK constraints) or MySQL >= 8.0.16 — the same floor as 015;
+--     the file ABORTS before any DDL otherwise.
+--
+-- Row growth / retention
+--   * One evidence row per approval-bearing transition; the dominant producer is an SSO first-login, i.e.
+--     AT MOST ONE ROW PER DISTINCT PROVIDER SUBJECT (<= 1 per employee holding an SSO identity). With the
+--     confirmed 50-person scope that is tens of rows total; growth is O(employees + grant changes), not
+--     per-request. Row size ~400 B.
+--   * Retention is an OWNER / PRIVACY decision (model S8): nothing here expires or deletes evidence, and it
+--     holds no raw PII. `valid_until` expresses the ACCESS window, not the retention period.
+--
+-- Rollback: database/proposals/025_identity_evidence.down.sql   (also a proposal)
+-- =============================================================================================
+
+SET @server_version = VERSION();
+SET @server_num =
+    CAST(SUBSTRING_INDEX(@server_version, '.', 1) AS UNSIGNED) * 10000
+  + CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(@server_version, '.', 2), '.', -1) AS UNSIGNED) * 100
+  + CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(SUBSTRING_INDEX(@server_version, '-', 1), '.', 3), '.', -1) AS UNSIGNED);
+SET @server_supported = IF(
+  @server_version LIKE '%MariaDB%', @server_num >= 100203, @server_num >= 80016
+);
+SET @ddl = IF(@server_supported,
+  'SELECT 1',
+  'SELECT * FROM ABORT_025_requires_MariaDB_10_2_3_or_MySQL_8_0_16');
+PREPARE s0 FROM @ddl; EXECUTE s0; DEALLOCATE PREPARE s0;
+
+-- ---------------------------------------------------------------------------------------------
+-- 1. The evidence ledger
+--
+-- `evidence_type` is an ENUM, not free text: the same closed-set discipline that
+-- `IDENTITY_LINK_SOURCES` applies in code (hardening ID-7). v1 runtime is expected to create only
+-- 'sso_national_id_lookup'; 'operator_review' exists for a human approval, and
+-- 'enrichment_corroboration' for the (still-gated) Person-API path.
+--
+-- `lookup_digest` uses utf8mb4/utf8mb4_unicode_ci to MATCH `employee_identifier.id_value`'s collation:
+-- the verification query joins the two, and a different collation would risk a collation-mix error.
+-- The lowercase-hex CHECK makes the case-insensitive collation harmless.
+--
+-- There is deliberately NO `updated_at`: an evidence row that can be edited is not evidence.
+-- ---------------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS employee_identity_evidence (
+  evidence_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  evidence_type ENUM('sso_national_id_lookup', 'operator_review', 'enrichment_corroboration') NOT NULL,
+  employee_uid VARCHAR(36) NOT NULL,
+  provider_id INT(11) NOT NULL,
+  provider_subject VARCHAR(255) NOT NULL,
+  subject_type VARCHAR(64) NOT NULL DEFAULT 'opaque',
+  link_id INT(11) NOT NULL,
+  source VARCHAR(64) NOT NULL,
+  observed_at DATETIME NOT NULL,
+  observed_by VARCHAR(128) NOT NULL,
+  valid_from DATE NOT NULL,
+  valid_until DATE NULL DEFAULT NULL,
+  approving_actor VARCHAR(128) NOT NULL,
+  approval_reason VARCHAR(255) NOT NULL,
+  checksum_valid TINYINT(1) NOT NULL DEFAULT 0,
+  lookup_digest VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  lookup_key_version SMALLINT UNSIGNED NULL DEFAULT NULL,
+  digest_algorithm VARCHAR(16) NULL DEFAULT NULL,
+  lookup_domain VARCHAR(64) NULL DEFAULT NULL,
+  created_at DATETIME NOT NULL,
+  PRIMARY KEY (evidence_id),
+  -- Idempotency (named rule): at most ONE evidence item of a given type per link. The subject-level
+  -- idempotency is already enforced by employee_identity_links.uk_employee_identity_provider_subject
+  -- (migration 012): one link per (provider, subject), therefore one such evidence row per subject.
+  UNIQUE KEY uk_identity_evidence_link_type (link_id, evidence_type),
+  -- Query: "all evidence for this employee, newest first" (reviewer, access review).
+  KEY idx_identity_evidence_employee (employee_uid, observed_at),
+  -- Query: "what evidence exists for this subject" (conflict / replay investigation).
+  KEY idx_identity_evidence_subject (provider_id, provider_subject, observed_at),
+  -- Query: the verification probe — "find evidence whose digest equals <digest> under version <v>",
+  -- i.e. the evidence-side of the join in docs/IDENTITY_EVIDENCE_MODEL.md S3.3, and the
+  -- cross-employee duplicate detector.
+  KEY idx_identity_evidence_verify (lookup_digest, lookup_key_version),
+  CONSTRAINT fk_identity_evidence_employee
+    FOREIGN KEY (employee_uid) REFERENCES employees (employee_uid),
+  CONSTRAINT fk_identity_evidence_provider
+    FOREIGN KEY (provider_id) REFERENCES identity_providers (id),
+  -- RESTRICT: an evidence ledger must not be silently orphaned by deleting its link.
+  CONSTRAINT fk_identity_evidence_link
+    FOREIGN KEY (link_id) REFERENCES employee_identity_links (id) ON DELETE RESTRICT,
+  -- A lookup-type evidence row is only meaningful with a complete, comparable digest.
+  CONSTRAINT chk_identity_evidence_lookup CHECK (
+    evidence_type <> 'sso_national_id_lookup'
+    OR (lookup_digest IS NOT NULL
+        AND lookup_key_version IS NOT NULL
+        AND digest_algorithm IS NOT NULL
+        AND lookup_domain IS NOT NULL)
+  ),
+  -- Same shape rule as migration 015's chk_employee_identifier_national_lookup.
+  CONSTRAINT chk_identity_evidence_digest_shape CHECK (
+    lookup_digest IS NULL OR lookup_digest REGEXP '^[0-9a-f]{64}$'
+  ),
+  -- Inclusive window; NULL valid_until = unbounded (the employee_identifier.effective_to convention).
+  CONSTRAINT chk_identity_evidence_window CHECK (
+    valid_until IS NULL OR valid_until >= valid_from
+  )
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------------------------
+-- 2. The review mirror on the link row
+--
+-- Nullable on purpose: NULL means "no evidence recorded" for every pre-ID-6b row. It must never be read
+-- as "no evidence was required". The authoritative record is employee_identity_evidence; a MariaDB CHECK
+-- cannot span two tables, so the mirror is kept honest by a single write path plus the drift query in
+-- docs/IDENTITY_EVIDENCE_MODEL.md S5.2 (test C9).
+-- ---------------------------------------------------------------------------------------------
+SET @col_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_identity_links'
+    AND COLUMN_NAME = 'evidence_type'
+);
+SET @ddl = IF(@col_exists > 0, 'SELECT 1',
+  'ALTER TABLE employee_identity_links ADD COLUMN evidence_type
+     ENUM(''sso_national_id_lookup'', ''operator_review'', ''enrichment_corroboration'')
+     NULL DEFAULT NULL AFTER source');
+PREPARE s1 FROM @ddl; EXECUTE s1; DEALLOCATE PREPARE s1;
+
+-- No secondary index on evidence_type: the observed cardinality is small and the reviewer path filters by
+-- employee or link first. Adding one would be speculative; revisit only with a query that needs it.
+
+-- ---------------------------------------------------------------------------------------------
+-- 3. Additive-only guarantee (documented, not enforced)
+--
+-- `employee_identity_links.approved_by` is NOT touched, renamed or back-filled, so the existing value
+-- 'system:sso' keeps its exact meaning (docs/IDENTITY_EVIDENCE_MODEL.md S4.2). `employee_identifier` and
+-- `identity_providers` are NOT modified: the comparison target already exists as
+-- employee_identifier.id_value + lookup_key_version, and adding a pointer would duplicate a digest that is
+-- already stored.
+--
+-- NOTE for the activation phase: `mariadb/identityLinkMariaDbRepository.js` SELECTs columns by name (not
+-- `SELECT *`), so this ADD COLUMN does not break it; `insertLink` does not pass `evidence_type`, so it stays
+-- NULL until the runtime write path is implemented (out of scope for this proposal).
+-- ---------------------------------------------------------------------------------------------
+```
+
+### A.3 `025_identity_evidence.down.sql` (rollback; NOT APPLIED)
+
+```sql
+-- =============================================================================================
+-- 025_identity_evidence.down.sql  —  ID-6b / S-02
+--
+-- PROPOSAL ONLY.  NOT IN THE MIGRATION LEDGER.  NOT APPLIED.  DO NOT EXECUTE.
+--
+-- Reverses database/proposals/025_identity_evidence.up.sql.
+--
+-- WARNING — DATA LOSS
+--   This drops `employee_identity_evidence` in full. The evidence ledger is the ONLY durable record that a
+--   given approval rests on a matched national-ID lookup; the digest can NOT be reconstructed from the link
+--   row, and the raw identifier is deliberately not stored anywhere. A rollback therefore makes every
+--   approval UNVERIFIABLE again. If the rows matter, export them first:
+--     SELECT * FROM employee_identity_evidence;
+--   Link rows themselves are not deleted: only the nullable mirror column is dropped.
+--
+-- Idempotent: safe to run when part of the change was already reversed.
+-- =============================================================================================
+
+SET @server_version = VERSION();
+SET @server_num =
+    CAST(SUBSTRING_INDEX(@server_version, '.', 1) AS UNSIGNED) * 10000
+  + CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(@server_version, '.', 2), '.', -1) AS UNSIGNED) * 100
+  + CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(SUBSTRING_INDEX(@server_version, '-', 1), '.', 3), '.', -1) AS UNSIGNED);
+SET @server_supported = IF(
+  @server_version LIKE '%MariaDB%', @server_num >= 100203, @server_num >= 80016
+);
+SET @ddl = IF(@server_supported,
+  'SELECT 1',
+  'SELECT * FROM ABORT_025_down_requires_MariaDB_10_2_3_or_MySQL_8_0_16');
+PREPARE r0 FROM @ddl; EXECUTE r0; DEALLOCATE PREPARE r0;
+
+-- 1. Drop the mirror column (guarded; the column is NULL for every pre-ID-6b row, so no data is lost for
+--    links that never had evidence).
+SET @col_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_identity_links'
+    AND COLUMN_NAME = 'evidence_type'
+);
+SET @ddl = IF(@col_exists = 0, 'SELECT 1',
+  'ALTER TABLE employee_identity_links DROP COLUMN evidence_type');
+PREPARE r1 FROM @ddl; EXECUTE r1; DEALLOCATE PREPARE r1;
+
+-- 2. Drop the evidence ledger. Its FKs (to employees / identity_providers / employee_identity_links) go with
+--    it, including the ON DELETE RESTRICT guard on the link.
+DROP TABLE IF EXISTS employee_identity_evidence;
+```
+
+<!-- END EMBEDDED-DDL-PROPOSAL -->
