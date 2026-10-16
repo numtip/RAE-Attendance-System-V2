@@ -15,13 +15,15 @@ origin/main                              3244553
   └─ integration/attendance-sso-hip      7d810d8   (base of PR #36)
        └─ feat/slice1-employee-master-foundation   5910819   PR #36  Draft
             └─ feat/slice2-attendance-engine       d279bba   PR #37  Draft
-                 └─ docs/daily-closeout-20261015   9e17f05   PR #38  Draft  (memory docs)
+                 ├─ feat/slice3-monthly-summary    08b55ba   PR #39  Draft  (R-01)
+                 └─ docs/daily-closeout-20261015   (this branch)  PR #38  Draft  (memory docs)
 ```
 
 | Ref | SHA | Tracks origin? | Notes |
 |---|---|---|---|
-| `docs/daily-closeout-20261015` | `9e17f05` | in sync | documentation branch; carries the memory docs, stacked on Slice 2 |
-| `feat/slice2-attendance-engine` | `d279bba` | in sync | working branch for code |
+| `feat/slice3-monthly-summary` | `08b55ba` | in sync | Slice 3: monthly summary (R-01) |
+| `docs/daily-closeout-20261015` | see `git log -1` | in sync | documentation branch; carries these memory docs |
+| `feat/slice2-attendance-engine` | `d279bba` | in sync | working branch for Slice 2 code |
 | `feat/slice1-employee-master-foundation` | `5910819` | in sync | base of #37 |
 | `integration/attendance-sso-hip` | `7d810d8` | in sync | base of #36 |
 | `main` (local) | `e3cef26` | **behind 3** | **stale — do not use as a reference** |
@@ -39,10 +41,11 @@ on the Slice 1/2 chain.**
 |---|---|---|---|---|---|---|
 | [#36](https://github.com/numtip/RAE-Attendance-System-V2/pull/36) | Slice 1 — employee master + attendance data foundation | `integration/attendance-sso-hip` | `5910819` | **yes** | 8/8 pass | CLEAN, unmerged |
 | [#37](https://github.com/numtip/RAE-Attendance-System-V2/pull/37) | Slice 2 — versioned attendance engine + Agent Core | `feat/slice1-employee-master-foundation` | `d279bba` | **yes** | 8/8 pass | CLEAN, unmerged |
-| [#38](https://github.com/numtip/RAE-Attendance-System-V2/pull/38) | Daily closeout + project memory (docs only) | `feat/slice2-attendance-engine` | `9e17f05` | **yes** | 8/8 pass | CLEAN, unmerged |
+| [#38](https://github.com/numtip/RAE-Attendance-System-V2/pull/38) | Daily closeout + project memory (docs only) | `feat/slice2-attendance-engine` | this branch | **yes** | 8/8 pass | CLEAN, unmerged |
+| [#39](https://github.com/numtip/RAE-Attendance-System-V2/pull/39) | Slice 3 — monthly summary (R-01) | `feat/slice2-attendance-engine` | `08b55ba` | **yes** | 8/8 pass | CLEAN, unmerged |
 
-Stacked deliberately: `#38 → #37 → #36 → integration/attendance-sso-hip`. **Do not retarget or merge** until
-the lower stack (`#30 → #33 → #34/#35`) is decided — see `docs/SESSION_HANDOFF.md` §2 for that flow.
+Stacked deliberately: `#39 / #38 → #37 → #36 → integration/attendance-sso-hip`. **Do not retarget or merge**
+until the lower stack (`#30 → #33 → #34/#35`) is decided — see `docs/SESSION_HANDOFF.md` §2 for that flow.
 
 ## 3. Feature status
 
@@ -53,9 +56,11 @@ the lower stack (`#30 → #33 → #34/#35`) is decided — see `docs/SESSION_HAN
 | FaceScan/HIP CSV ingestion (validation, dedup, provenance) | **implemented** | migration `021`, PR #36 |
 | Versioned attendance rules + effective dates | **implemented** | migration `022`, PR #37 |
 | Daily attendance calculation with provenance + idempotency | **implemented** | migration `023`, PR #37 |
+| **Attendance rule `AR-0001` approved for 2026** | **approved 2026-10-16** | owner decision; `approved_by` is a session label, not a person |
+| **Monthly summary derived from daily rows** | **implemented** | migration `024`, PR #39 |
 | Holiday calendar / per-employee schedule | **implemented, empty** | tables exist, no approved data |
 | Manager/HR dashboards, exports, annual forms | **missing** | not started |
-| Individual attendance reports | **missing** | **the next milestone** |
+| Individual attendance reports (R-02) | **missing** | **the next milestone — no longer blocked on policy** |
 | MJU SSO live | **blocked external** | `ac` semantics unconfirmed |
 | Production migrations | **NOT APPROVED** | live ledger is pre-`013` (REPORTED) |
 
@@ -122,12 +127,14 @@ runner cannot be pointed at the live database. No apply order is proposed by any
 | # | Risk | Where recorded |
 |---|---|---|
 | R1 | **`Date` vs string** — has broken two consecutive slices; hidden from local tests by the fixture twins | `08_MIGRATION_DEPENDENCY_GRAPH.md` §4 |
-| R2 | No rule is approved, so the engine computes nothing by default | `docs/ATTENDANCE_RULES.md` |
-| R3 | Eight open policy questions (P-01…P-08), notably night-shift lateness | `docs/ATTENDANCE_RULES.md` §6 |
+| R1b | **Timestamp strings compared across formats** — a naive `'2031-11-03 23:00:00'` and an ISO `'2026-10-16T04:16:45.000Z'` do not order lexicographically, so a staleness check produced a false positive. Fixed by normalising to epoch millis (`toEpochMillis`). Same family as R1. | `09_SLICE3_MONTHLY_SUMMARY.md` §4 |
+| R2 | **`AR-0001` `approved_by` is a session label, not a person.** Values are approved; the accountable individual is not yet named. | `ATTENDANCE_RULES.md`, `09_SLICE3…` §1 |
+| R3 | Eight open policy questions (P-01…P-08), notably night-shift lateness, which keeps night-shift months `partial` | `docs/ATTENDANCE_RULES.md` §6 |
 | R4 | `agent/` still not linted in CI (config exists; no pinned dep or lockfile) | `NEXT_ACTIONS.md` S2-H |
 | R5 | Live Agent Core genuinely untested — no credentials locally | Slice 2 doc §1.3, §6 |
 | R6 | Pre-`013` live ledger blocks any production migration | `08_MIGRATION_DEPENDENCY_GRAPH.md` §5 |
 | R7 | Legacy VPS-B exposure and `ERROR 1932` recovery remain untouched | `docs/unified/03`, `05` |
+| R8 | **The holiday calendar is empty**, so `expected_working_days` counts only the working week — correct but incomplete | `09_SLICE3…` §6 |
 
 ## 7. Authority for "what is current"
 

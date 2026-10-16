@@ -15,7 +15,8 @@ silently resolved by an agent.
 | D-A | **Slice 1 isolation: in-place feature branch, no git worktree.** `AGENTS.md` forbids new worktrees while the blueprint and the initial task text suggested one (conflict X-01). | One worktree only; conflict X-01 stays open at owner level. Recorded in `docs/unified/06` §0. |
 | D-B | **Slice 1 scope = schema + contracts + ingestion foundation only** — no attendance rule math. | Rule math became Slice 2 instead of being crammed into Slice 1. |
 | D-C | **Push the slice branches and open Draft PRs; no merge.** | PRs #36 and #37 are Draft; `main` untouched. |
-| D-D | **Do not edit `docs/SESSION_HANDOFF.md`** (it carries another session's uncommitted WIP). | Slice status lives in `docs/unified/06`/`07` and `docs/memory/`; updating the handoff is pending. |
+| D-D | **Do not edit `docs/SESSION_HANDOFF.md`** (it carries another session's uncommitted WIP). | Slice status lives in `docs/unified/06`/`07`/`09` and `docs/memory/`; updating the handoff is pending. |
+| D-E | **Approve the candidate attendance rule values** (2026-10-16): work `08:30–16:30`, late after `08:30`, early before `16:30`, working week Mon–Fri, for the 2026 calendar year. | `AR-0001` became `approved`; 2026 dates now compute. `AR-0002` (2027, `pending_approval`) keeps the honesty gate demonstrable. **`approved_by` is recorded as a session label, not a person** — the DB `CHECK` requires an approver to exist, but naming the accountable individual is still required before production use. |
 
 ## 2. Engineering decisions made during Slice 1 / Slice 2
 
@@ -44,14 +45,28 @@ silently resolved by an agent.
 | E21 | **`explain.stale` compares decision fields, not timestamps.** | `calculatedAt` necessarily differs on a fresh run, so the original comparison was always `true` and meaningless. | `07_SLICE2…` §4.1 |
 | E22 | **Two verification passes were commissioned and their findings fixed before push.** Six defects in total, two of them blockers. | In both slices the verifier found something the author's tests had missed. | `07_SLICE2…` §4.1 |
 
+### Slice 3 decisions (2026-10-16)
+
+| # | Decision | Why | Recorded at |
+|---|---|---|---|
+| E23 | **A month carries a completeness verdict** (`calculated` / `partial` / `pending_policy` / `no_data`), and a month is never `calculated` while any day inside it is unjudged. | A month total that silently averages over days nobody could judge looks authoritative and is worse than no total. | `09_SLICE3…` §2.1 |
+| E24 | **A day-level `no_data` (absent) is a COMPLETE judgement and does not make the month partial.** | Conflating "absent" with "unknown" would make every normal month look incomplete. | `09_SLICE3…` §2.1 |
+| E25 | **`expected_working_days` is separate from `total_work_days`**, and is `NULL` (never `0`) when it cannot be derived, with the reason recorded. | `total_work_days` is what the rows show; `expected_working_days` is what the approved calendar says. Their difference is the reconciliation signal. A `0` would read as "nobody was expected to work". | `09_SLICE3…` §2.2 |
+| E26 | **A month with no daily rows and no existing row is not written.** An existing row is refreshed. | An empty row would read as a real month of zeros. | `09_SLICE3…` §2.3 |
+| E27 | **A month is DERIVED from the stored daily rows, never recomputed from scans.** | A month total must be traceable to the days that produced it, and the daily engine owns the day judgement. | `09_SLICE3…` §2.5 |
+| E28 | **Staleness is judged by VALUE (the derived result fields), not by `calculated_at`.** | A timestamp always moves on a rerun, so a timestamp comparison is always "stale" and means nothing; and two operations can share a millisecond, so a strict `>` can miss a real change. | `09_SLICE3…` §2.4 |
+| E29 | **Monthly derivation requires manager/admin, and the organization-wide form requires a resolved BROAD data scope.** | Deriving writes derived data; and role alone must never widen data scope — the same rule Slice 2 had to be fixed to enforce. | `09_SLICE3…` §3.4 |
+| E30 | **Timestamps are normalised to epoch millis before any comparison.** | A naive `'2031-11-03 23:00:00'` and an ISO `'2026-10-16T04:16:45.000Z'` do not order lexicographically, which produced a false `stale`. | `09_SLICE3…` §4 |
+| E31 | **Fixture/MariaDB test rules are BOUNDED with an explicit `effectiveTo`.** | An open-ended approved rule covers every later date and leaks into other suites, because CI runs test files in parallel against one database. | `NEXT_ACTIONS.md` §6 rule 5 |
+
 ## 3. OPEN owner decisions (do NOT treat as engineering defaults)
 
 ### 3a. Attendance policy — the engine is blocked on these
 
 | # | Question | Current behaviour while unresolved |
 |---|---|---|
-| P-01 | Are the work hours `08:30–16:30` correct per employee type? | `AR-0001` stays `pending_approval`; every day reports `pending_policy` |
-| P-02 | Is the working week Mon–Fri for everyone, and do any units differ? | Schedule-overridable; a missing value falls back to Mon–Fri **and is flagged** |
+| P-01 | Are the work hours `08:30–16:30` correct per employee type? | **Owner-approved 2026-10-16 for 2026 (`AR-0001`).** Still open: other employee types, and who the accountable approver is. |
+| P-02 | Is the working week Mon–Fri for everyone, and do any units differ? | Approved as Mon–Fri for 2026; schedule-overridable per employee, and a missing value falls back to Mon–Fri **and is flagged** |
 | **P-03** | **How is lateness defined for a night shift?** | Span recorded; lateness/early departure **withheld** and flagged |
 | P-04 | Are `late_after`/`early_before` grace periods, with any rounding rule? | Exact comparison, boundary inclusive |
 | P-05 | Which holiday scope applies (national / university / department)? | All three supported; only `approved` rows count; calendar is empty |
