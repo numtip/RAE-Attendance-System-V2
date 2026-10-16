@@ -136,6 +136,22 @@ Every month total matched cell-for-cell in both a final and a partial month:
 The PDF text layer contains the same numbers, and `2569` (Buddhist Era) is present in every artifact while
 the **filename** stays Gregorian ASCII.
 
+### 4.1a Re-verified after the implementation's own defect fixes
+
+The first verification pass ran against a **pre-fix** build, and it shared a temp directory with the
+implementation (see §4.3a). Both problems were corrected: the whole verification set was re-run from the
+**committed** code into a private directory.
+
+| Check | Re-run result |
+|---|---|
+| Values vs R-02 JSON | **0 failures** |
+| Injection (8 hostile payloads) | all literal, **0 `<f>` elements** |
+| Geometry | **0** words outside the margin, all true A4 |
+| Watermark | pages **1–2** (partial), **1** (never derived), **1–3** (academic year); **none** on final |
+| Determinism | **10/10 artifacts byte-identical** across two independent runs |
+| Excel acceptance | **0 error cells**, A4 portrait, fit-to-width 1 |
+| Individual formatting defects | Bangkok day+clock consistent (`16:59Z`→`23:59` same day, `17:00Z`→`00:00` next day); `toBuddhistYear(null/'')`→`null`; hostile uid `..%2f..%2fetc%2fpasswd` collapses to a safe ASCII name |
+
 ### 4.2 The honesty gate holds in both formats
 
 | Artifact | `isFinal` | PDF DRAFT spans | XLSX DRAFT banner |
@@ -160,6 +176,21 @@ the **filename** stays Gregorian ASCII.
 * **Filename safety** is whitelist-based — the uid comes from a URL path segment and every character outside
   `[A-Za-z0-9]` is dropped, so separators, dots and quotes cannot survive.
 
+### 4.3a A process-collision defect in the verification itself (recorded)
+
+The first verification pass shared its temp directory (`%TEMP%\rae-r03`) with the implementation, because the
+spec I wrote suggested that path while using it myself. Two independent processes wrote artifacts to the same
+filenames, so both sides could read the other's output. The implementation detected this (its `openpyxl` and
+Excel readings disagreed about the same file: `totalPresent` 3 vs 2) and re-ran in a private directory —
+good catch on its part, and my mistake.
+
+Cause and fix, recorded because it is a verification hazard rather than a code defect:
+
+* the generator now takes an output directory from `RAE_R03_OUT`, and every run uses a private path;
+* both directories are hashed before and after a run, and the results were discarded and redone;
+* the re-run in §4.1a is from the **committed** code, and its artifact sizes differ from the first pass —
+  which independently confirms the first pass had read pre-fix output.
+
 ## 5. QA gates
 
 | Gate | Command | Result |
@@ -168,7 +199,7 @@ the **filename** stays Gregorian ASCII.
 | Export suites | `node --test tests/attendanceExport*.test.js` | **PASS — 36/36** |
 | Full backend suite | `cd backend && npm test` | **PASS — 434 tests, 424 pass, 0 fail, 10 skipped** |
 | Contract smoke | `node scripts/contract-smoke.mjs` | **PASS — 33 paths** (validates the content type, non-empty body, `Content-Length` agreement, and the `%PDF` / `PK` magic bytes) |
-| Secret scan | `node scripts/secret-scan.mjs` | **PASS — 361 tracked files** |
+| Secret scan | `node scripts/secret-scan.mjs` | **PASS — 373 tracked files** |
 | Frontend build | `cd frontend && npm run build` | **PASS** |
 | MariaDB / CI | GitHub Actions on the Draft PR | see the PR checks |
 | `npm audit` (backend) | `npm audit` | **0 vulnerabilities** |
