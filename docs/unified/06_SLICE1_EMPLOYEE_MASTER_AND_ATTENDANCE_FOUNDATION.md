@@ -243,7 +243,7 @@ All commands run on this host on 2026-10-15, on the working tree described in §
 | Contract smoke | `node scripts/contract-smoke.mjs` | **PASS** (17 API_CONTRACT paths, `DATA_SOURCE=fixture`) |
 | Frontend regression | `cd frontend && npm run build` | **PASS** (`vue-tsc --noEmit` + vite build) |
 | Secret scan | `node scripts/secret-scan.mjs` | **PASS** (309 tracked files once the slice is staged; the script covers source files, and the new `.sql`/`.md` were reviewed by hand — they contain no identifier, key or credential) |
-| PII review of every Slice 1 file | ripgrep for 13-digit runs and e-mail addresses | **PASS** — only synthetic `*@example.test` addresses and synthetic `9900…`/`9999…` test constants already present in the repo. One assignment test uses the marker `pii-marker-1180200015351` **specifically to prove** validator messages do not echo it. |
+| PII review of every Slice 1 file | ripgrep for 13-digit runs and e-mail addresses | **PASS** — only synthetic `*@example.test` addresses and synthetic `9900…`/`9999…` test constants already present in the repo. One assignment test uses the marker `pii-marker-9900000000002` **specifically to prove** validator messages do not echo it. |
 | Independent verification | separate verifier agent, asked to falsify §1–§4 | **4 defects found and fixed**, each with a regression test (§4.1) |
 | No CSV / `database/local/` read | tool-call review | **PASS** — header names, paths and row counts only |
 | No host contact | tool-call review | **PASS** — no SSH, no production DB, no deploy, no migration applied |

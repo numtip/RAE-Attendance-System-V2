@@ -6,7 +6,7 @@ const { createFixtureDailyAttendanceRepository } = require('../src/repositories/
 // Synthetic data only. employee_uid values are shaped like real UUIDs, dates are 2026, event ids are 9001+.
 const UID = '22222222-2222-2222-2222-222222222222';
 const OTHER_UID = '33333333-3333-3333-3333-333333333333';
-const MARKER = 'MARKER-1180200015351';
+const MARKER = 'MARKER-9900000000002';
 
 function baseInput(overrides = {}) {
   return {

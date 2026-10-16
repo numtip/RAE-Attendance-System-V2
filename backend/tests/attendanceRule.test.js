@@ -104,7 +104,7 @@ test('parseTimeToMinutes and minutesToTimeString round-trip', () => {
 });
 
 test('parseTimeToMinutes rejects bad values without echoing them', () => {
-  const bads = ['25:00', '08:60', '08:30:60', '8:30', 'half past eight', 'pii-marker-1180200015351'];
+  const bads = ['25:00', '08:60', '08:30:60', '8:30', 'half past eight', 'pii-marker-9900000000002'];
   for (const bad of bads) {
     assert.throws(
       () => parseTimeToMinutes(bad),
@@ -145,7 +145,7 @@ test('normalizeEffectiveDate delegates to the shared parser and rethrows as RULE
     (error) => error.status === 400 && error.code === 'RULE_INVALID_DATE',
   );
   assert.throws(
-    () => normalizeEffectiveDate('pii-marker-1180200015351', 'effective_from'),
+    () => normalizeEffectiveDate('pii-marker-9900000000002', 'effective_from'),
     (error) => error.status === 400 && error.code === 'RULE_INVALID_DATE',
   );
 });
@@ -493,7 +493,7 @@ test('fixture: schedules enforce approval, work days, duplicates and the employe
 // --- value-free messages ------------------------------------------------------
 
 test('validator errors never echo the rejected value', () => {
-  const marker = 'pii-marker-1180200015351';
+  const marker = 'pii-marker-9900000000002';
   const throwers = [
     () => parseTimeToMinutes(marker),
     () => normalizeEffectiveDate(marker, 'effective_from'),

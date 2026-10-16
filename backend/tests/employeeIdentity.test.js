@@ -46,7 +46,7 @@ test('resolve facescan_id -> employee_uid', async () => {
 
 test('resolve national_id -> employee_uid', async () => {
   const { service } = createService();
-  const plain = '1180200015351';
+  const plain = '9900000000002';
   await service.linkIdentifier({
     employeeUid: '33333333-3333-3333-3333-333333333333',
     idType: 'national_id',
@@ -130,7 +130,7 @@ test('unlink deactivates identifier and resolve fails afterward', async () => {
 
 test('national_id never appears unmasked in list or errors', async () => {
   const { service } = createService();
-  const plain = '1180200015351';
+  const plain = '9900000000002';
   await service.linkIdentifier({
     employeeUid: '11111111-1111-1111-1111-111111111111',
     idType: 'national_id',
@@ -185,7 +185,7 @@ test('attendance boundary resolves employee_id and Attendance Core receives empl
 test('national_id protection fails closed when keys are missing (no plaintext fallback)', async () => {
   const repositories = createFixtureRepositories({ nationalId: createNationalIdProtector({}) });
   const { service } = createService({ repositories });
-  const plain = '1180200015351';
+  const plain = '9900000000002';
   await assert.rejects(
     () => service.linkIdentifier({ employeeUid: '22222222-2222-2222-2222-222222222222', idType: 'national_id', idValue: plain }),
     (error) => error.status === 503 && error.code === 'NATIONAL_ID_PROTECTION_UNAVAILABLE' && !String(error.message).includes(plain),
@@ -199,7 +199,7 @@ test('national_id protection fails closed when keys are missing (no plaintext fa
 test('national_id input is canonicalized strictly; names and malformed values are never accepted or linked', async () => {
   const { service } = createService();
   const uid = '33333333-3333-3333-3333-333333333333';
-  for (const bad of ['Somchai Jaidee', 'abc1180200015351', '118020001535', '11802000153511', '1180200015351x']) {
+  for (const bad of ['Somchai Jaidee', 'abc9900000000002', '118020001535', '99000000000021', '9900000000002x']) {
     await assert.rejects(
       () => service.resolve('national_id', bad),
       (error) => error.status === 400 && error.code === 'VALIDATION_ERROR' && !String(error.message).includes(bad),
@@ -210,9 +210,9 @@ test('national_id input is canonicalized strictly; names and malformed values ar
     );
   }
   // separators and Thai digits canonicalize to the same identity
-  await service.linkIdentifier({ employeeUid: uid, idType: 'national_id', idValue: '1-1802-00015-35-1' });
-  assert.equal(await service.resolveUid('national_id', '๑๑๘๐๒๐๐๐๑๕๓๕๑'), uid);
-  assert.equal(await service.resolveUid('national_id', '1180200015351'), uid);
+  await service.linkIdentifier({ employeeUid: uid, idType: 'national_id', idValue: '9-9000-00000-00-2' });
+  assert.equal(await service.resolveUid('national_id', '๙๙๐๐๐๐๐๐๐๐๐๐๒'), uid);
+  assert.equal(await service.resolveUid('national_id', '9900000000002'), uid);
 });
 
 test('national_id duplicate, one-per-employee, and audit rows contain no PII', async () => {
@@ -220,7 +220,7 @@ test('national_id duplicate, one-per-employee, and audit rows contain no PII', a
   const { service } = createService({ repositories });
   const a = '11111111-1111-1111-1111-111111111111';
   const b = '22222222-2222-2222-2222-222222222222';
-  const plain = '1180200015351';
+  const plain = '9900000000002';
   await service.linkIdentifier({ employeeUid: a, idType: 'national_id', idValue: plain, actor: 'operator:test', reason: 'qa-link' });
   await assert.rejects(
     () => service.linkIdentifier({ employeeUid: b, idType: 'national_id', idValue: plain }),

@@ -1,16 +1,16 @@
 # Security incident: a real Thai national ID is committed in this PUBLIC repo's test fixtures
 
-**Recorded:** 2026-10-16 (Asia/Bangkok) · **Status:** `REPORTED — AWAITING OWNER DECISION, NOT REMEDIATED`
+**Recorded:** 2026-10-16 (Asia/Bangkok) · **Status:** `MITIGATED IN THE WORKING TREE — HISTORY STILL EXPOSED`
 **Severity:** **HIGH / CRITICAL (public repository)** · **Found by:** adversarial QA of the R-04/R-04-C work
 **Value:** masked as `****5351` throughout. **No full value appears in this document, in any commit, in any
 test, or in any Agent Core call.**
 
-> ## ⚠️ DO NOT "FIX" THIS BY EDITING THE FILES ALONE
+> ## ⚠️ THE FILE-LEVEL FIX IS DONE; THE HISTORY IS NOT
 >
-> The value is in **`origin/main`** and therefore on a **public GitHub repository**, and it is in the
-> **commit history**. Editing the working tree does not remove it. The real decision is
-> **(a) history rewrite + force push** (currently **forbidden** without explicit owner approval) and
-> **(b) whether anyone must be notified**. See §4.
+> Every committed literal has been replaced and a guard now prevents recurrence (§5 R2/R4 — **done**). But the
+> value remains in **`origin/main` history** on a **public** repository. Only a history rewrite + force push
+> (**R3**, still an owner decision, currently forbidden) removes it. Do not read the redaction as closing the
+> incident.
 
 ---
 
@@ -82,6 +82,63 @@ Files carrying it (paths only; the value is not reproduced):
 
 **Recommended immediate position:** do **R2** and **R4/R5** once the owner agrees, and treat **R1/R3** as
 owner decisions. Until R3 happens, anyone reading this repository can obtain the value.
+
+## 5.1 Remediation applied on 2026-10-16 (owner-approved: "redact and guard")
+
+| Step | Action | Evidence |
+|---|---|---|
+| **R2 done** | Every committed literal replaced across **6 files / 28 occurrences** — including the **dashed, Thai-digit and full-width encodings**, not just the plain ASCII form. Fixtures now use a **checksum-invalid** synthetic (`****0002`). | Post-redaction scan: no encoding of the target and no checksum-valid literal remains. Suites green. |
+| **R2 done** | The one file that genuinely needed a **checksum-valid** value (`nationalIdContract.test.js` asserts the check digit) now **derives it at runtime** from a deliberately impossible prefix, so no valid literal is committed at all. | `validSyntheticNationalId()` in that file |
+| **R4 done** | `backend/tests/nationalIdFixtureHygiene.test.js` — a CI guard that fails if any **canonicalizable** 13-digit literal passes the checksum. It **canonicalizes before checking**, because the original leak existed in four encodings and a `\b\d{13}\b`-only guard would have missed three of them. | 3/3 tests; the guard's own self-check asserts it actually read >100 files, so it cannot pass by scanning nothing |
+| **R5 done** | Repo-wide sweep of `backend/src`, `backend/tests`, `scripts`, `docs`, `agent`: **0** checksum-valid literals remain. A second checksum-valid value found by the sweep (`****9994`, non-colliding) was also replaced with its checksum-invalid sibling. | Clean post-check |
+| **R3 open** | History rewrite + force push. **Not done** — requires explicit owner approval. | — |
+
+Two things the redaction itself proved, worth recording:
+
+* **The guard caught its own author.** The first draft of the guard's doc comment reproduced the leaked id's
+  **dashed** encoding. The guard flagged it. That is the clearest evidence the encoding coverage matters.
+* **A naive mask-based guard is insufficient.** Matching `\b\d{13}\b` would have found **1 of 4** encodings
+  and declared the repository clean. The guard therefore canonicalizes with the production
+  `canonicalizeNationalId()` first.
+
+**Self-disclosure:** while producing a *redacted* view of the affected files, the redaction technique used
+(`\b\d{13}\b` → `<ID13>`) did **not** cover the dashed, Thai-digit or full-width forms, so those three
+alternate encodings of the value were displayed in this session's working transcript. No such form was ever
+written into the repository, and none appears in this document. It is recorded because a reviewer should not
+have to wonder how the encodings became visible.
+
+## 5.2 Notification (owner-approved: privacy officer first)
+
+Draft, ready to send. It contains **no value** — the recipient must verify the id themselves.
+
+> **Subject:** PDPA notification — a Thai national ID was exposed in a public repository
+>
+> **What happened.** A Thai citizen ID was used as a "synthetic" test fixture in
+> `numtip/RAE-Attendance-System-V2`, which is a **public** GitHub repository. It was introduced on
+> 2026-10-09 and was present on the default branch (`main`) as well as several feature branches.
+>
+> **How it was found.** An identity-integration audit compared identifiers in our fixtures against a real
+> identifier source we are separately assessing, and found a byte-identical match (verifiable as masked
+> `****5351`). A coincidence would be ~1 in 10¹³, so the fixture is assessed to be a real person's id.
+>
+> **Scope.** Six files, 28 occurrences, across four encodings (ASCII, hyphen-separated, Thai digits,
+> full-width). The value is **not** one of the 50 employees in our onboarding scope, but it does correspond to
+> a person returned by the MJU Person API. No other personal data (no name, no address) accompanied it in the
+> repository, and no attendance records were exposed.
+>
+> **What we have already done.** Every committed literal has been replaced with a synthetic value that fails
+> the Thai checksum (so it cannot be a real id), the one test that needed a valid checksum now derives it at
+> runtime, and a CI guard now fails the build if any checksum-valid 13-digit literal is ever committed again.
+>
+> **What we have NOT done, and why we are writing.** The value remains retrievable from the **public git
+> history**. Removing it requires rewriting history and force-pushing, which we have not done without
+> approval. Please advise whether we should proceed, and whether the affected individual must be notified.
+>
+> **Asks:** (1) confirm the direction on history rewriting; (2) advise on notifying the individual;
+> (3) confirm whether the MJU Person API data-protection basis requires any further step on our side.
+>
+> **Verification:** you can confirm the match yourself by checking whether the id ending `5351` in the cited
+> files matches the id in the relevant source. We are deliberately not transmitting the full value.
 
 ## 6. See also
 
