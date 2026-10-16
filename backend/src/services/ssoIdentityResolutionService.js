@@ -159,6 +159,10 @@ function createSsoIdentityResolutionService(deps) {
           subjectType: subjectExtraction.subjectType || 'opaque',
           source: fromMjuToken ? 'mju_token_candidate_subject' : undefined,
           confidence: fromMjuToken ? 'medium' : undefined,
+          // Reached only when the protected national-ID lookup resolved this subject to this same employee
+          // (`employeeByNational`). Declared explicitly so the link layer can refuse an SSO-only approval,
+          // and so a future caller cannot create an approved link without stating its evidence.
+          evidence: { nationalIdLookupMatched: true },
         });
         await logSsoIdentityEvent(repositories, {
           eventType: 'sso_provider_link',

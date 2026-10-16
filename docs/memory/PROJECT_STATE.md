@@ -76,6 +76,7 @@ flow.
 | Reconciliation snapshot (R-04) | **implemented 2026-10-16 — read-only, no migration, fixture-verified only** | `GET /attendance/reconciliation/day`, `/month`, `/fiscal-year`; `docs/unified/12_SLICE6_RECONCILIATION.md` |
 | **FY2569 aggregate evidence (R-04-C)** | **transcribed 2026-10-16 — public-safe aggregate fixture, NOT an integration** | `backend/tests/fixtures/fy2569Aggregates.js`; 12 monthly aggregates, totals 1,600/24/11/8, 26 discrepancies as 3 counts |
 | **Identity integration (ID-1/ID-2)** | **audited + designed 2026-10-16 — DESIGN GATE, not activated** | `docs/IDENTITY_INTEGRATION_AUDIT.md`, `docs/IDENTITY_MAPPING_CONTRACT.md`. Source is **corroboration-only** |
+| **Identity hardening (ID-6/ID-7)** | **implemented 2026-10-16** | Subject guard shared by both link-creation paths; frozen source allowlist; mutation-tested. `backend/tests/identityLinkHardening.test.js`, `identityLinkSourcePolicy.test.js` |
 | Annual HR form (R-05) | **missing** | next milestone; reuses the R-03 renderer |
 | **Agent Core (Jev) decision path** | **WORKING — verified against the live gateway 2026-10-16** | `docs/AGENT_CORE_LIVE_USAGE.md`, PR #40 |
 | MJU SSO live | **blocked external** | `ac` semantics unconfirmed |
@@ -156,6 +157,7 @@ runner cannot be pointed at the live database. No apply order is proposed by any
 | R10 | **`mju-person-enrich` holds 303 plaintext national IDs + names at rest, unhashed, on a directory that is NOT a git repo** (so its `.gitignore` is inert, and several sensitive paths — `backup/`, `output/*.txt`, `input/prompt1.MD` — are not even listed). No history, no access log. | `docs/IDENTITY_INTEGRATION_AUDIT.md` §3 |
 | R11 | **The MJU Person API returns no `personnelID`** (0/308 records), so it **cannot populate the MJU identity kind**, which requires `personnel_id` from `mju_person_api`. | `docs/IDENTITY_INTEGRATION_AUDIT.md` §1.1; `NEXT_ACTIONS.md` ID-5 |
 | R12 | **The identity-link layer relies on its caller for the email-shaped guard.** `createCandidate` accepts an email-shaped subject; only the SSO adapter rejects it. Bounded today (a candidate cannot authenticate), but a future ingestion path would bypass it. | `docs/IDENTITY_INTEGRATION_AUDIT.md` F1; `NEXT_ACTIONS.md` ID-6 |
+| R12a | ~~R12~~ **RESOLVED 2026-10-16 (ID-6/ID-7):** the subject guard is now enforced in `domain/identityLink.js` and shared by both link-creation paths, and provenance is a frozen allowlist so an invented `source` can no longer escape the ambiguity guard. **Residual (ID-6b/S-02):** the SSO approval evidence type is declared but not stored as its own column — a migration, so still open. | `docs/IDENTITY_MAPPING_CONTRACT.md` G1b |
 
 ## 7. Authority for "what is current"
 

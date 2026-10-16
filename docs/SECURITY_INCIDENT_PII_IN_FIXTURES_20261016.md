@@ -1,16 +1,20 @@
 # Security incident: a real Thai national ID is committed in this PUBLIC repo's test fixtures
 
-**Recorded:** 2026-10-16 (Asia/Bangkok) · **Status:** `MITIGATED IN THE WORKING TREE — HISTORY STILL EXPOSED`
+**Recorded:** 2026-10-16 (Asia/Bangkok) · **Status:** `OPEN — FILE-LEVEL FIX DONE; HISTORY STILL EXPOSED; PRIVACY-OFFICER REVIEW PENDING`
 **Severity:** **HIGH / CRITICAL (public repository)** · **Found by:** adversarial QA of the R-04/R-04-C work
 **Value:** masked as `****5351` throughout. **No full value appears in this document, in any commit, in any
 test, or in any Agent Core call.**
 
-> ## ⚠️ THE FILE-LEVEL FIX IS DONE; THE HISTORY IS NOT
+> ## 🟠 THIS INCIDENT IS STILL OPEN — do not treat the redaction as closure
 >
-> Every committed literal has been replaced and a guard now prevents recurrence (§5 R2/R4 — **done**). But the
-> value remains in **`origin/main` history** on a **public** repository. Only a history rewrite + force push
-> (**R3**, still an owner decision, currently forbidden) removes it. Do not read the redaction as closing the
-> incident.
+> Three of the five remediation steps are done (R2 redact, R4 guard, R5 sweep — see §5.1), and the related
+> identity hardening landed 2026-10-16 (ID-6/ID-7, PR #45). **Two items remain open and are owner decisions:**
+>
+> * **R1 — privacy-officer review.** A ready-to-send draft is in §5.2. **Not sent.**
+> * **R3 — history remediation.** The value is still retrievable from **public git history** on `origin/main`.
+>   Only a rewrite + force push removes it; **not done**, and deliberately not attempted without approval.
+>
+> Until R3 is decided, anyone reading this repository can obtain the value.
 
 ---
 
@@ -92,6 +96,13 @@ owner decisions. Until R3 happens, anyone reading this repository can obtain the
 | **R4 done** | `backend/tests/nationalIdFixtureHygiene.test.js` — a CI guard that fails if any **canonicalizable** 13-digit literal passes the checksum. It **canonicalizes before checking**, because the original leak existed in four encodings and a `\b\d{13}\b`-only guard would have missed three of them. | 3/3 tests; the guard's own self-check asserts it actually read >100 files, so it cannot pass by scanning nothing |
 | **R5 done** | Repo-wide sweep of `backend/src`, `backend/tests`, `scripts`, `docs`, `agent`: **0** checksum-valid literals remain. A second checksum-valid value found by the sweep (`****9994`, non-colliding) was also replaced with its checksum-invalid sibling. | Clean post-check |
 | **R3 open** | History rewrite + force push. **Not done** — requires explicit owner approval. | — |
+| **R1 open** | Privacy-officer review. Draft ready in §5.2; **not sent**. | — |
+
+**Related hardening (2026-10-16, ID-6/ID-7, PR #45):** the identity-link layer now refuses an e-mail-shaped
+or callback-`ac` subject at the link layer (not only in the SSO adapter) and refuses an unknown provenance
+`source`, so a caller cannot invent provenance to escape the ambiguity guard. This is **adjacent** to this
+incident — it closes the same class of "a guard that can be walked around" — but it does **not** remediate it.
+The incident stays open for R1 and R3.
 
 Two things the redaction itself proved, worth recording:
 

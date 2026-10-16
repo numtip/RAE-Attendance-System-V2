@@ -168,6 +168,16 @@ Verified today by an independent probe driving the real services (31 assertions,
 **Recommended:** add the `EMAIL_LIKE` + `ac` guard inside `createCandidate` so the rule is enforced at the
 layer that owns the link, not only at one entry point. Recorded, not fixed here.
 
+> **RESOLVED 2026-10-16 (hardening ID-6).** The guard now lives once, in the domain module
+> (`backend/src/domain/identityLink.js`, `rejectionCodeForProviderSubject`), and is called by **both**
+> `createCandidate` and `linkProviderSubjectFromSsoLogin`. The SSO adapter imports the shared predicates
+> instead of keeping private copies, so the two can no longer drift. It additionally rejects what the
+> original review did not test: non-string/array/object subjects, non-finite numbers, subjects over 255
+> characters, and whitespace-padded forms of `ac` and of e-mail addresses. The rejected value is never
+> echoed into the error message. Priorities are now explicit and distinct rather than one generic 400:
+> `IDENTITY_SUBJECT_IS_EMAIL_LIKE`, `IDENTITY_SUBJECT_IS_CALLBACK_AC`, `IDENTITY_SUBJECT_MALFORMED`,
+> `IDENTITY_SUBJECT_TOO_LONG`. Mutation-tested — removing the guard fails **5** tests.
+
 ### Finding F2 — the enrichment guard is scoped to enrichment sources
 
 `enrichmentBlocksApproval` returns `false` for a non-enrichment source (e.g. `operator_review`) even when the
@@ -176,8 +186,52 @@ outcome is `ambiguous`. That is **intended** (an operator review is human eviden
 must be added to `ENRICHMENT_SOURCES`, or it will bypass the guard. **Recommended:** make the source list a
 checked constant and add a test that every automated source is listed.
 
-## 5. Effective-dating of identity
+> **RESOLVED 2026-10-16 (hardening ID-7).** The gap was worse than "a source might be forgotten": because the
+> guard is source-scoped, a caller could pass an **invented** source string and create a link whose
+> `ambiguous` outcome would then sail past approval. The source list is now a **frozen allowlist**
+> (`IDENTITY_LINK_SOURCES`) and an unknown source is **refused at creation** on both paths
+> (`400 IDENTITY_SOURCE_UNKNOWN`), so provenance can no longer be asserted into existence.
+>
+> Two guard properties are pinned deliberately, and they are asymmetric on purpose:
+> * **creation is strict** — `isKnownSource` requires an EXACT match. A `source` comes from our own code, so a
+>   stray space is a bug to surface, not to normalise. Strict equality also guarantees the value *stored* is
+>   always a value that was *validated*.
+> * **the approval guard is lenient** — `isEnrichmentSource` trims, so a legacy row written as
+>   `'mju_person_enrich '` is still treated as machine evidence and still cannot be approved.
+>
+> A test (`identityLinkSourcePolicy.test.js`) fails if a source literal appears in a link-creating code path
+> without being added to the allowlist, and fails if an allowlist entry becomes dead — so the list cannot rot
+> in either direction. `person_api_enrich` is allowlisted but declared unused-by-design, with the reason.
+>
+> **Honest boundary, asserted rather than assumed:** `enrichmentBlocksApproval` still returns `false` for a row
+> that predates the allowlist and was written directly to the store. The control against that is create-time
+> rejection, and the test file states this explicitly instead of implying the guard covers it.
 
+### 4.1 Post-hardening verification (2026-10-16, ID-6/ID-7)
+
+| Gate | Result |
+|---|---|
+| `npm run lint` | **PASS** |
+| Full backend suite | **PASS — 508 tests, 498 pass, 0 fail, 10 skipped** (was 476/466/0/10) |
+| New suites | **PASS — 26 + 6 = 32 tests** (`identityLinkHardening`, `identityLinkSourcePolicy`) |
+| `contract-smoke` | **PASS — 36 paths** |
+| Secret scan | **PASS — 388 files** |
+| Frontend build | **PASS** |
+| National-ID fixture guard | **PASS** (no checksum-valid literal; the new tests use no national ID at all) |
+| **Mutation: subject guard removed** | **KILLED — 5 tests fail** |
+| **Mutation: source allowlist removed** | **KILLED — 4 tests fail** |
+| **Mutation: declared-evidence check removed** | **KILLED — 1 test fails** |
+
+The mutation column is the one that matters: a guard whose removal changes nothing is decoration. It also
+caught a real weakness while being written — the source-policy scan initially matched **0** literals and
+reported success, because the sources reach the link as a ternary and as a default parameter rather than as
+`source: 'literal'`. The non-vacuity assertion is what exposed it.
+
+`person_api_enrich` is allowlisted but **declared unused by design** (the Person-API ingestion path is behind
+the open design gate). The policy test fails if an allowlist entry becomes dead without such a declaration,
+and fails if a declared-unused entry becomes used, so the list cannot rot in either direction.
+
+## 5. Effective-dating of identity
 `employee_identifier` is already effective-dated (migration `020`, `identifierValidity.js`). What is **not**
 yet effective-dated is the **identity link** itself.
 
@@ -263,8 +317,9 @@ Sequencing constraints: `#30 → #33 → #34/#35` for the lower stack; migration
 
 | # | Item | Owner decision needed |
 |---|---|---|
-| G1 | **F1** — enforce the email-shaped / `ac` guard inside `createCandidate` | approve the hardening |
-| G2 | **F2** — make `ENRICHMENT_SOURCES` a checked, tested constant | approve the hardening |
+| G1 | ~~**F1** — enforce the email-shaped / `ac` guard inside `createCandidate`~~ | **DONE 2026-10-16 (ID-6)** — enforced in the domain layer, shared by both creation paths, mutation-tested |
+| G2 | ~~**F2** — make `ENRICHMENT_SOURCES` a checked, tested constant~~ | **DONE 2026-10-16 (ID-7)** — frozen allowlist; unknown sources refused at creation; drift guarded by a test in both directions |
+| G1b | **Residual, still open:** record the approval EVIDENCE TYPE on the link row instead of only `approvedBy: 'system:sso'`. The SSO path now requires a *declared* matched national-ID lookup (`403 IDENTITY_EVIDENCE_REQUIRED`), but the declaration is not independently verifiable in the link layer and is not stored as its own field. | needs a column → **migration + owner approval** (S-02) |
 | G3 | Effective dating on `employee_identity_links` (§5) | approve the model |
 | G4 | Whether any raw `citizenID` storage is ever lawful, and the necessity basis | owner + data protection |
 | G5 | The Person-API ingestion path (§3) — build it, or keep enrichment manual? | approve scope |
