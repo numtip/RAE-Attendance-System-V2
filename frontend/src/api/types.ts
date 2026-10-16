@@ -136,6 +136,28 @@ export interface AttendanceMonthReport {
   };
 }
 
+/**
+ * R-03 export surface. A report export is a binary body, not JSON, so it cannot go through `apiRequest`;
+ * `AttendanceExportFile` is what the client hands back after it has read the filename off the response.
+ */
+export type AttendanceReportKind = 'day' | 'month' | 'academic_year';
+
+export type AttendanceExportFormat = 'pdf' | 'xlsx';
+
+/** Period argument required by each report kind (Gregorian/ISO values only — never a Buddhist-Era year). */
+export type AttendanceExportPeriodFor<K extends AttendanceReportKind> = K extends 'day'
+  ? { date: string }
+  : K extends 'month'
+    ? { year: number; month: number }
+    : { year: number };
+
+export interface AttendanceExportFile {
+  /** The binary body (application/pdf or the XLSX content type). */
+  blob: Blob;
+  /** Sanitised filename safe to hand to the browser download dialog. */
+  fileName: string;
+}
+
 export interface LeaveRow {
   leaveId: string;
   employeeUid: string;

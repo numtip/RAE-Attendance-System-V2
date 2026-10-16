@@ -422,6 +422,16 @@ export async function fixtureApiRequest<T>(
     return (await handleLeaveHistory(decodeURIComponent(historyMatch[1]))) as T;
   }
 
+  // R-03 exports are binary and review mode has no backend, so we never fabricate a PDF/XLSX here.
+  // The client refuses in review mode before it reaches this dispatch; this keeps the fixture honest too.
+  if (auth && method === 'GET' && path.startsWith('/attendance/export/')) {
+    throw new ApiError(
+      501,
+      'EXPORT_UNAVAILABLE_REVIEW_MODE',
+      'Exports need the API; review mode has no backend.',
+    );
+  }
+
   if (
     auth &&
     options.retryOnUnauthorized !== false &&

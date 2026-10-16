@@ -36,8 +36,23 @@ function materializePath(template) {
   if (template.includes('/leave/balance/')) {
     path += '?year=2026';
   }
+  // Export routes require an explicit `format`; it is deliberately NOT defaulted server-side, so the smoke
+  // must supply one or it would be exercising the 400 path instead of the route.
+  if (template.includes('/attendance/export/')) {
+    path += path.includes('?') ? '&format=pdf' : '?format=pdf';
+  }
   return path;
 }
+
+/** An export route answers with a file, not with the JSON envelope every other route uses. */
+function isBinaryExport(path) {
+  return path.includes('/attendance/export/');
+}
+
+const EXPORT_CONTENT_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
 
 function listen(app) {
   const server = http.createServer(app);
@@ -60,8 +75,19 @@ async function request(port, method, path, { token, body } = {}) {
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
     bodyJson = await response.json();
+  } else {
+    // A binary route's body must still be drained, otherwise the socket can stall the next request.
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > 0) {
+      bodyJson = { byteLength: buffer.length, header: buffer.subarray(0, 4).toString('latin1') };
+    }
   }
-  return { status: response.status, body: bodyJson };
+  return {
+    status: response.status,
+    body: bodyJson,
+    contentType,
+    contentLength: response.headers.get('content-length'),
+  };
 }
 
 function assertEnvelope(label, { status, body }) {
@@ -152,7 +178,30 @@ async function main() {
           const ssoCallback = path.includes('/auth/sso/callback');
           const needsAuth = !publicHealth && !ssoLogin && !ssoCallback;
           result = await request(port, 'GET', path, { token: needsAuth ? accessToken : undefined });
-          if (path.endsWith('/health')) {
+          if (isBinaryExport(path)) {
+            // A file download is a different contract: status + a real file + the no-store header, and the
+            // body is NOT the JSON envelope. A 400/403/404 is still allowed because it answers with JSON.
+            assertStatus(label, result.status, [200, 400, 403, 404]);
+            if (result.status === 200) {
+              // Strip any parameters (e.g. "; charset=utf-8") before comparing the media type.
+              const mediaType = String(result.contentType).split(';')[0].trim().toLowerCase();
+              if (!EXPORT_CONTENT_TYPES.includes(mediaType)) {
+                throw new Error(`expected a PDF or XLSX content-type, got "${result.contentType}"`);
+              }
+              if (!result.body || result.body.byteLength === 0) {
+                throw new Error('expected a non-empty file body');
+              }
+              if (Number(result.contentLength) !== result.body.byteLength) {
+                throw new Error(`content-length ${result.contentLength} != body ${result.body.byteLength}`);
+              }
+              if (mediaType === 'application/pdf' && result.body.header !== '%PDF') {
+                throw new Error(`PDF body does not start with %PDF, got "${result.body.header}"`);
+              }
+              if (mediaType !== 'application/pdf' && result.body.header !== 'PK\u0003\u0004') {
+                throw new Error(`XLSX body is not a ZIP archive, got "${result.body.header}"`);
+              }
+            }
+          } else if (path.endsWith('/health')) {
             assertStatus(label, result.status, [200]);
           } else if (path.includes('/auth/sso/')) {
             assertStatus(label, result.status, [302, 403, 503, 401]);
@@ -171,7 +220,7 @@ async function main() {
           result = await request(port, 'POST', path, { token: accessToken, body: {} });
         }
 
-        if (result.status !== 302) {
+        if (result.status !== 302 && !(isBinaryExport(path) && result.status === 200)) {
           assertEnvelope(label, result);
         }
       } catch (err) {

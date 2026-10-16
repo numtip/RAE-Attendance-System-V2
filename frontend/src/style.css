@@ -320,3 +320,15 @@ code {
   margin: 0.15rem 0 0;
   font-weight: 500;
 }
+
+/* R-03: export controls sit below the report, visually separated from the figures. */
+.export-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.export-panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}

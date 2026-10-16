@@ -20,6 +20,8 @@ const { createMonthlySummaryController } = require('../../controllers/monthlySum
 const { createMonthlySummaryService } = require('../../services/monthlySummaryService');
 const { createAttendanceReportController } = require('../../controllers/attendanceReportController');
 const { createAttendanceReportService } = require('../../services/attendanceReportService');
+const { createExportController } = require('../../controllers/exportController');
+const { createExportService } = require('../../services/exportService');
 
 function createV1Router(container) {
   const authService = createAuthService(container);
@@ -49,6 +51,10 @@ function createV1Router(container) {
   // R-02: read-only individual attendance reports (day / month / academic year). This layer never writes
   // and never recomputes; deriving a month stays behind the manager/admin-only monthly-summary route.
   const attendanceReport = createAttendanceReportController(createAttendanceReportService({
+    repositories: container.repositories,
+  }));
+  // R-03: exports are rendered from the R-02 payload, so the two can never disagree about a number.
+  const exportReport = createExportController(createExportService({
     repositories: container.repositories,
   }));
 
@@ -100,6 +106,13 @@ function createV1Router(container) {
   router.get('/attendance/report/day/:employeeUid/:date', authenticate, attendanceReport.day);
   router.get('/attendance/report/month/:employeeUid/:year/:month', authenticate, attendanceReport.month);
   router.get('/attendance/report/academic-year/:employeeUid/:year', authenticate, attendanceReport.academicYear);
+
+  // R-03: the same three reports as downloadable documents. `?format=pdf|xlsx` is REQUIRED (a missing or
+  // unknown format is a 400, never a default file). The export is rendered from the R-02 payload above, so
+  // authorization, scope and period validation are inherited rather than re-implemented.
+  router.get('/attendance/export/day/:employeeUid/:date', authenticate, exportReport.day);
+  router.get('/attendance/export/month/:employeeUid/:year/:month', authenticate, exportReport.month);
+  router.get('/attendance/export/academic-year/:employeeUid/:year', authenticate, exportReport.academicYear);
 
   return router;
 }

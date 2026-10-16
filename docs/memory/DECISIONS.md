@@ -82,7 +82,33 @@ silently resolved by an agent.
 | E41 | **A Thai academic year is 1 June – 31 May, it is a REPORTING convention (not a policy value), and every response names the window it used.** | A report must not leave its period to be assumed. `:year` is the Gregorian year the academic year starts; months that have not started yet are excluded from the completeness verdict because a month that has not happened cannot be missing data. | `10_SLICE4…` §1.2 |
 | E42 | **The known limitations travel WITH the numbers as `report.caveats`** (`HOLIDAY_CALENDAR_EMPTY`, `NIGHT_SHIFT_LATENESS_WITHHELD`, `APPROVER_IS_SESSION_LABEL`), derived rather than assumed. | R2, R8 and P-03 all make a figure narrower than it looks. A caveat that is only in a document will not be read next to the number; one attached to the response will be. Deriving them means recording the accountable approver or importing the holiday calendar removes the caveat automatically. | `10_SLICE4…` §1.1 |
 
+### Export decisions — R-03 (2026-10-16)
+
+| # | Decision | Why | Recorded at |
+|---|---|---|---|
+| E43 | **The export layer derives NOTHING.** Report data comes only from `attendanceReportService`; the sole extra read is the employee display record. | A second derivation path would let a file and the API disagree about the same month, and the file is the version people circulate. | `11_SLICE5…` §1 |
+| E44 | **A non-final report is exported as a watermarked draft in BOTH formats** — 96 pt `DRAFT` on every PDF page, plus a red DRAFT row and print header on every XLSX sheet. | A PDF or spreadsheet is easy to forward and hard to recall, so the R-02 completeness verdict has to survive being printed, not just being displayed. | `11_SLICE5…` §1, §4.2 |
+| E45 | **`exceljs` rejected; the XLSX writer is hand-written over `node:zlib`.** `pdfkit` is the only new dependency. | `exceljs` would add ~186 packages plus deprecated `glob@7`/`fstream`/`uuid@8` and an unresolved moderate advisory whose only fix is a breaking downgrade. The needed output is one sheet type and a fixed part set. | `11_SLICE5…` §3 |
+| E46 | **The Sarabun font is bundled** under `src/assets/fonts/` with its OFL text and SHA-256 hashes; a missing font throws `EXPORT_FONT_MISSING`. | A PDF cannot render Thai without an embedded font, and a silent fallback would render Thai as empty boxes — a failure that looks like success. | `11_SLICE5…` §3, font README |
+| E47 | **`format` is required with no default.** | A default would silently choose an artifact for the caller. An unknown format (including a traversal attempt) is a 400, never a file. | `11_SLICE5…` §2.2 |
+| E48 | **Export endpoints answer with a file, not the JSON envelope, and `contract-smoke` validates the difference** (content type, non-empty body, `Content-Length` agreement, `%PDF`/`PK` magic). | The published contract had to describe a binary response, and a smoke test that only checked for `success: true` would have passed on a broken download. | `11_SLICE5…` §5 |
+| E49 | **Review mode disables export instead of faking a file.** | Consistency with E20: report what is real. A fabricated artifact in the static demo would misrepresent the product. | `11_SLICE5…` §2.3 |
+
+### R-03: accepted limitation (2026-10-16)
+
+* **PDF Thai text extraction is not byte-exact.** Words containing `ำ` (U+0E33) can extract decomposed
+  (`ทำงาน` → `ทำางาน`), because pdfkit applies GSUB and its ToUnicode CMap maps the reordered glyph back to
+  both codepoints. Visual output, numbers and dates are all correct; this affects search and copy-paste only.
+  Accepted and documented rather than worked around, because fixing it means rewriting the CMap.
+
 ## 3. OPEN owner decisions (do NOT treat as engineering defaults)
+
+> ### ⚠️ R-04 INPUT MISSING
+>
+> `G:\ProjectAI\attendance-report-generator` — the reference named for FY2569 historical reconciliation — **does
+> not exist** (checked 2026-10-16). It is outside this repo, so it cannot be committed or verified here. Until
+> it is provided, R-04 can only be validated against synthetic fixtures, and any statement about reconciling
+> real FY2569 sources would be a fabrication. Recorded as `R-04-B` in `NEXT_ACTIONS.md`.
 
 ### 3a. Attendance policy — the engine is blocked on these
 
