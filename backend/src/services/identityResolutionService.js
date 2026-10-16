@@ -1,9 +1,12 @@
 const { HttpError } = require('../utils/httpError');
 const {
   LINK_STATUS,
+  SUBJECT_REJECTION,
   normalizeEmail,
   isAuthenticatableStatus,
   enrichmentBlocksApproval,
+  rejectionCodeForProviderSubject,
+  isKnownSource,
 } = require('../domain/identityLink');
 
 function createIdentityResolutionService(deps) {
@@ -17,6 +20,70 @@ function createIdentityResolutionService(deps) {
       throw new HttpError(403, 'IDENTITY_PROVIDER_DISABLED', 'Identity provider is not available');
     }
     return provider;
+  }
+
+  /**
+   * The shared subject guard for EVERY path that creates an identity link (hardening ID-6, audit finding F1).
+   *
+   * Before this existed the rule lived only in the SSO adapter (`services/sso/mjuSubjectAdapter.js`), so the
+   * link layer itself accepted an e-mail-shaped subject and the callback `ac`. That was safe only by accident:
+   * the adapter happened to run first, and a candidate cannot authenticate. Any other caller - a future
+   * enrichment ingestion path, a script, a test helper - bypassed the rule completely.
+   *
+   * The rejection message never echoes the offending value, so a rejected subject cannot be reflected back
+   * into a log or a response.
+   */
+  function assertUsableProviderSubject(providerSubject, { usesCallbackAc = false } = {}) {
+    const code = usesCallbackAc === true
+      ? SUBJECT_REJECTION.CALLBACK_AC
+      : rejectionCodeForProviderSubject(providerSubject);
+
+    if (code === SUBJECT_REJECTION.REQUIRED) {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'providerSubject is required');
+    }
+    if (code === SUBJECT_REJECTION.MALFORMED) {
+      throw new HttpError(
+        400,
+        'IDENTITY_SUBJECT_MALFORMED',
+        'providerSubject must be a string or a finite number',
+      );
+    }
+    if (code === SUBJECT_REJECTION.TOO_LONG) {
+      throw new HttpError(
+        400,
+        'IDENTITY_SUBJECT_TOO_LONG',
+        'providerSubject exceeds the maximum accepted length',
+      );
+    }
+    if (code === SUBJECT_REJECTION.CALLBACK_AC) {
+      throw new HttpError(
+        400,
+        'IDENTITY_SUBJECT_IS_CALLBACK_AC',
+        'The callback ac marker must not be stored or used as identity',
+      );
+    }
+    if (code === SUBJECT_REJECTION.EMAIL_LIKE) {
+      throw new HttpError(
+        400,
+        'IDENTITY_SUBJECT_IS_EMAIL_LIKE',
+        'An e-mail-shaped value is not identity evidence',
+      );
+    }
+  }
+
+  /**
+   * Provenance must be a KNOWN source (hardening ID-7, audit finding F2).
+   *
+   * This is the guard that makes the ambiguity rule unbypassable: `enrichmentBlocksApproval` only applies to a
+   * known enrichment source, so before the allowlist a caller could invent a source string and create a link
+   * whose `ambiguous` outcome would pass approval. An invented source is now refused at creation.
+   *
+   * The message deliberately does not echo the rejected value - it is caller-supplied free text.
+   */
+  function assertKnownSource(source) {
+    if (!isKnownSource(source)) {
+      throw new HttpError(400, 'IDENTITY_SOURCE_UNKNOWN', 'source is not in the identity-link allowlist');
+    }
   }
 
   return {
@@ -81,9 +148,8 @@ function createIdentityResolutionService(deps) {
       if (!providerKey || !providerSubject || !employeeUid || !source) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'providerKey, providerSubject, employeeUid, and source are required');
       }
-      if (String(providerSubject).trim() === 'ac' || input.usesCallbackAc === true) {
-        throw new HttpError(400, 'VALIDATION_ERROR', 'Callback ac must not be stored or used as identity');
-      }
+      assertUsableProviderSubject(providerSubject, { usesCallbackAc: input.usesCallbackAc === true });
+      assertKnownSource(source);
 
       const provider = await requireProvider(providerKey);
       const existing = await identityLinks.findByProviderSubject(providerKey, providerSubject);
@@ -203,13 +269,35 @@ function createIdentityResolutionService(deps) {
         emailSnapshot,
         source = 'sso_national_id_resolution',
         confidence = 'high',
+        evidence,
       } = input;
 
       if (!providerKey || !providerSubject || !employeeUid) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'providerKey, providerSubject, and employeeUid are required');
       }
-      if (String(providerSubject).trim() === 'ac') {
-        throw new HttpError(400, 'VALIDATION_ERROR', 'Callback ac must not be stored or used as identity');
+      // ID-6: the SAME structural guard as `createCandidate`. This path approves a link, so a bad subject
+      // here is strictly worse than a bad candidate: it would grant a session.
+      assertUsableProviderSubject(providerSubject);
+      assertKnownSource(source);
+
+      // Requirement: "SSO authentication alone must never grant employee mapping approval".
+      //
+      // An APPROVED link is only created when the caller DECLARES that the protected national-ID lookup
+      // resolved to this same employee in this same login. Without the declaration the call fails closed.
+      //
+      // HONEST LIMITATION, stated rather than implied: this assertion is NOT independently verifiable here.
+      // The HMAC lookup happens in the SSO layer, and this function cannot repeat it (it holds no raw
+      // identifier). So this is a contract check, not a proof: it stops a caller that simply forgot the
+      // lookup, and it stops a future ingestion path from approving silently, but a caller that deliberately
+      // lies can still assert it. The durable fix is a dedicated evidence column on
+      // `employee_identity_links`, which needs a migration and is still open (S-02). Traceability today is
+      // `approvedBy: 'system:sso'` + `source` + `subjectType` + the `sso_provider_link` audit event.
+      if (evidence?.nationalIdLookupMatched !== true) {
+        throw new HttpError(
+          403,
+          'IDENTITY_EVIDENCE_REQUIRED',
+          'An SSO link is approved only when a matched protected national-ID lookup is declared',
+        );
       }
 
       const provider = await requireProvider(providerKey);

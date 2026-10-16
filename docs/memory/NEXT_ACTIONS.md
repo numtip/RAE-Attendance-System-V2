@@ -115,8 +115,9 @@ Remaining before a report is *complete*:
 | **ID-4** | **`MJU_PERSON_ENRICHMENT_KB.md` does not exist** (verified; only a dangling reference in the Blueprint) — yet it is named as the "personal-data local-only policy" | Provide it or drop the reference |
 | **ID-8** | **MJU API governance obligations are undocumented in this repo** — found at `G:\AI\docs\integrations\MJU_API_GOVERNANCE_POLICY.md`: DPIA + privacy-officer sign-off, multi-stakeholder approval, MFA for Admin/DataOwner, Secret-Manager token rotation, quarterly access review, per-endpoint owner + OpenAPI spec | Cite them in the contract (done) and satisfy them before any integration |
 | **ID-5** | **The MJU Person API returns no `personnelID`** (0/308), so it **cannot populate the MJU identity kind**, which expects `personnel_id` from `mju_person_api` | Decide: find an endpoint that returns one, or re-scope the MJU kind |
-| **ID-6** | Harden `createCandidate` (audit finding **F1**): enforce the `EMAIL_LIKE` + `ac` guard at the link layer, not only in the SSO adapter | approve the hardening |
-| **ID-7** | Make `ENRICHMENT_SOURCES` a checked, tested constant (audit finding **F2**) | any new automated source must not bypass the ambiguity guard |
+| **ID-6** | Harden `createCandidate` (audit finding **F1**): enforce the `EMAIL_LIKE` + `ac` guard at the link layer, not only in the SSO adapter | **DONE 2026-10-16.** Guard moved into `domain/identityLink.js` and shared by **both** creation paths; it also rejects malformed, non-finite, over-long (255 char) and whitespace-padded subjects. Mutation-tested: removing it fails 5 tests. `backend/tests/identityLinkHardening.test.js` |
+| **ID-7** | Make `ENRICHMENT_SOURCES` a checked, tested constant (audit finding **F2**) | **DONE 2026-10-16.** Frozen `IDENTITY_LINK_SOURCES` allowlist; an unknown source is refused at creation (`400 IDENTITY_SOURCE_UNKNOWN`). This closed a real bypass, not just a hygiene gap: an invented source string used to escape the ambiguity guard entirely. Drift guarded in both directions by `identityLinkSourcePolicy.test.js`. Mutation-tested: removing it fails 4 tests |
+| **ID-6b** | **Residual (S-02):** store the approval EVIDENCE TYPE as its own field, not only `approvedBy: 'system:sso'` | The SSO path now requires a *declared* matched national-ID lookup (`403 IDENTITY_EVIDENCE_REQUIRED`), but the declaration cannot be independently re-verified in the link layer and is not a stored column. Needs a **migration**, therefore needs approval |
 | R-04-F | Owner confirmation of the fiscal-year window (Oct–Sep) as a policy value | S | — | Reporting convention today, same treatment as P-05/P-06 |
 | R-03-FE | Export controls in the day and academic-year views | S | R-02-FE pattern | `AttendanceDailyView.vue` renders raw `AttendanceRecord[]`, so it needs the report endpoint first |
 | R-04 | Reconciliation test: recompute a closed month and match a frozen synthetic snapshot | M | R-02 | Recalculation of a past month reproduces the stored numbers exactly |
@@ -172,6 +173,14 @@ Remaining before a report is *complete*:
 8. **A retry wrapper must not swallow a specific error code.** Collapsing an edge refusal and a rejected
    token into a generic "unavailable" hid the cause for three debugging rounds. Only timeouts, network
    faults and 5xx are retryable.
+10. **A guard must prove it is not vacuous.** Two checks written in this session looked correct and verified
+    nothing: one "scanned" 0 files (a wrong root), one matched 0 literals (a regex that missed ternary and
+    default-parameter forms). Both were caught only because a non-vacuity assertion was written alongside
+    them. Assert the coverage (files read, matches found) *and* mutation-test the guard.
+11. **A guard that is scoped is a guard that can be walked around.** `enrichmentBlocksApproval` only applies
+    to known enrichment sources, so an invented source string escaped it entirely. When a control is scoped
+    by an input value, that input needs its own closed allowlist — and the allowlist needs a test that fails
+    when a new value appears without being registered.
 9. **Call Jev once per session** (see §0). It is advisory: never block on it, never claim a consult you did
    not make, and never let it authorise a privileged action.
 7. **Never rename an applied migration.** The ledger keys on the full filename with no checksum.
