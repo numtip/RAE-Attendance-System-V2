@@ -45,11 +45,27 @@ const UNAVAILABLE_ENDPOINTS = Object.freeze([
   Object.freeze({ path: '/v1/metrics', requiredScope: 'metrics' }),
 ]);
 
+/**
+ * The decision_type values the gateway accepts, taken from agent-core `decisionTypeSchema` (8 values).
+ *
+ * HISTORY: this list previously contained `TASK_ROUTE_PROPOSAL`, which does NOT exist in the gateway enum.
+ * Local validation therefore passed and the gateway answered 400. It is replaced by the real enum, verified
+ * against the live service on 2026-10-16.
+ *
+ * NOTE, and the distinction matters: a `*_ROUTE` value here is a valid `decision_type` for the
+ * `/v1/decision` BODY (the scope guard is per route, not per decision type), but this project still cannot
+ * call the routing ENDPOINTS (`/v1/route`, `/v2/route`, ...), which require the `route` scope. See
+ * UNAVAILABLE_ENDPOINTS.
+ */
 const SUPPORTED_DECISION_TYPES = Object.freeze([
+  'TASK_ROUTE',
+  'CONTEXT_ROUTE',
+  'TOOL_ROUTE',
+  'MODEL_ROUTE',
+  'SUBAGENT_ROUTE',
   'NEXT_ACTION',
   'QA_DISPOSITION',
   'HUMAN_ESCALATION',
-  'TASK_ROUTE_PROPOSAL',
 ]);
 
 function assertSupportedPath(path) {
