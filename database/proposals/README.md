@@ -65,8 +65,21 @@ Each step is a **separate, approved change** — none of it happens automaticall
 
 | File | Purpose | Status |
 |---|---|---|
-| `025_identity_evidence.up.sql` | ID-6b / S-02: the `employee_identity_evidence` ledger + `employee_identity_links.evidence_type` mirror | **PROPOSAL — NOT APPLIED** |
+| `025_identity_evidence.up.sql` | ID-6b / S-02: the `employee_identity_evidence` ledger, the `employee_identity_links.evidence_type` mirror, and — added for **ID-7b** — `enrichment_outcome` on both `employee_identity_links` and `employee_identity_evidence` | **PROPOSAL — NOT APPLIED** |
 | `025_identity_evidence.down.sql` | The matching rollback (drops the ledger; **data loss** — see its header) | **PROPOSAL — NOT APPLIED** |
+
+**ID-7b dependency (added 2026-10-16).** The enrichment ambiguity guard is **inert on MariaDB** because
+`enrichment_outcome` has never been a column (`docs/IDENTITY_MAPPING_CONTRACT.md` F3/F4). A no-migration
+stop-gap has shipped: approval now **fails closed** when an enrichment source's outcome is absent, using a
+frozen `ALLOWED_ENRICHMENT_OUTCOMES` allowlist. `025` is the **durable** half — it makes the outcome storable
+and readable, so the guard can relax to "the outcome must be an *allowed value*". The full transition analysis
+is `docs/IDENTITY_EVIDENCE_MODEL.md` §5.3; the required DDL is the same shape as the `evidence_type` column.
+**Nothing is applied, and `025` remains a proposal.**
+
+**Appendix parity.** The DDL reproduced in `docs/IDENTITY_EVIDENCE_MODEL.md` → Appendix A is the durable,
+reviewable record, but that block is **owned by the orchestrator**, who must merge the two `enrichment_outcome`
+column additions into it. Until that merge, the appendix shows the pre-ID-7b shape and §5.3 of the model is
+the authoritative statement of the required columns.
 
 Numbering check (2026-10-16): the highest existing migration filename is `024_monthly_summary_provenance.sql`;
 `018_*`/`019_*` are reserved by draft PR #35; `020`–`024` are taken, and no `025_*` file exists in

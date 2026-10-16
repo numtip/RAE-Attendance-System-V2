@@ -117,7 +117,8 @@ silently resolved by an agent.
 
 | # | Decision | Why | Recorded at |
 |---|---|---|---|
-| E57 | **The sibling `numtip/Attendance-Report` project may only be consumed by V2 at AGGREGATE level.** No names, no employee codes, no rosters, no entry logs, no screenshots. | That project is **private** and holds **real employee names** in 13 tracked files (no national IDs were found); **V2 is public**. The donor already applies the same discipline to Agent Core ("aggregate counts and verification flags only"), so this is consistency, not a new restriction. | `13_REFERENCE_PROJECT_AUDIT.md` §4, §7 |
+| **E57** | **The sibling `numtip/Attendance-Report` project may only be consumed by V2 at AGGREGATE level.** No names, no employee codes, no rosters, no entry logs, no screenshots. | That project is **private** and holds **real employee names** in 13 tracked files (no national IDs were found); **V2 is public**. The donor already applies the same discipline to Agent Core ("aggregate counts and verification flags only"), so this is consistency, not a new restriction. | `13_REFERENCE_PROJECT_AUDIT.md` §4, §7 |
+| **E70** | **An absent value in a security-relevant field must DENY, and the field itself must be proven readable on the production twin.** ID-7b inverted the enrichment-outcome guard to an allowlist plus an explicit absence check, and added a MariaDB-backed test that *pins the column's absence* so the moment migration `025` lands, the test fails and forces a deliberate revisit. | The blocklist shape let an absent outcome mean "nothing to block", and because the column never existed that was the state of **every** production row while every fixture test passed. A control that passes locally and does nothing in production is worse than a missing control, because it is trusted. | `IDENTITY_MAPPING_CONTRACT.md` F3/F4; PR #47 |
 
 ## 2.6 Transcribed-evidence and identity-source decisions (2026-10-16)
 
@@ -130,6 +131,12 @@ silently resolved by an agent.
 | E62 | **The identity-link layer must not rely on a single caller for its guards.** `createCandidate` accepts an email-shaped subject; only the SSO adapter rejects one today. | Defence in depth: a future ingestion path would bypass the guard entirely. Recorded as finding F1, with hardening proposed rather than assumed. | `IDENTITY_INTEGRATION_AUDIT.md` §F1 |
 
 ## 2.7 Identity-hardening decisions (ID-6 / ID-7, 2026-10-16)
+
+> **Closeout note (2026-10-16):** E63–E69 below are **confirmed engineering decisions** — they were
+> implemented, tested and (for the security ones) verified against a real MariaDB. They are **not** owner
+> approvals. Every *owner* decision remains **open** in §3, and nothing in this file should be read as
+> approved merely because it is recorded.
+
 | # | Decision | Why | Recorded at |
 |---|---|---|---|
 | E63 | **The identity-subject prohibition lives in the DOMAIN, not in an entry point.** `rejectionCodeForProviderSubject` is defined once in `domain/identityLink.js` and called by every path that creates a link; the SSO adapter imports the same predicates instead of keeping private copies. | The rule previously existed only in the SSO adapter, so the link layer accepted an e-mail-shaped subject or the callback `ac`. That was safe by accident (the adapter ran first, and a candidate cannot authenticate) — a future ingestion path, script or helper would have bypassed it entirely. | `IDENTITY_MAPPING_CONTRACT.md` F1 resolution |
@@ -207,6 +214,11 @@ untraceable approval cannot be written.
 | **ID-3** | 🛑 Activate **real** identity integration (Person API ingestion, effective-dated links, migration §8)? | **open — BLOCKED at the design gate.** Needs owner approval of `IDENTITY_MAPPING_CONTRACT.md` §8/§9 **and a completed DPIA + privacy-officer sign-off** (the requirement is documented in an MJU API governance policy found on this machine; **no completed DPIA was found**). No live ID-card processing until then |
 | **ID-4** | `MJU_PERSON_ENRICHMENT_KB.md` does not exist — provide it, or drop the Blueprint reference? | **open** — it is cited as the "personal-data local-only policy", so its absence leaves that policy undocumented |
 | **ID-8** | The MJU API governance obligations (DPIA, multi-stakeholder approval, MFA, Secret-Manager rotation, quarterly access review, per-endpoint owner + OpenAPI spec) were undocumented in this repo | **documented 2026-10-16** in `IDENTITY_MAPPING_CONTRACT.md` §6.1 and `IDENTITY_INTEGRATION_AUDIT.md` §0.2 — they must be **satisfied**, not just cited, before integration |
+
+| **R-05b** | Cross-employee code-holder change is not **positively** detectable | **open** — needs a repository method; the safety property holds, detection does not |
+| **D-02** | Locate the legacy `attendance_db` | **open** — not on the local USBServer MySQL 5.6 |
+| **G-mig** | Migration `025` (`ADR-011`) approval | **open** — proposal under `database/proposals/`, not in the ledger |
+| **ID-7b-rem** | Add the `enrichment_outcome` column, or accept the fail-closed posture | **open** — the security fix shipped without it |
 
 ## 4. Decisions explicitly NOT taken (and why)
 

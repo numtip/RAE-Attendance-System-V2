@@ -7,10 +7,11 @@
 
 > ### ⚖️ This is NOT legal advice
 >
-> The author of this assessment is **not a lawyer** and is not qualified to give legal advice. Every statement
-> below that touches law, regulation or notification duty is **framed as a question that requires confirmation
-> by the privacy officer and/or legal counsel**, never as a settled conclusion. Thai PDPA references are
-> **pointers for the lawyer to confirm**, not determinations.
+> The author of this assessment is **not a lawyer** and is not qualified to give legal advice. **Neither the
+> Track C authors nor the orchestrator is a lawyer.** Every statement below that touches law, regulation or
+> notification duty is **framed as a question that requires confirmation by the privacy officer and/or legal
+> counsel**, never as a settled conclusion. Thai PDPA references are **pointers for the lawyer to confirm**,
+> not determinations.
 >
 > ### 🟠 The incident is OPEN
 >
@@ -34,15 +35,31 @@ A 13-digit Thai citizen ID that is **checksum-valid** and **byte-identical to a 
 
 | Date | Event | Label |
 |---|---|---|
-| 2026-10-02 | Commit `3244553` *"Identity foundation and FaceScan raw ingestion Phase A (#32)"* — the **default-branch** commit that carries the value into `origin/main` | **VERIFIED** (this review) |
-| 2026-10-09 | Commit `83aaa53` *"feat(security): single National ID crypto contract…"* — recorded as the **introducing** commit for the feature-branch chain | **REPORTED** (incident §2); carries the value on the feature chain — **VERIFIED** (this review: 11 occurrences masked `****5351` in one file at this commit) |
+| 2026-10-02 | Commit `3244553` *"Identity foundation and FaceScan raw ingestion Phase A (#32)"* — the **default-branch** commit that carries the value into `origin/main`; it is main's **current tip** | **VERIFIED** (finalisation pass: `git log -S` scoped to `origin/main` **and** this path returns this commit and no other) |
+| 2026-10-09 | Commit `83aaa53` *"feat(security): single National ID crypto contract…"* — carries the value on the **feature-branch chain only**; it is **NOT** an ancestor of `origin/main` | **VERIFIED** (finalisation pass: `git merge-base --is-ancestor 83aaa53 origin/main` → **false**). Carries the value on the feature chain — **VERIFIED** (this review: 11 occurrences masked `****5351` in one file at this commit) |
 | 2026-10-16 | Found by adversarial QA of the R-04 / R-04-C work; incident recorded | **REPORTED** |
 | 2026-10-16 | R2 (redact all committed literals), R4 (CI guard), R5 (repo-wide sweep) **done** | **REPORTED**; the redaction is a real commit — **VERIFIED** (this review: `04ff9d0` *"fix(security): redact a real national id from public fixtures and guard against recurrence"*) |
 | 2026-10-16 | **R1 (privacy-officer review)** and **R3 (history remediation)** remain **open** | **VERIFIED** (branch geometry below) |
 
-> **Correction this review adds, worth surfacing.** The incident record names `83aaa53` (2026-10-09) as the
-> introducing commit. That is true of the **feature-branch chain**. On the **default branch** the value is
-> present from `3244553` on **2026-10-02** — a week earlier — introduced by a different commit (`#32`).
+#### 1.1a Independently re-verified in this finalisation pass (read-only git; hashes and booleans only)
+
+| Check | Result |
+|---|---|
+| `git cat-file -e origin/main:backend/tests/employeeIdentity.test.js` — does the path exist on main? | exit `0` → **exists** (the lookup is correctly scoped) |
+| `git log -S<value> origin/main -- backend/tests/employeeIdentity.test.js` — commits that changed the occurrence count on main | **exactly one: `3244553dca3f6336ae3d76377472dc1d13d5fb4b`, 2026-10-02, *"Identity foundation and FaceScan raw ingestion Phase A (#32)"*** |
+| Occurrence count of the value at that path on the `origin/main` tip | **2** |
+| `git merge-base --is-ancestor 3244553 origin/main` | **true** (exit 0) |
+| `git merge-base --is-ancestor 83aaa53 origin/main` | **false** (exit 1) |
+| `git rev-parse origin/main` | `3244553dca3f6336ae3d76377472dc1d13d5fb4b` — so **`3244553` IS the tip of `origin/main`** |
+
+**Conclusion (independently reproduced, not copied from the incident record):** the value entered public
+`main` at **`3244553` on 2026-10-02** and was **never removed there**. `83aaa53` is a feature-chain commit
+that **does not reach main at all**. A rewrite keyed on `83aaa53` would leave the **default branch** exposed
+while appearing to have succeeded — the reason this correction matters.
+
+> **Correction this review adds, worth surfacing.** The incident record originally named `83aaa53` (2026-10-09)
+> as the introducing commit. That is true of the **feature-branch chain**. On the **default branch** the value
+> is present from `3244553` on **2026-10-02** — a week earlier — introduced by a different commit (`#32`).
 > **VERIFIED** (this review): the value is present in `origin/main:backend/tests/employeeIdentity.test.js`, and
 > `83aaa53` is **not** an ancestor of the local `origin/main`. So the public exposure on the default branch is
 > **older than the recorded introduction date**, and a rewrite that keys only on `83aaa53` would miss it.
@@ -83,23 +100,33 @@ canonicalizes before checking.
 
 | Metric | Count |
 |---|---|
-| Total refs in this clone | **58** (19 `refs/heads`, 38 `refs/remotes`, 1 `refs/stash`; 0 tags) |
-| Refs containing the recorded introducing commit `83aaa53` | **24** |
-| Refs containing the default-branch tip `3244553` (hence the value via `main`) | **33** |
-| Refs containing the redaction commit `04ff9d0` | **5** |
-| Refs that do **not** contain the redaction | **53** |
+| Total refs in this clone | **60** (20 `refs/heads`, 39 `refs/remotes`, 1 `refs/stash`; 0 tags) — up from 58 earlier on 2026-10-16 as sibling tracks added refs |
+| Refs containing the default-branch tip `3244553` (**hence the value in their history**) | **35** |
+| Refs containing the feature-chain commit `83aaa53` | **26** (a feature-chain signal only — **not** the exposure and **not** the rewrite target) |
+| Refs containing the redaction commit `04ff9d0` | **7** |
+| Refs that do **not** contain the redaction `04ff9d0` | **53** |
+| Refs containing the redaction **and** `3244553` (redacted tip, exposed history) | **7 of 7** — every redacted-tip ref still carries the value in its ancestors |
+| "The security fix on **main's line**" | **DOES NOT EXIST YET** — neither `04ff9d0` nor `850e3fc` is an ancestor of `origin/main`; the default branch has never received a redaction commit |
 
-Refs containing `04ff9d0` (the only refs where the *committed* tree is already clean):
+Refs containing `04ff9d0` (the refs where the *committed tip tree* is already clean — but the **value is still
+in their history**, because all 7 also contain `3244553`):
 
 ```
 refs/heads/feat/identity-hardening
 refs/heads/feat/slice6-reconciliation
 refs/heads/feat/slice7-annual-hr-report
+refs/heads/fix/id7b-enrichment-outcome-fail-closed
 refs/remotes/origin/feat/identity-hardening
 refs/remotes/origin/feat/slice6-reconciliation
+refs/remotes/origin/feat/slice7-annual-hr-report
 ```
 
-Refs containing the recorded introducing commit `83aaa53` (24 — names only):
+> A second redaction commit exists on a different branch — `850e3fc` *"fix(security): redact a real national id
+> from the public fixture and record the incident"* — and is contained by **2** refs
+> (`refs/heads/fix/pii-national-id-fixtures`, `refs/remotes/origin/fix/pii-national-id-fixtures`). Like
+> `04ff9d0`, it is **not** an ancestor of `origin/main`.
+
+Refs containing the feature-chain commit `83aaa53` (26 — names only):
 
 ```
 refs/heads/docs/daily-closeout-20261015
@@ -113,6 +140,7 @@ refs/heads/feat/slice4-attendance-reports
 refs/heads/feat/slice5-attendance-exports
 refs/heads/feat/slice6-reconciliation
 refs/heads/feat/slice7-annual-hr-report
+refs/heads/fix/id7b-enrichment-outcome-fail-closed
 refs/heads/integration/attendance-sso-hip
 refs/heads/integration/sso-hip-identity
 refs/remotes/origin/docs/daily-closeout-20261015
@@ -124,11 +152,13 @@ refs/remotes/origin/feat/slice3-monthly-summary
 refs/remotes/origin/feat/slice4-attendance-reports
 refs/remotes/origin/feat/slice5-attendance-exports
 refs/remotes/origin/feat/slice6-reconciliation
+refs/remotes/origin/feat/slice7-annual-hr-report
 refs/remotes/origin/integration/attendance-sso-hip
 refs/remotes/origin/phase-d/sso-security-remediation
 ```
 
-Commit counts (reachable commits, **VERIFIED**): all refs **151** · `origin/main` **83** · `HEAD` (`feat/slice7-annual-hr-report`) **133** · `origin/main..HEAD` **50**.
+Commit counts (reachable commits, **VERIFIED**): all refs **153** · `origin/main` **83** · `HEAD`
+(`fix/id7b-enrichment-outcome-fail-closed`) **135** · `origin/main..HEAD` **52**.
 
 On the default branch, exactly **1 commit** touches `backend/tests/employeeIdentity.test.js` (`3244553`), so the
 value entered public `main` in a single commit and was never removed there. **VERIFIED.**
@@ -172,6 +202,33 @@ lawful basis (owner + privacy officer) — linked to **G7** in `docs/IDENTITY_MA
 the repo's Insights/Network; (b) a secret/PII scanning provider with history coverage; (c) an explicit statement
 from each collaborator about historic clones. None of these is available from this workspace.
 
+### 4.1 Risk / impact — KNOWN vs UNKNOWN, in one place
+
+**KNOWN (VERIFIED — observed by commands run for this document):**
+
+* The value is **checksum-valid** and **byte-identical to a real MJU-Person-API `citizenID`** — assessed as a
+  real person's identifier (a coincidental match is ≈ 1 in 10¹³).
+* It is present on the **public default branch** `origin/main` (tip `3244553`, since **2026-10-02**; 2 occurrences
+  in `backend/tests/employeeIdentity.test.js`), and in the history of **35 of 60** local refs.
+* The **working tree is redacted** and a canonicalising CI guard exists, so the *tip* of redacted branches is clean.
+* No name, address, e-mail, photo or attendance record accompanied the value.
+* The person is **not** one of RAE's 50 in-scope employees.
+
+**UNKNOWN (cannot be determined from this workspace — do not assume either way):**
+
+| Gap | Why it is unknown | Specific action that would resolve it |
+|---|---|---|
+| Whether anyone **cloned / forked / scraped** the repo since 2026-10-02 | no telemetry in this workspace | **GitHub Insights → Network / Forks** (owner-visible); a code/PII scanning vendor with history coverage |
+| Whether anyone **retrieved** the value | no access logs exist here | the same telemetry, plus explicit collaborator statements |
+| Whether **GitHub retains the blob** after a rewrite (`refs/pull/*`, caches, API blobs) | GitHub-internal | GitHub documentation/support; a post-rewrite re-mirror + explicit probe of `refs/pull/*` |
+| Whether the value sits in **other repositories or agent stores** on this machine / account | out of scope for a read-only git review; broadly searching for a 13-digit value risks re-exposing it | a masked, canonicalising scanner run under controlled conditions, reporting **counts only** |
+| The person's **identity beyond the id**, and the exact legal characterisation | not derivable from this workspace / not an engineering question | MJU-side records; privacy officer / legal counsel |
+
+**Impact framing:** this is a **direct identifier of a real individual, exposed in a public repository and its
+public history, ongoing.** That is the whole of what R3 addresses. The *magnitude* of the harm depends on the
+UNKNOWNs above — which is exactly why the notification states what we know and what we do not (see
+`PRIVACY_NOTIFICATION_DRAFT.md`).
+
 ---
 
 ## 5. Legal and regulatory frame — REQUIRES HUMAN / LEGAL CONFIRMATION
@@ -211,11 +268,12 @@ The internal rules that were breached (a fact, not a legal conclusion) — **VER
 
 | Item | State | Evidence / label |
 |---|---|---|
-| **R2 — committed literals replaced** across 6 files / 28 occurrences (incl. dashed, Thai, full-width) | **DONE** | **REPORTED**; **VERIFIED** by this review: at `HEAD` (`feat/slice7-annual-hr-report`) the affected files contain **0** checksum-valid literals |
+| **R2 — committed literals replaced** across 6 files / 28 occurrences (incl. dashed, Thai, full-width) | **DONE** | **REPORTED**; **VERIFIED** by this review: at the reviewed branch tip the affected files contain **0** checksum-valid literals |
 | **R2 — the one file needing a valid checksum now derives it at runtime** | **DONE** | REPORTED |
 | **R4 — CI guard** `backend/tests/nationalIdFixtureHygiene.test.js` that fails on any checksum-valid committed literal, canonicalizing first | **DONE** | EXISTS on this branch; **VERIFIED** (read) |
 | **R5 — repo-wide sweep** of `backend/src`, `backend/tests`, `scripts`, `docs`, `agent` → 0 checksum-valid literals | **DONE** | REPORTED |
-| Redaction **committed** (`04ff9d0`) | **DONE**, but only on **5 of 58 refs** | **VERIFIED** (this review) |
+| Redaction **committed** (`04ff9d0`, and `850e3fc` on a second branch) | **DONE on feature branches only**, but only on **7 of 60** refs (`04ff9d0`) | **VERIFIED** (this review) |
+| **A redaction on `main`'s line** | **DOES NOT EXIST** — neither redaction commit is an ancestor of `origin/main` | **VERIFIED** (this review) |
 | **R3 — history rewrite + force push** | **NOT DONE — deliberately** | **VERIFIED**: the value is present in `origin/main` history |
 | **R1 — privacy-officer review / notification decision** | **NOT DONE** | REPORTED; see `PRIVACY_NOTIFICATION_DRAFT.md` |
 | The value on the **public default branch** | **STILL EXPOSED** | **VERIFIED** |

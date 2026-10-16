@@ -3,6 +3,8 @@
 **Status:** `DESIGN — PROPOSED, NOT APPROVED`. **Nothing executed.**
 **Date:** 2026-10-16 · **Companion:** [`../IDENTITY_EVIDENCE_MODEL.md`](../IDENTITY_EVIDENCE_MODEL.md),
 [`IDENTITY_EVIDENCE_TEST_PLAN.md`](IDENTITY_EVIDENCE_TEST_PLAN.md), [`../adr/ADR-011-identity-evidence-storage.md`](../adr/ADR-011-identity-evidence-storage.md)
+**Revised 2026-10-16:** added **T9** — the "control asserted but inoperative on the real store" class
+(contract F3/F4), with the fixture/MariaDB divergence as the worked example.
 
 **Labels.** **VERIFIED** = the behaviour was read in this repository's code or schema today (a file is cited).
 **ASSESSED** = reasoned from the design; not observed running. A threat whose mitigation rests on an
@@ -26,6 +28,7 @@ elsewhere).
 | T6 | Revocation arriving too late | **Known gap, not closed** — stateless access token + refresh not re-checked |
 | T7 | Evidence outliving employment | **Unmitigated** — no retention mechanism exists |
 | T8 | Baseline: the CURRENT unverifiable boolean | **Confirmed present today** (VERIFIED); this design is the mitigation |
+| T9 | **A control asserted but INOPERATIVE on the real store** (fixture/MariaDB divergence) | **Confirmed present today** (VERIFIED, `enrichment_outcome`). Mitigated by a fail-closed stop-gap + the `025` durable fix; **caught only by a real-store test** |
 
 ---
 
@@ -105,12 +108,24 @@ elsewhere).
 
 | Field | Detail |
 |---|---|
-| **Threat / defect** | Today an APPROVED link can be created by any caller that sets `evidence: { nationalIdLookupMatched: true }`; the declaration is never stored, so it cannot be re-checked. `approvedBy: 'system:sso'` and `source` describe the actor and a claimed method, not the matched value. |
-| **Evidence** | **VERIFIED** — `identityResolutionService.js:296-301` (the check), `:329-340` (the approved insert), and the file's own comment at `:288-295` ("this assertion is NOT independently verifiable here … the durable fix is a dedicated evidence column … still open (S-02)"). |
+| **Threat / defect** | Today an APPROVED link can be created by any caller that sets `evidence: { nationalIdLookupMatched: true }` — the ID-6 subject guard and the ID-7 source allowlist restrict *what* the caller may write, but not the declaration itself; the declaration is never stored, so it cannot be re-checked. `approvedBy: 'system:sso'` and `source` describe the actor and a claimed method, not the matched value. |
+| **Evidence** | **VERIFIED** — `identityResolutionService.js:295-301` (the check), `:329-340` (the approved insert), and the file's own comment at `:288-294` ("this assertion is NOT independently verifiable here … the durable fix is a dedicated evidence column … still open (S-02)"). |
 | **Mitigation in this design** | Store the keyed digest + key version + algorithm/domain on an append-only evidence row and verify it by equality against the employee's own `national_id` row (§3 of the model). |
 | **Residual risk** | The mitigation is only real once 025 is applied **and** the runtime writes the digest at the point of lookup — both are out of scope for this design track. Until then the gap is open. |
 | **Detectable by a test?** | **Yes** — the baseline assertion is "a link approved with only a declared flag has no verifiable evidence", which must flip to "verified" only when a matching digest is present. |
 | **Label** | **VERIFIED**. |
+
+### T9 — The control is asserted but INOPERATIVE on the real store (the fixture/MariaDB divergence class)
+
+| Field | Detail |
+|---|---|
+| **Threat / defect class** | A guard that is described and **tested as working, but does nothing on the store the product uses**, because the fixture repository and the MariaDB repository disagree about what a row even contains. This is a **general** defect class the repository now records as a standing lesson (NEXT_ACTIONS standing rule 6; session summary §4). `enrichment_outcome` — contract finding **F3** — is the worked example. |
+| **Worked example (VERIFIED)** | `enrichmentBlocksApproval` refuses approval for a blocked enrichment outcome. But `enrichment_outcome` has **never been a column** in any of the 24 migrations: the MariaDB repository hardcodes `enrichmentOutcome: null` (`mariadb/identityLinkMariaDbRepository.js:37`) while the fixture twin persists it (`enrichmentOutcome: input.enrichmentOutcome ?? null`). So the outcome half of the guard **never fired in production** and passed in every local test — including the ID-7 mutation test that "killed" it, because that ran against the **fixture** repository (contract finding **F4**). |
+| **Why this is a threat, not just a bug** | The control was *trusted*. An enrichment link with a blocked outcome but `confidence` of `high`/`medium` was **approvable on MariaDB**. Unlike a missing feature, an inert assertion is invisible: nothing failed, so no reviewer had a reason to look. The same shape threatens **this** design — the unique keys, CHECKs, drift query and verification join below are all asserted; each must be **proved on MariaDB**, not on a fixture twin. A test that passes because it ran against a more capable fake is worse than no test, because it buys confidence it has not earned. |
+| **Mitigation (state today)** | Two layers. (1) **Shipped stop-gap (ID-7b):** `enrichmentBlocksApproval` now uses a frozen `ALLOWED_ENRICHMENT_OUTCOMES` allowlist and **fails closed on an absent outcome** (`domain/identityLink.js:93,225-241`), so the value MariaDB cannot return now **blocks** instead of passing silently. (2) **Durable fix (`025`, proposed):** `enrichment_outcome` becomes a real persisted column on **both** twins (model §5.3), after which the guard is the allowlist check alone. |
+| **Residual risk** | The stop-gap is deliberately blunt: **until `025` lands, no enrichment-source link is approvable at all on MariaDB.** That is the correct posture — never approve on a value the store cannot return — but it is a real functional consequence, recorded rather than hidden (ADR-011 §4.2, model §5.3.3). The *class* risk remains for anything else asserted only against fixtures; the mitigation is the real-twin test below, not a fixture test. |
+| **Detectable by a test?** | **Yes — and only by a real-store test.** `backend/tests/identityLinkEnrichment.mariadb.test.js` runs against the **MariaDB repository** and asserts (a) the divergence is real — a written allowed outcome reads back `null`; (b) approval is refused `403 IDENTITY_REVIEW_REQUIRED`; (c) a legitimate non-enrichment flow is untouched; and (d) `enrichment_outcome` is absent, so the test **fails by design** the moment `025` lands. It is skipped off-MariaDB and **says so** rather than reporting a false pass. A fixture test **cannot** catch this class (test-plan rule R4). |
+| **Label** | **VERIFIED** (found by the ID-6b track, independently reproduced; the shipped guard, its MariaDB test and the twin divergence were all read today). |
 
 ---
 
@@ -148,3 +163,8 @@ boolean is outside the digest path entirely, which is what makes T2 a non-threat
 * It does **not** claim retention is handled (T7).
 * It does **not** claim any of this is active: the SQL lives in `database/proposals/` and is **not in the
   migration ledger** and **not applied**.
+* It does **not** claim a fixture test proves a control (T9). Standing rule: a mutation test proves a guard
+  bites **on the repository it runs against**, not on the repository the product uses. Every constraint in
+  this design is therefore marked **DB-ONLY** in the test plan and must be proved against MariaDB.
+* It does **not** claim the shipped ID-7b guard is the fix — it is the **stop-gap**. It makes the failure
+  closed while the outcome is unreadable; `025` (§5.3 of the model) is the durable fix.

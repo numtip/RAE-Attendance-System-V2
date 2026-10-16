@@ -23,7 +23,7 @@ exposure changes that. **A private repo does not** (§4).
 
 | # | Constraint | Why | Label |
 |---|---|---|---|
-| C1 | **The 5+ stacked Draft PRs (#41–#45) must survive or their loss must be accepted in writing** | They are the Slice 4–7 work in review; #41 is this effort's home branch lineage | REPORTED (stack in `PROJECT_STATE.md`) |
+| C1 | **The six stacked Draft PRs (#41–#46) must survive or their loss must be accepted in writing** | They are the Slice 4–7 work in review; #41 is this effort's home branch lineage | REPORTED (stack in `PROJECT_STATE.md`) |
 | C2 | **Preserve `stash@{0}` and `stash@{1}`** | Standing rule in `AGENTS.md`; `stash@{0}` is the pre-integration `main` WIP | VERIFIED (both present) |
 | C3 | **Preserve `G:\ProjectAI\_backups\main-uncommitted-20261009`** | Standing rule; it is outside the repository, so a repo-local rewrite leaves it alone | VERIFIED (present) |
 | C4 | **No force-push, no history rewrite, no merge without explicit owner approval** | `AGENTS.md` | VERIFIED |
@@ -39,7 +39,7 @@ exposure changes that. **A private repo does not** (§4).
 ## 2. Options matrix
 
 Legend for the rows below: **removes** = what ceases to be reachable · **leaves behind** = what stays
-reachable anyway · **PRs** = effect on #41–#45 · **force-push** = does it require one · **re-clone** = must
+reachable anyway · **PRs** = effect on #41–#46 · **force-push** = does it require one · **re-clone** = must
 every collaborator discard their clone · **rollback** = can it be undone · **failure modes** = how it goes
 wrong.
 
@@ -48,10 +48,11 @@ wrong.
 | | (a) Do nothing + document | (b) `git filter-repo` (fresh clone) | (c) `git filter-branch` | (d) BFG | (e) Rotate repository | (f) Make repo private |
 |---|---|---|---|---|---|---|
 | **Removes the value from public history?** | **No** | **Yes, if all refs are rewritten and pushed** | Yes, slowly, with care | Yes, if all refs are handled | Yes — old repo archived/deleted | **No** |
+| **Residue it does NOT remove** | everything | existing **clones / forks / scrapes**, **`refs/pull/*`**, **GitHub retention & caches**, plus reflog + unreferenced objects in *old* clones (until `gc`/expire) | same as (b) **plus** `refs/original/*` **and** the old objects it backs up | same as (b) | everything already cloned/forked from the **old** repo; its `refs/pull/*` | everything — no un-exposure at all |
 | **Force-push required?** | No | **Yes** | **Yes** | **Yes** | No (new repo) | No |
 | **Collaborators must re-clone?** | No | **Yes** (recommended) | **Yes** | **Yes** | **Yes** (change remote) | No |
 | **Touches this workspace / stashes / backups?** | No | **No** (fresh clone) | **Risk — in-place by default** | **No** (fresh clone) | No | No |
-| **Disruption to PRs #41–#45** | None | **Total loss / re-open required** | **Total loss / re-open required** | **Total loss / re-open required** | **Total for old repo PRs** | None |
+| **Disruption to PRs #41–#46** | None | **Total loss / re-open required** | **Total loss / re-open required** | **Total loss / re-open required** | **Total for old repo PRs** | None |
 | **Rollback** | N/A | Only from the mirror backup | Only from backup | Only from backup | Easy (keep old repo) | Trivial (make public again — but re-exposes) |
 | **Effort / risk** | none / **exposure continues** | medium / **high blast radius** | high / fragile | medium / high blast radius | medium / high (loses PR history) | low / **misleading** |
 
@@ -64,8 +65,8 @@ wrong.
 | Aspect | Assessment |
 |---|---|
 | **Removes** | Nothing. The value stays public and reachable. |
-| **Leaves behind** | Everything. |
-| **PRs #41–#45** | No effect. |
+| **Leaves behind** | Everything: the value stays in `origin/main` history (tip `3244553`, since 2026-10-02) and in the history of **35 of 60** local refs; existing **clones / forks / scrapes**, **`refs/pull/*`**, **GitHub retention & caches** and every local **reflog / unreferenced object** are all untouched. Nothing about the exposure changes. |
+| **PRs #41–#46** | No effect. |
 | **Force-push** | No. |
 | **Re-clone** | No. |
 | **Rollback** | N/A. |
@@ -83,7 +84,7 @@ elsewhere, run the rewrite there, and force-push the result.
 |---|---|
 | **Removes** | The blob from the rewritten refs — **provided every ref is rewritten** (`--all`, plus explicit handling of tags and non-branch refs). The value is replaced/removed in all rewritten history. |
 | **Leaves behind** | • **`refs/pull/*` on GitHub — UNKNOWN** whether a rewrite of branch refs removes the value's reachability through pull-request refs; this must be **verified after** the rewrite, not assumed. • **Existing clones/forks/scrapes — UNKNOWN, assume reachable.** • **GitHub-side caches/retention — UNKNOWN, depends on GitHub internals** (documentation/support would resolve it). • **Local reflogs and unreachable objects** in *your own* existing clone, until they expire — the rewrite must be done in a fresh mirror, not here. |
-| **PRs #41–#45** | **Total loss of the stacked reviews unless they are re-created.** Rewriting shared bases rewrites every commit in the stack, so each PR's commits change identity (SHA), inline review comments attach to gone commits, and GitHub may auto-close PRs whose base was rewritten. The stacked chain `#41 → #40 → #39 → #37 → #36 → …` means rewriting `main` (or the lowest shared branch) rewrites **all** of them. Accepted-in-writing or re-created-then-retargeted is required. |
+| **PRs #41–#46** | **Total loss of the stacked reviews unless they are re-created.** Rewriting shared bases rewrites every commit in the stack, so each PR's commits change identity (SHA), inline review comments attach to gone commits, and GitHub may auto-close PRs whose base was rewritten. The stacked chain `#41 → #40 → #39 → #37 → #36 → …` means rewriting `main` (or the lowest shared branch) rewrites **all** of them. Accepted-in-writing or re-created-then-retargeted is required. |
 | **Force-push** | **Yes**, to every rewritten ref, including the protected default branch. Branch protection may block it; a temporary, logged exception (or an admin) is required. |
 | **Re-clone** | **Yes, effectively.** Anyone with an old clone can push the old history back and re-introduce the value. Every collaborator must fetch-and-reset or re-clone, and be told not to push old history. |
 | **Rollback** | Only from the verified mirror backup (see the runbook's pre-flight). Feasible **before** the old refs are pruned/expired; degraded afterwards. |
@@ -100,7 +101,7 @@ The older, built-in rewrite tool.
 |---|---|
 | **Removes** | Same intent as (b): rewrites selected refs and drops the blob. |
 | **Leaves behind** | Same as (b), **and** the tool writes its own backup refs (`refs/original/*`) which **still contain the old objects** unless explicitly removed — an easy way to leave the value reachable locally. |
-| **PRs #41–#45** | Same total loss as (b). |
+| **PRs #41–#46** | Same total loss as (b). |
 | **Force-push** | **Yes.** |
 | **Re-clone** | **Yes** (same reasoning as b). |
 | **Rollback** | From `refs/original/*` **or** the mirror backup. |
@@ -117,7 +118,7 @@ A purpose-built "remove this string/blob from history" tool (JVM), typically run
 |---|---|
 | **Removes** | A named blob or a set of lines matching a supplied file/pattern across all refs it is pointed at. |
 | **Leaves behind** | Same as (b). BFG also rewrites all commit SHAs (it is not selective), so the PR-stack consequence is the same. |
-| **PRs #41–#45** | Same total loss as (b). |
+| **PRs #41–#46** | Same total loss as (b). |
 | **Force-push** | **Yes.** |
 | **Re-clone** | **Yes.** |
 | **Rollback** | From the mirror backup (which must be taken first). |
@@ -134,8 +135,8 @@ archive or delete the old public repository.
 | Aspect | Assessment |
 |---|---|
 | **Removes** | Nothing from the **old** repository while it exists. If the old repository is **deleted**, its history goes with it — but everything already cloned/forked/scraped persists. |
-| **Leaves behind** | • Everything already cloned/forked by others — **UNKNOWN, assume reachable**. • The old repository for as long as it exists (archive keeps it readable). • Any external references (badges, links, docs) pointing at the old URL. |
-| **PRs #41–#45** | The open PRs live in the **old** repository. They do **not** move. They must be re-created against the new repository (with new PR numbers) or lost. The stack's review comments do not transfer. |
+| **Leaves behind** | • Everything already cloned/forked/scraped by others from the **old** repo — **UNKNOWN, assume reachable**. • The old repository's **`refs/pull/*`** and history for as long as it exists (archive keeps it readable; only a hard **delete** removes it from GitHub). • GitHub-side **caches/retention** of the old repo — **UNKNOWN**. • Any external references (badges, links, docs) pointing at the old URL. |
+| **PRs #41–#46** | The open PRs live in the **old** repository. They do **not** move. They must be re-created against the new repository (with new PR numbers) or lost. The stack's review comments do not transfer. |
 | **Force-push** | No. |
 | **Re-clone** | **Yes** — everyone must switch to the new remote. |
 | **Rollback** | Easy — the old repository is retained. |
@@ -149,8 +150,8 @@ archive or delete the old public repository.
 | Aspect | Assessment |
 |---|---|
 | **Removes** | **Nothing.** It stops *future* public readers. The existing public history is exactly the thing that was exposed, and it is not retracted by a visibility change. |
-| **Leaves behind** | Everything already cloned, forked, scraped, indexed or cached by third parties — **UNKNOWN, assume reachable**. Also, GitHub's own forks of a public repo become independent objects. |
-| **PRs #41–#45** | A visibility change is **disruptive to the whole Draft stack** for other reasons (e.g. this project's own tooling/clones, and reviewer access), but it does **not** remove the value. |
+| **Leaves behind** | Everything already cloned, forked, scraped, indexed or cached by third parties — **UNKNOWN, assume reachable**. Also, GitHub's own forks of a public repo become independent objects, and the value's blob in **`refs/pull/*`** and in any local clone's **reflog / unreferenced objects** is entirely unaffected. |
+| **PRs #41–#46** | A visibility change is **disruptive to the whole Draft stack** for other reasons (e.g. this project's own tooling/clones, and reviewer access), but it does **not** remove the value. |
 | **Force-push** | No. |
 | **Re-clone** | No. |
 | **Rollback** | Trivial to revert — but reverting **re-exposes** the value, so it is not a real rollback of anything. |
@@ -159,11 +160,30 @@ archive or delete the old public repository.
 
 ---
 
+### 2.3 Residue taxonomy — the six places the value can survive
+
+Every option in §2.2 is judged against the same residue list. "Removes" is only ever true **per location**:
+
+| Residue location | What it is | Which options can clear it |
+|---|---|---|
+| **`origin/main` history** | the blob reachable through the default branch (tip `3244553`) | only (b)/(c)/(d) with `main` in the rewritten ref set, or (e) by **deleting** the old repo |
+| **Other branch refs** | 35 of 60 local refs carry `3244553` in their history | (b)/(c)/(d); (e) by deleting the old repo |
+| **`refs/pull/*` on GitHub** | pull-request refs may keep the blob reachable even after branch refs are rewritten — **UNKNOWN, must be verified** | verify *after* (b)/(c)/(d); (e) removes them with the old repo |
+| **Existing clones / forks / scrapes** | held by third parties since 2026-10-02 — **UNKNOWN, assume reachable** | **none** of (a)–(f) can retract these |
+| **GitHub retention / caches / API blobs** | GitHub-internal retention of the old object — **UNKNOWN** | **none** directly; documentation/support + post-rewrite verification |
+| **Local reflog / unreferenced objects** | an in-place rewrite leaves the old blob reachable until `gc`/expire | avoided by running the rewrite in a **fresh mirror** (b)/(d); a hazard for in-place (c) |
+
+**Reading the matrix with this table:** option (b) clears rows 1–2 (and, if verified, row 3) but leaves rows
+4–6 untouched by construction. **No option clears row 4 at all** — which is why the incident cannot be "closed"
+by a rewrite alone.
+
+---
+
 ## 3. Constraints, examined explicitly
 
 | Constraint | How each option interacts with it |
 |---|---|
-| **Stacked Draft PRs #41–#45** (REPORTED) | (a), (f): unaffected but leave the leak. (e): the old-repo PRs die with the repo. **(b), (c), (d): every PR in the stack is rewritten; expect auto-closure and loss of inline review threads.** Budget for re-creating and re-targeting the stack, or obtain a written "we accept losing them" from the owner. |
+| **Stacked Draft PRs #41–#46** (REPORTED) | (a), (f): unaffected but leave the leak. (e): the old-repo PRs die with the repo. **(b), (c), (d): every PR in the stack is rewritten; expect auto-closure and loss of inline review threads.** Budget for re-creating and re-targeting the stack, or obtain a written "we accept losing them" from the owner. |
 | **`stash@{0}`, `stash@{1}`** (VERIFIED present) | (a), (e), (f): untouched. **(b), (d): untouched *if the rewrite is done in a fresh mirror clone* → the correct procedure.** (c): **dangerous** — `filter-branch` runs in the current repository by default and can disturb local refs including stashes. |
 | **`G:\ProjectAI\_backups\main-uncommitted-20261009`** (VERIFIED present) | Outside the repository: **no git operation touches it.** It must remain the pre-rewrite safety copy of the *uncommitted WIP*, not of the repository history. |
 | **Protected default branch** | (b)/(c)/(d) require a **force-push to `main`**, which branch protection may block; a logged, temporary exception is needed. |

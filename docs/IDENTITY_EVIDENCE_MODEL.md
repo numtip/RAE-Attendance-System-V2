@@ -2,7 +2,10 @@
 
 **Status:** `DESIGN — PROPOSED, NOT APPROVED`. **Nothing here is executed, applied or wired.**
 **Date:** 2026-10-16 · **Track:** ID-6b / S-02 · **Migration:** `database/proposals/025_identity_evidence.*.sql` (proposal only)
-**Companions:** [`IDENTITY_MAPPING_CONTRACT.md`](IDENTITY_MAPPING_CONTRACT.md) (G1b), [`IDENTITY_INTEGRATION_AUDIT.md`](IDENTITY_INTEGRATION_AUDIT.md) (F3),
+**Revised 2026-10-16 (Track B review):** reconciled with the shipped **ID-7b fail-closed enrichment guard**
+and the ID-6 / ID-7 hardening — see §1.1 for what landed and §5.3 for how `025` stays the durable fix.
+**Companions:** [`IDENTITY_MAPPING_CONTRACT.md`](IDENTITY_MAPPING_CONTRACT.md) (G1b; findings **F3/F4** — the inert outcome guard),
+[`IDENTITY_INTEGRATION_AUDIT.md`](IDENTITY_INTEGRATION_AUDIT.md) (the enrichment-source audit),
 [`adr/ADR-011-identity-evidence-storage.md`](adr/ADR-011-identity-evidence-storage.md),
 [`security/IDENTITY_EVIDENCE_THREAT_MODEL.md`](security/IDENTITY_EVIDENCE_THREAT_MODEL.md),
 [`security/IDENTITY_EVIDENCE_TEST_PLAN.md`](security/IDENTITY_EVIDENCE_TEST_PLAN.md).
@@ -19,10 +22,10 @@ The SSO first-login path creates an **APPROVED** link with `approvedBy: 'system:
 `identityResolutionService.js:329-340`) and refuses to do so unless the caller **declares**
 
 ```js
-evidence: { nationalIdLookupMatched: true }   // ssoIdentityResolutionService.js:164-166
+evidence: { nationalIdLookupMatched: true }   // ssoIdentityResolutionService.js:162-165
 ```
 
-The service's own comment states the honest limitation (**VERIFIED**, `identityResolutionService.js:288-295`):
+The service's own comment states the honest limitation (**VERIFIED**, `identityResolutionService.js:288-294`):
 the assertion is a **contract check, not a proof**. The HMAC lookup happens in another layer
 (`employeeIdentity.resolve('national_id', …)`), the link layer holds no raw identifier, and **the declaration
 is not stored**. After the fact, a reviewer has:
@@ -30,7 +33,7 @@ is not stored**. After the fact, a reviewer has:
 | Today's trace | Enough to verify the claim? |
 |---|---|
 | `approved_by = 'system:sso'` | No — names the actor, not the evidence |
-| `source = 'sso_national_id_resolution'` | No — a label the same caller supplies |
+| `source = 'sso_national_id_resolution'` | No — a label the caller supplies. It is now constrained to the frozen `IDENTITY_LINK_SOURCES` allowlist (hardening **ID-7**) and an unknown source is refused at creation, so it is no longer *arbitrary*; but it is still *chosen by the caller*, so it names a claimed method, not the matched value |
 | `subject_type` | No — describes the subject's shape, not the lookup |
 | the `sso_provider_link` audit event | No — records that a link happened, not what was matched |
 
@@ -41,6 +44,19 @@ So the boolean is **unverifiable after the fact** (audit finding class relevant 
 
 **Design rule, stated once:** *a reviewable fact must be re-derivable from stored data, never re-asserted by
 the code that consumed it.*
+
+### 1.1 What the ID-6 / ID-7 hardening already changed (and what it did not)
+
+Two hardening passes landed on this branch **before** this design, and this document reflects them:
+
+| Hardening | What it now does (**VERIFIED** in the code today) | What it does **not** do |
+|---|---|---|
+| **ID-6** (finding F1) | The e-mail-shaped / callback-`ac` / malformed / oversized subject guard is defined **once** in `domain/identityLink.js` (`rejectionCodeForProviderSubject`) and called by **both** creation paths — so `createCandidate` **does** guard e-mail-shaped subjects now, and an earlier draft that said it did not is obsolete | It does not make the *subject* verified identity proof, and it does not touch the declared-lookup boolean |
+| **ID-7** (finding F2) | `IDENTITY_LINK_SOURCES` is a **frozen allowlist**; an unknown `source` is refused at creation (`400 IDENTITY_SOURCE_UNKNOWN`) on both paths, so provenance cannot be asserted into existence | It does not make the stored `source` *evidence* of the lookup — see the table above |
+| **ID-7b** (findings **F3/F4**) | `enrichmentBlocksApproval` now fails **closed** on an absent/unknown enrichment outcome (a frozen `ALLOWED_ENRICHMENT_OUTCOMES` allowlist), so the half of the ambiguity guard that was inert on MariaDB now bites | It is a **stop-gap**: it makes enrichment links unapprovable until the outcome can be *read from the store*. The durable fix is migration `025` — §5.3 |
+
+The declared-lookup boolean is untouched by all three: it is still a **contract check, not a proof**, and
+that is exactly what this design exists to replace.
 
 ---
 
@@ -69,11 +85,34 @@ nullability are reproduced exactly as proposed in the migration:
 | (f) | approving actor | `approving_actor` | `VARCHAR(128) NOT NULL` | **no** | Who/what performed the transition to the state this evidence supports (`system:sso` or a human id) |
 | (f) | why | `approval_reason` | `VARCHAR(255) NOT NULL` | **no** | A short, non-PII reason token (audit-text rules apply: no 10+ digit runs) |
 | — | screening outcome | `checksum_valid` | `TINYINT(1) NOT NULL DEFAULT 0` | no | **Recorded, never trusted.** See §3 — this is the flag that replaces today's trust-me boolean |
+| (ID-7b) | enrichment outcome | `enrichment_outcome` | `ENUM('found','ambiguous','not_found','timeout','api_error','fallback','firstname_only') NULL DEFAULT NULL` | **yes** | §5.3. The append-only record of what an `enrichment_corroboration` row's enrichment returned. `NULL` = no outcome recorded, which is **not** `found` and must never be read as success. A `CHECK` requires it exactly when `evidence_type='enrichment_corroboration'` |
 | (proof) | keyed digest | `lookup_digest` | `VARCHAR(64) NULL DEFAULT NULL` | **yes** | Lowercase hex HMAC-SHA-256. NULLable because only `sso_national_id_lookup` evidence carries one; a `CHECK` enforces that it is NOT NULL exactly when the type demands it |
 | (proof) | key version | `lookup_key_version` | `SMALLINT UNSIGNED NULL DEFAULT NULL` | **yes** | Which HMAC key produced the digest, mirroring `employee_identifier.lookup_key_version` |
 | (proof) | algorithm | `digest_algorithm` | `VARCHAR(16) NULL DEFAULT NULL` | **yes** | e.g. `hmac-sha256`. Recorded so a future algorithm change cannot silently compare unequal things |
 | (proof) | domain | `lookup_domain` | `VARCHAR(64) NULL DEFAULT NULL` | **yes** | The `LOOKUP_DOMAIN` constant (`rae-attendance-v2:identifier-lookup:v1`, **VERIFIED** in `nationalIdContract.js:25`). Separates the lookup digest from any other HMAC use of the same key |
 | — | row creation | `created_at` | `DATETIME NOT NULL` | no | Append-only: there is deliberately **no `updated_at`** — a mutable evidence row is not evidence |
+
+> **Appendix A parity note — RESOLVED 2026-10-16 by the orchestrator.** The two `enrichment_outcome` columns
+> required by ID-7b (§5.3, and the row above) have been **merged into the embedded DDL in Appendix A of this
+> file**: `employee_identity_evidence.enrichment_outcome` (the append-only authority, with a `CHECK` requiring
+> it exactly when `evidence_type = 'enrichment_corroboration'`) and
+> `employee_identity_links.enrichment_outcome` (the guard-read mirror, added by its own guarded
+> prepared-statement block). The appendix and §2/§5.3 now agree.
+>
+> Two defects were found and fixed **while** merging, and they are recorded because neither was visible to
+> structural linting:
+>
+> 1. The merge itself first produced **malformed SQL** — a comment and a whole statement spliced inside an
+>    `IF(...)` expression, truncating it and leaving an orphaned statement. Repaired into two separately
+>    guarded blocks (one per column), which is also more correct: each column needs its own existence check to
+>    stay idempotent when only one was applied.
+> 2. The first guarded block in the **down** proposal checked `COLUMN_NAME = 'evidence_type'` but **dropped**
+>    `enrichment_outcome`. Executed as written it would try to drop a non-existent column (or skip a real one)
+>    depending on partial-apply state. Each guard now names the column it actually drops, verified by a
+>    pairing check rather than by reading alone.
+>
+> The SQL is **structurally** verified (balanced `PREPARE`/`EXECUTE`/`DEALLOCATE`, no truncation, guards
+> paired to their columns). It has **not been executed** — 025 remains a proposal outside the ledger.
 
 **What is NOT a column, on purpose:** no raw citizen ID, ever (ADR-004, migration `015`'s digest pattern); no
 `lookup_hmac` duplicate of the employee's own row (that lives in `employee_identifier`); no `approved_by`
@@ -182,8 +221,8 @@ see ADR-011 alternatives). Expiry is an **evaluated property** (§4.3), not a st
 
 | Transition | Who may perform it | Required evidence | Existing code | Status after |
 |---|---|---|---|---|
-| `∅ → candidate` | operator/admin via `createCandidate`; automated ingestion as candidate-only | `evidence_type ∈ {operator_review, enrichment_corroboration}` **optional** (a candidate is by definition unproven) | `identityResolutionService.createCandidate` (**VERIFIED**) | `candidate` |
-| `candidate → approved` | **human** HR/admin (`approvedBy` required, **VERIFIED** `approve()`) | `evidence_type = 'operator_review'` with `approving_actor` = the human id. A machine-sourced evidence type is not acceptable for a human transition | `approve()` | `approved` |
+| `∅ → candidate` | operator/admin via `createCandidate`; automated ingestion as candidate-only | `evidence_type ∈ {operator_review, enrichment_corroboration}` **optional** (a candidate is by definition unproven). The `source` must be a member of the frozen `IDENTITY_LINK_SOURCES` allowlist and the subject must pass the ID-6 subject guard — both are enforced at creation (**VERIFIED**) | `identityResolutionService.createCandidate` (**VERIFIED**) | `candidate` |
+| `candidate → approved` | **human** HR/admin (`approvedBy` required, **VERIFIED** `approve()`) | `evidence_type = 'operator_review'` with `approving_actor` = the human id. A machine-sourced evidence type is not acceptable for a human transition. If the link's `source` is an **enrichment** source, the outcome must be present **and** allowlisted (§5.3, `enrichmentBlocksApproval`) | `approve()` | `approved` |
 | `∅ → approved` | **system** (`system:sso`), SSO first-login only | `evidence_type = 'sso_national_id_lookup'` **with a non-null `lookup_digest` + `lookup_key_version`**, plus the existing declared-lookup contract check | `linkProviderSubjectFromSsoLogin` (**VERIFIED**) | `approved` |
 | `candidate → rejected` | human HR/admin (`rejectedBy`) | `evidence_type` optional; `approval_reason` required | `reject()` | `rejected` |
 | `approved → revoked` | human HR/admin (`revokedBy`), or system for a mismatch/binding-invalid event | `evidence_type` = the type being invalidated; `approval_reason` = the reason | `revoke()` (**VERIFIED**) | `revoked` |
@@ -234,17 +273,17 @@ must use `wallDateOnly()` (`backend/src/utils/bangkokTime.js`) — never `String
 
 | Existing table | Change | Justification |
 |---|---|---|
-| `employee_identity_links` | **add one nullable column:** `evidence_type` `ENUM(...) NULL` | G1b asks for the evidence TYPE as its own field so a reviewer does not need a join. The authoritative record is the evidence table; this column is an explicitly **denormalised mirror** (invariant I2). It is the **only** change to an existing table. |
+| `employee_identity_links` | **add two nullable columns:** `evidence_type` `ENUM(...) NULL` and `enrichment_outcome` `ENUM(...) NULL` | `evidence_type` (G1b) gives a reviewer the evidence TYPE without a join; `enrichment_outcome` (§5.3, **ID-7b**) is the column the ambiguity guard already reads and that the store has never had. Both are explicitly **denormalised mirrors** of the ledger/invariant, guarded by a single write path. These are the **only** changes to an existing table. |
 | `employee_identifier` | **no change** | The national_id row already holds the comparison target (`id_value` = digest, `lookup_key_version`). Adding a pointer would duplicate a digest that is already there and create a second source of truth. |
 | `identity_providers` | **no change** | Evidence FKs to `id`; the provider is already the tenant of the subject. |
 | `employee_identity_links.approved_by` / `approved_at` / `source` | **no change, no back-fill** | Preserves the interpretability of `system:sso` (§4.2) and avoids rewriting historical rows — a back-fill would *invent* evidence for rows that had none. |
 
-### 5.1 New table **and** new column — why both
+### 5.1 New table **and** new columns — why both
 
 A new column alone cannot express an append-only, multi-type ledger with its own validity window; a new table
-alone cannot give the reviewer the evidence type without a join. So the design uses both, with a single
-source of truth (the table) and one clearly-labelled denormalised mirror (the column), rather than two
-authoritative copies.
+alone cannot give the reviewer the evidence type — or the guard the enrichment outcome — without a join. So
+the design uses both, with a single source of truth (the table) and clearly-labelled denormalised mirrors
+(the columns), rather than duplicate authoritative copies.
 
 **Alternative rejected** (recorded in ADR-011): a mirrored `evidence_id` FK on the link in addition to
 `evidence.link_id`. That is a **circular foreign key** — evidence needs the link, the link needs the evidence
@@ -267,6 +306,105 @@ WHERE l.evidence_type IS NOT NULL
 No DB `CHECK` can span the two tables (MariaDB CHECK constraints are row-local), so invariant I2 is enforced
 at the **single write path** and detected by this query + a test. That limitation is a stated residual risk,
 not a papered-over one.
+
+The second mirror (§5.3's `enrichment_outcome`) is covered by the **same** pattern: the drift query gains an
+arm comparing `l.enrichment_outcome` with the ledger row's `enrichment_outcome`, and the parity test C16
+asserts both mirrors. Two mirrors, one discipline.
+
+### 5.3 Compatibility with the ID-7b fail-closed enrichment guard (findings F3/F4)
+
+**Still a proposal — nothing here is applied, and `025` stays in `database/proposals/`.**
+
+**Context (VERIFIED in the code today).** A sibling track found that `enrichmentBlocksApproval` was
+**half-inert on MariaDB**: `enrichment_outcome` has never been a column, so
+`mariadb/identityLinkMariaDbRepository.js` hardcodes `enrichmentOutcome: null` (`:37`) while the fixture twin
+persists it. The ID-7b fix replaced the blocklist with a frozen **allowlist**:
+
+* `ALLOWED_ENRICHMENT_OUTCOMES = ['found']` (`domain/identityLink.js:93`);
+* `enrichmentBlocksApproval(link)` refuses approval when the source is an enrichment source **and** the
+  outcome is (a) **absent/blank**, (b) **present but not an allowlist member**, or (c) the confidence is
+  `ambiguous`/`low` (`identityLink.js:225-241`).
+
+For the F3 defect that is the remedy: `mapRow` returns `null` for every row on MariaDB, so arm (a) fires and
+the bypass is closed. The cost is stated in the code and here: **until `025` lands, no enrichment-source link
+is approvable at all** on MariaDB. That is the intended posture — approving on a value the store cannot
+return is exactly the defect being fixed.
+
+#### 5.3.1 What `025` must add (the durable fix)
+
+`025` must make the outcome **storable and readable**, so the guard can become "the outcome must be an
+allowed value" rather than "the outcome must exist". Two additions, both part of `025`:
+
+| # | Column | Type | Why |
+|---|---|---|---|
+| 1 | `employee_identity_evidence.enrichment_outcome` | `ENUM(...) NULL` | the **append-only authority**: the outcome an `enrichment_corroboration` row recorded, kept with the rest of the evidence. `NOT NULL` exactly when `evidence_type='enrichment_corroboration'` (a CHECK, same style as the lookup CHECK) |
+| 2 | `employee_identity_links.enrichment_outcome` | `ENUM(...) NULL` | the **guard-readable mirror**, the same pattern as `evidence_type` (invariant I2 extended). The approval path already loads this row, so the guard relaxes without adding a join. This is the column the MariaDB `mapRow`/`insertLink` must learn to persist |
+
+```sql
+-- REQUIRES THE ORCHESTRATOR TO MERGE INTO EMBEDDED APPENDIX A (that block is orchestrator-owned;
+-- the author of this document was instructed not to edit it). Idempotent, information_schema-guarded,
+-- exactly like the existing evidence_type column addition.
+ALTER TABLE employee_identity_links
+  ADD COLUMN enrichment_outcome
+    ENUM('found', 'ambiguous', 'not_found', 'timeout', 'api_error', 'fallback', 'firstname_only')
+    NULL DEFAULT NULL AFTER confidence;
+```
+
+The ENUM is the full vocabulary the enrichment tool can emit; the frozen `ALLOWED_ENRICHMENT_OUTCOMES` in
+code is the **subset that may be approved** (`found`). Keeping the whole vocabulary storable is deliberate —
+a reviewer must be able to see *why* a link is blocked — and an ENUM refuses an eighth, unknown status at the
+DB, so a new outcome cannot slip in without a decision. On the fixture twin there is no ENUM, so an unknown
+value *can* exist there; guard (b) refuses it. The two layers agree.
+
+#### 5.3.2 Order of operations (exact)
+
+1. Ingestion writes the **link first**, carrying `enrichmentOutcome` in the same insert
+   (`createCandidate` → `insertLink`). The ledger row needs `link_id`, so it follows: **link → evidence**,
+   never evidence-then-link.
+2. `mapRow` / `insertLink` / `updateLink` in **both** repositories persist and return `enrichment_outcome` —
+   this is exactly the parity item F3/F4 were about.
+3. `approve(linkId)` loads the link (`findById`) and evaluates `enrichmentBlocksApproval(link)`; the outcome
+   it reads is the **link mirror**. The ledger row is the record, not the read path.
+4. A human approval then writes its own `operator_review` evidence row — a different `evidence_type`, so
+   `uk_identity_evidence_link_type` permits it alongside the `enrichment_corroboration` row (I1).
+
+#### 5.3.3 The transition — no window where an unapprovable link becomes approvable without new evidence
+
+| Moment | Link whose outcome was `ambiguous` | Link whose outcome was never recorded |
+|---|---|---|
+| **Today** (guard shipped, column absent) | `mapRow` returns `null` ⇒ **blocked** | `null` ⇒ **blocked** |
+| **`025` applied, runtime unchanged** | column exists but `mapRow` still returns `null` ⇒ **still blocked** | **still blocked** |
+| **`025` applied + runtime persists the outcome** | `ambiguous` stored ⇒ guard (b) ⇒ **still blocked** | `NULL` (no back-fill) ⇒ guard (a) ⇒ **still blocked** |
+| **The only path to approvable** | — | an explicit allowlisted value (`found`) written by the enrichment path ⇒ **new evidence** |
+
+The rule that makes this hold: **`025` performs no back-fill.** Pre-existing rows keep
+`enrichment_outcome = NULL`, which means "we could not establish a clean match", never "inferred as found".
+Failing closed is the default *because `NULL` is not an allowlist member*. It is the same no-back-fill
+stance as §5's `approved_by` and §9's `evidence_type`.
+
+#### 5.3.4 Is "presence required" consistent with "must be an allowed value"?
+
+Yes — they are the **same check**, not competing ones. `null`/`''` is not a member of
+`ALLOWED_ENRICHMENT_OUTCOMES`, so guard (a) is a strict special case of guard (b). Nothing can pass (b) while
+failing (a), and no value is lost by relaxing the wording.
+
+Consequence worth stating plainly: **the relaxation is automatic once the value can be read — no guard change
+is needed.** What must change is the *data path*: add the column and persist it in both twins. If `025` added
+the column but `mapRow` were left hardcoding `null`, the guard would block **forever** — a functional
+failure, and the same twin-divergence class as F3. That is why the parity test in the test plan is not
+optional.
+
+One part of the guard is deliberately **kept**: check (c), `confidence ∈ {ambiguous, low}`, stays even when
+the outcome is `found`. A `found`/`low` pair is contradictory evidence and must be reviewed, not approved.
+
+#### 5.3.5 What the shipped ID-7b test requires of this transition
+
+`backend/tests/identityLinkEnrichment.mariadb.test.js` deliberately **pins the divergence** today: it asserts
+that a link written with `enrichmentOutcome: 'found'` reads back as `null`, that approval is refused
+`403 IDENTITY_REVIEW_REQUIRED`, and that `employee_identity_links.enrichment_outcome` does **not** exist. That
+is by design — it fails loudly the moment `025` lands. **Activating `025` therefore includes updating that
+test** (assert the round trip + the allowlist behaviour instead of the absence) and adding the column to both
+twins. Recorded as an activation precondition, not as a test to delete.
 
 ---
 
@@ -357,7 +495,7 @@ behaviour*, so a future fix that changes it is noticed rather than assumed).
 
 ## 9. Scope boundaries and open items
 
-**In this design:** the evidence table, the mirror column, the digest-based verification, the state table,
+**In this design:** the evidence table, the mirror columns, the digest-based verification, the state table,
 the idempotency constraints, the threat model and the adversarial test plan.
 
 **Deliberately NOT in this design:**
@@ -371,7 +509,8 @@ the idempotency constraints, the threat model and the adversarial test plan.
   constraint migration `017` already documented (**VERIFIED**, `database/migrations/017_identifier_namespace_claim.sql:20-21`).
   Deferred; recorded as residual risk R3.
 * **No back-fill.** Existing `system:sso` rows get `evidence_type = NULL`, which honestly means "no evidence
-  recorded", not "evidence invented after the fact".
+  recorded", not "evidence invented after the fact". The same rule applies to `enrichment_outcome` (§5.3.3):
+  a pre-`025` enrichment link keeps `NULL` and stays unapprovable, rather than being back-filled to `found`.
 
 **Open items for the owner (feeding ADR-011 and the register):**
 
@@ -382,6 +521,7 @@ the idempotency constraints, the threat model and the adversarial test plan.
 | E3 | Whether to close the session-revocation gap (§7) | owner — separate design |
 | E4 | Whether the SSO direct-insert should become candidate→approve (§4.1) | owner — separate design (S-01/S-02) |
 | E5 | Whether to `BUILD` the DB-level append-only trigger (§9) despite the privilege cost | DBA |
+| E6 | **ID-7b durable fix** (§5.3): approve `enrichment_outcome` on `employee_identity_links` + `employee_identity_evidence` so the fail-closed guard can be relaxed to "must be an allowed value" | owner — rides the same `025` gate as E1 |
 
 <!-- BEGIN EMBEDDED-DDL-PROPOSAL -->
 
@@ -484,6 +624,10 @@ PREPARE s0 FROM @ddl; EXECUTE s0; DEALLOCATE PREPARE s0;
 CREATE TABLE IF NOT EXISTS employee_identity_evidence (
   evidence_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   evidence_type ENUM('sso_national_id_lookup', 'operator_review', 'enrichment_corroboration') NOT NULL,
+  -- ID-7b / §5.3: what an enrichment_corroboration row's enrichment actually returned. The append-only
+  -- AUTHORITY for the outcome. NULL means "no outcome recorded", which is NOT "found" and must never be
+  -- read as success. The CHECK below requires it exactly when evidence_type is enrichment_corroboration.
+  enrichment_outcome ENUM('found','ambiguous','not_found','timeout','api_error','fallback','firstname_only') NULL DEFAULT NULL,
   employee_uid VARCHAR(36) NOT NULL,
   provider_id INT(11) NOT NULL,
   provider_subject VARCHAR(255) NOT NULL,
@@ -524,7 +668,9 @@ CREATE TABLE IF NOT EXISTS employee_identity_evidence (
     FOREIGN KEY (link_id) REFERENCES employee_identity_links (id) ON DELETE RESTRICT,
   -- A lookup-type evidence row is only meaningful with a complete, comparable digest.
   CONSTRAINT chk_identity_evidence_lookup CHECK (
-    evidence_type <> 'sso_national_id_lookup'
+      -- and: an enrichment_corroboration row MUST carry an outcome, so the authority cannot be silent
+  AND (evidence_type <> 'enrichment_corroboration' OR enrichment_outcome IS NOT NULL)
+  evidence_type <> 'sso_national_id_lookup'
     OR (lookup_digest IS NOT NULL
         AND lookup_key_version IS NOT NULL
         AND digest_algorithm IS NOT NULL
@@ -558,6 +704,20 @@ SET @ddl = IF(@col_exists > 0, 'SELECT 1',
      ENUM(''sso_national_id_lookup'', ''operator_review'', ''enrichment_corroboration'')
      NULL DEFAULT NULL AFTER source');
 PREPARE s1 FROM @ddl; EXECUTE s1; DEALLOCATE PREPARE s1;
+
+-- 2b (ID-7b). Add the guard-read mirror: `enrichment_outcome`. Same guarded prepared-statement pattern.
+--     This is the column `enrichmentBlocksApproval` reads. Without it the ambiguity guard cannot see the
+--     outcome at all, which is the defect that made the control inert on MariaDB (contract findings F3/F4).
+SET @col_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_identity_links'
+    AND COLUMN_NAME = 'enrichment_outcome'
+);
+SET @ddl = IF(@col_exists > 0, 'SELECT 1',
+  'ALTER TABLE employee_identity_links ADD COLUMN enrichment_outcome
+     ENUM(''found'',''ambiguous'',''not_found'',''timeout'',''api_error'',''fallback'',''firstname_only'')
+     NULL DEFAULT NULL AFTER evidence_type');
+PREPARE s1b FROM @ddl; EXECUTE s1b; DEALLOCATE PREPARE s1b;
 
 -- No secondary index on evidence_type: the observed cardinality is small and the reviewer path filters by
 -- employee or link first. Adding one would be speculative; revisit only with a query that needs it.
@@ -616,11 +776,22 @@ PREPARE r0 FROM @ddl; EXECUTE r0; DEALLOCATE PREPARE r0;
 SET @col_exists = (
   SELECT COUNT(*) FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_identity_links'
+    AND COLUMN_NAME = 'enrichment_outcome'
+);
+SET @ddl = IF(@col_exists = 0, 'SELECT 1',
+  'ALTER TABLE employee_identity_links DROP COLUMN enrichment_outcome');
+PREPARE r1 FROM @ddl; EXECUTE r1; DEALLOCATE PREPARE r1;
+
+-- 1b. Then the evidence_type mirror, with its OWN guard, so the file stays idempotent when only one of
+--     the two columns was ever applied.
+SET @col_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_identity_links'
     AND COLUMN_NAME = 'evidence_type'
 );
 SET @ddl = IF(@col_exists = 0, 'SELECT 1',
   'ALTER TABLE employee_identity_links DROP COLUMN evidence_type');
-PREPARE r1 FROM @ddl; EXECUTE r1; DEALLOCATE PREPARE r1;
+PREPARE r1b FROM @ddl; EXECUTE r1b; DEALLOCATE PREPARE r1b;
 
 -- 2. Drop the evidence ledger. Its FKs (to employees / identity_providers / employee_identity_links) go with
 --    it, including the ON DELETE RESTRICT guard on the link.

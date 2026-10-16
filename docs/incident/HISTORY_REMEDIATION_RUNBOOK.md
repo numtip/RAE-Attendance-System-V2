@@ -2,9 +2,10 @@
 
 > # 🛑 DO NOT RUN THIS WITHOUT EXPLICIT OWNER APPROVAL
 >
-> **The orchestrator has NOT run this procedure. No step in it has been executed. No branch, tag, ref or object
-> has been rewritten, deleted or pushed.** This is a *plan* for a human operator, to be used only after the
-> owner has approved option **(b) `git filter-repo` on a fresh mirror clone** in
+> **Neither the Track C authors nor the orchestrator has run this procedure. No step in it has been executed.
+> No branch, tag, ref or object has been rewritten, deleted or pushed.** This is a *plan* for a human
+> operator, to be used only after the owner has approved option **(b) `git filter-repo` on a fresh mirror
+> clone** in
 > [`HISTORY_REMEDIATION_OPTIONS.md`](HISTORY_REMEDIATION_OPTIONS.md) and signed off in
 > [`DECISION_MATRIX_R1_R3.md`](DECISION_MATRIX_R1_R3.md).
 >
@@ -52,17 +53,20 @@ Every line must be **ticked, named and evidenced** before step 2. If any is FALS
 | P9 | **`stash@{0}` and `stash@{1}` confirmed present** in this workspace. | Operator | `git stash list` (2 entries) | ☐ |
 | P10 | **`G:\ProjectAI\_backups\main-uncommitted-20261009` confirmed present.** | Operator | directory listing | ☐ |
 | P11 | **CI known-green baseline** on the branches to be preserved, so a post-rewrite red is attributable. | Operator | CI status | ☐ |
-| P12 | **The PR-stack outcome decided in writing**: re-create the stack, or accept its loss. | Owner | decision matrix row | ☐ |
+| P12 | **The PR-stack outcome decided in writing for the six stacked Draft PRs #41–#46**: re-create the stack against the rewritten refs, or accept its loss. | Owner | decision matrix row (D2) | ☐ |
+| P12b | **The #41–#46 stack has been enumerated and each PR's base/head recorded** before the rewrite, so the operator can confirm after the push which PRs were auto-closed and which need re-creating/retargeting. | Operator | list of PR base/head refs | ☐ |
 | P13 | **A second, independent copy of the mirror backup on different media.** | Operator | path | ☐ |
 
 ### 1.1 Refs in scope (the ref set to verify after, from this review)
 
-The value is present at **33 of 58 refs** in this clone — every ref that contains `3244553` (default-branch
-tip). The rewrite must cover, at minimum, **all branch refs and tags**, and the operator must confirm the
-remote's `main` plus every `feat/*` / `integration/*` / `docs/*` ref. The 24 refs containing the recorded
-introducing commit `83aaa53` are enumerated in
-[`PRIVACY_INCIDENT_REVIEW_20261016.md`](PRIVACY_INCIDENT_REVIEW_20261016.md) §2.3. **UNKNOWN:** whether
-GitHub's `refs/pull/*` refs also serve the value; that must be checked, not assumed.
+The value is present at **35 of 60 refs** in this clone — every ref that contains `3244553` (the default-branch
+tip, and the commit that introduced the value on `main`). The rewrite must cover, at minimum, **all branch
+refs and tags**, and the operator must confirm the remote's `main` plus every `feat/*` / `integration/*` /
+`docs/*` ref. The 26 refs containing the feature-chain commit `83aaa53` are enumerated in
+[`PRIVACY_INCIDENT_REVIEW_20261016.md`](PRIVACY_INCIDENT_REVIEW_20261016.md) §2.3 — but note that
+**`83aaa53` is not the main introduction commit and is not an ancestor of `origin/main`**; the rewrite target
+is `3244553` and every ref that carries it. **UNKNOWN:** whether GitHub's `refs/pull/*` refs also serve the
+value; that must be checked, not assumed.
 
 > **Note for the operator:** the default branch matters most. `main` carries the value in
 > `backend/tests/employeeIdentity.test.js` from commit `3244553` (2026-10-02) — **not** from `83aaa53`. A
@@ -170,13 +174,13 @@ Then re-clone fresh, or `git reset --hard` onto the rewritten refs, and confirm:
 
 | # | Criterion | How it is proven | Done |
 |---|---|---|---|
-| V1 | The masked value `****5351` is **absent at every ref** of the remote (branch refs, tags, and `refs/pull/*` if reachable). | canonicalizing scan on a fresh re-mirror, **counts only** | ☐ |
+| V1 | The value is **absent at EVERY ref** of the remote — union over branch refs, tags, and `refs/pull/*` if reachable. The masked form `****5351` must not occur in any blob at any ref, in **any of the four encodings** (plain, dashed, Thai-digit, full-width). | canonicalizing scan on a fresh re-mirror, **counts only** | ☐ |
 | V2 | No checksum-valid 13-digit literal remains in the affected files at any ref. | the R4 guard's logic applied to each ref's tree | ☐ |
 | V3 | The **working tree** of this workspace equals a clean, redacted state (as it is today). | `git status`, spot file reads | ☐ |
 | V4 | **`stash@{0}` and `stash@{1}` still exist** and are unchanged. | `git stash list` | ☐ |
 | V5 | **`G:\ProjectAI\_backups\main-uncommitted-20261009`** is present and untouched. | directory listing | ☐ |
 | V6 | **CI is green** on the preserved branches. | CI | ☐ |
-| V7 | The **stacked PRs (#41–#45)** are either **re-created** against the rewritten refs, or their loss is **accepted in writing** by the owner. | decision matrix | ☐ |
+| V7 | The **six stacked Draft PRs (#41–#46)** are either **re-created** against the rewritten refs, or their loss is **accepted in writing** by the owner. | decision matrix | ☐ |
 | V8 | Every collaborator has **re-cloned**, and none holds a clone that can push the old history back. | acknowledgements | ☐ |
 | V9 | The mirror backup and its second copy are **retained** (not deleted) for the agreed retention period. | paths | ☐ |
 | V10 | The incident record is updated to "R3 done" **only after V1–V9** — never on the strength of the push alone. | incident file | ☐ |
