@@ -1,0 +1,317 @@
+# 12 — Slice 6 (R-04): attendance reconciliation snapshot
+
+Status: **`SLICE6_READY_FOR_REVIEW`** — implementation complete, all gates green locally.
+**No migration. Not merged. Nothing applied to any host.**
+
+Builds on [`11_SLICE5_ATTENDANCE_EXPORTS.md`](11_SLICE5_ATTENDANCE_EXPORTS.md) (R-03, PR
+[#42](https://github.com/numtip/RAE-Attendance-System-V2/pull/42)).
+
+## 0. Provenance and scope
+
+| Field | Value |
+|---|---|
+| Date | 2026-10-16 (Asia/Bangkok) |
+| Branch | `feat/slice6-reconciliation`, stacked on `feat/slice5-attendance-exports` |
+| Worktree | **None.** Per `AGENTS.md`. |
+| WIP / stashes | Untouched: the 18 pre-existing entries and **2** stashes. |
+| Migration | **None.** R-04 is read-only. |
+| Source data | **Synthetic fixtures only.** No host contact, no database, no real personnel data. |
+| Labels | **VERIFIED** · **REPORTED** · **UNKNOWN** |
+
+**Delivered:** backlog item **R-04** — a read-only reconciliation snapshot that compares the canonical
+stored attendance facts against the verified source records they were derived from, for a day, a calendar
+month, and a Thai government **fiscal year**.
+**Not** delivered: R-05 (annual HR form).
+
+## 1. The two rules that define this slice
+
+### 1.1 Nothing is compared to itself
+
+The snapshot **reuses** `attendanceReportService` (R-02) for report totals and the daily/monthly semantics of
+R-01/R-02 — it does not re-implement them. So a "report totals" check compares the R-02 report against the
+stored month row, and the daily checks compare the canonical row against the events actually attributable to
+the employee. There is one attendance truth in the system, and reconciliation audits it rather than creating
+a second one.
+
+**18 checks** are implemented, each returning `{ code, status, observed, expected, detail, severity }`:
+
+| Scope | Checks |
+|---|---|
+| day | `employee_identity`, `approved_rule`, `scan_presence`, `scan_count`, `event_span`, `duplicate_scans`, `unattributed_events`, `foreign_events`, `leave_agreement`, `workday_classification`, `computation_status` |
+| period | `employee_count`, `daily_row_coverage`, `month_totals`, `expected_working_days`, `report_totals_agreement`, `unjudged_days`, `fiscal_month_coverage` |
+
+### 1.2 "Nothing to compare" is not agreement
+
+The status precedence is `blocked > mismatched > incomplete > matched`, and:
+
+* **`blocked`** — reconciliation cannot proceed at all (identity ambiguous/conflicting, or a required source
+  absent). Every identity branch resolves to `blocked`, never to `matched`: an employee with two effective
+  assignments on one date, or a conflicting identifier, is **flagged, never merged, and never reassigned**.
+* **`incomplete`** — no disagreement found, but the period cannot be judged in full.
+* **`mismatched`** — a factual disagreement between comparable values.
+* **`matched`** — every check passed.
+
+A period with no rows is **`incomplete`, never `matched`** (the same trap E26 guards on the monthly side;
+pinned by a test).
+
+`mismatched` is only ever raised between **commensurable** values. The fiscal-year aggregates
+(`month_totals`, `expected_working_days`, `report_totals_agreement`) compare **only months that were actually
+derived**, and report `incomplete` when months are missing — a sum over 1 month compared against a sum over
+12 would be a false mismatch, which is the same class of error as R-01's "phantom month". This was a real
+defect found by this slice's own test (see §4).
+
+### 1.3 The fiscal year is NOT the academic year
+
+| Period | Window | Where |
+|---|---|---|
+| Thai **academic** year (R-02) | 1 June – 31 May | `attendanceReport.js`, `ACADEMIC_YEAR_START_MONTH = 6` |
+| Thai government **fiscal** year (R-04) | 1 October – 30 September | `reconciliationPeriod.js`, `FISCAL_YEAR_START_MONTH = 10` |
+
+`fiscalYear 2569` (Buddhist Era) is **2025-10-01 .. 2026-09-30**. The two modules do not import each other,
+and a test asserts the windows **differ** for the same year. Every snapshot names the BE year, the Gregorian
+window and a Thai label (`ปีงบประมาณ 2569`), so the two cannot be confused by a reader.
+
+**REPORTING CONVENTION NEEDING OWNER CONFIRMATION:** the repository has never had a fiscal period before, so
+"fiscal year = government Oct–Sep" needs the same explicit owner sign-off that `P-05`/`P-06` get. Until then
+it is a stated convention, not a policy.
+
+## 2. Interfaces
+
+### 2.1 New backend files
+
+| File | Lines | Purpose |
+|---|---|---|
+| `src/domain/reconciliationPeriod.js` | 136 | Pure fiscal-year period (Oct–Sep), boundaries, BE label. |
+| `src/domain/reconciliation.js` | 708 | Pure: check builders, the 18 checks, `verdictOf`, `REAL_SOURCE_NOTE`. |
+| `src/services/reconciliationService.js` | 687 | Reads the stores, runs the checks, builds the envelope + `snapshotHash`. |
+| `src/controllers/reconciliationController.js` | 44 | JSON responses (`success()`), unlike the R-03 exports. |
+| `tests/helpers/reconciliationSources.js` | 461 | 10 synthetic source scenarios. Test-only. |
+| `tests/reconciliation.test.js` + `reconciliationPeriod.test.js` | 514 + 87 | 27 tests. |
+
+`backend/src/api/v1/index.js` gains **15 lines** (2 requires, wiring, 3 routes) and nothing else.
+
+### 2.2 API (read-only — there is no POST/derive variant)
+
+| Method | Path |
+|---|---|
+| GET | `/api/v1/attendance/reconciliation/day/:employeeUid/:date` |
+| GET | `/api/v1/attendance/reconciliation/month/:employeeUid/:year/:month` |
+| GET | `/api/v1/attendance/reconciliation/fiscal-year/:employeeUid/:fiscalYear` |
+
+All three are in `docs/API_CONTRACT.md` and exercised by `contract:smoke` (**36** paths, was 33).
+
+### 2.3 The snapshot envelope
+
+`snapshot.status` · `statusReasons` · `checks` · `counts` · `unresolvedExceptions` · `completeness` ·
+`period` · `population` · `asOf` · `cutoff` · `sourceTables` · `ruleVersions` · `snapshotHash` ·
+`pristine: true` · `realSourceVerified` + `realSourceNote`.
+
+* `pristine: true` states the reconciliation wrote nothing.
+* `snapshotHash` is a SHA-256 over a canonical body that **excludes** `asOf`/`cutoff` (both derived from the
+  clock) and the hash itself, so identical data hashes identically across runs and the determinism test is
+  meaningful. Which fields are excluded, and why, is documented at the hash site.
+* Authorization uses the **same** `assertCanReadEmployee` guard as R-02, **scope before existence**, before
+  any data read — so the two cannot drift.
+
+## 3. `realSourceVerified: false` — the reason has changed
+
+**`G:\ProjectAI\attendance-report-generator` was MISSING at ~13:53 and ~14:06** (VERIFIED 2026-10-16 by
+directory check) and is **present at ~14:24**. It has now been audited in
+[`13_REFERENCE_PROJECT_AUDIT.md`](13_REFERENCE_PROJECT_AUDIT.md), which establishes three things that matter to
+this slice:
+
+1. The reference is a **sibling project** (`numtip/Attendance-Report`, private) that consumes the same
+   `attendance-core` whose rule semantics this repo ports.
+2. Its `CodexWorker/prepared/**` set **does contain FY2569 evidence** — 12 months of aggregate counts
+   (1,600 late / 24 early / 11 half-day / 8 needs-review across 53 employee codes) plus **26 documented
+   person-month discrepancies** between HIP and the monthly report.
+3. That evidence is **aggregate-safe but the repo also holds real names** in 13 tracked files, and this repo is
+   **public** — so any integration must take **counts only**, never rosters or names.
+
+**So the blocker is no longer "the source is missing"; it is "nothing has been integrated".** This slice still
+reads no external data, every snapshot still carries `realSourceVerified: false`:
+
+```json
+"realSourceVerified": false,
+"realSourceNote": "Reconciled against stored V2 records only. The external FY2569 source (e.g. the
+  attendance-report-generator reference) was NOT integrated, so this snapshot does NOT verify the
+  original HIP/MJU source data."
+```
+
+> **Reworded 2026-10-16 (R-04-C):** the note previously read *"…was available or consulted…"*. The
+> *"was available"* clause was false once the reference project was confirmed to exist; *"consulted"* still
+> holds. It now says **"was NOT integrated"**, which is the honest statement of the blocker. See §5.5.
+
+This is deliberately machine-visible rather than a sentence in a document: a consumer cannot read a
+`matched` snapshot and believe the original HIP/MJU data was verified. A test asserts the flag is `false` and
+the note is present, so the claim cannot silently change.
+
+**Consequence:** R-04 currently validates V2's *internal* consistency (stored rows vs the rows they were
+derived from). It does **not** validate V2 against the original source system. That half is **BLOCKED on
+`R-04-C`** (integration), not on availability.
+
+## 4. Defects found during development (recorded, not hidden)
+
+| # | Severity | Defect | Fix |
+|---|---|---|---|
+| 1 | **important (false verdict)** | The fiscal-year `expected_working_days` check summed over **all started months**, mixing `NULL` (never derived) with real figures. A fiscal year where only one month was derived produced a **false `mismatched`** — comparing a 1-month sum against a 12-month sum. Its sibling checks already filtered to commensurable months; this one did not. | Filter to months that were derived, and report `incomplete` when months are missing. **Fixed in the service, not by relaxing the test** — the test's `incomplete` expectation was the honest one. |
+| 2 | **important (over-claiming verdict)** — found by adversarial QA | `expected_working_days` reported **`mismatched` when the figure merely could not be derived** (no approved rule covering the month, or a working week the rule does not state). That asserts a disagreement which cannot be established, and it **contradicted its own sibling** `daily_row_coverage`, which reports the *same* condition as `incomplete` — one missing source, two severities. The same flaw existed in the fiscal rollup (`expected_working_days_null_mismatch`). | Both branches corrected to **`incomplete`** with the reason in `detail`, plus the symmetric `stored == null` case. Consistent with **E51** ("nothing to compare is `incomplete`, never `matched`"). The QA test that had pinned the old behaviour was updated **deliberately**, with the change explained in the test body. A genuine stored-vs-derived difference still reports `mismatched`. |
+
+## 5. Verification
+
+### 5.1 Gates (all run locally)
+
+| Gate | Command | Result |
+|---|---|---|
+| Lint | `cd backend && npm run lint` | **PASS** |
+| Reconciliation suites | `node --test tests/reconciliation*.test.js` | **PASS — 36/36** |
+| Full backend suite | `cd backend && npm test` | **PASS — 473 tests, 463 pass, 0 fail, 10 skipped** |
+| Contract smoke | `node scripts/contract-smoke.mjs` | **PASS — 36 paths** |
+| Secret scan | `node scripts/secret-scan.mjs` | **PASS — 386 files** |
+| Frontend build | `cd frontend && npm run build` | **PASS** |
+| MariaDB / CI | GitHub Actions on the Draft PR | see the PR checks |
+
+### 5.2 Independent verification (orchestrator, not the implementation's own tests)
+
+A separate probe drove the service directly against fixture repositories:
+
+| Claim | Result |
+|---|---|
+| **Source immutability** — no store changed by a reconciliation | **PASS** — deep key-sorted snapshot of every enumerable store, before and after all 5 kinds (day, 3 months, fiscal year): **0 stores changed**, and `pristine: true` in every payload. The suite's own version is stronger still: it **poisons all 11 write methods across 5 repositories** so an accidental write throws, and a mutation confirmed that gate is real (§5.2 last row) |
+| Deterministic | **PASS** — identical `snapshotHash` across two runs; the suite's version spans clocks a year apart |
+| Empty period is not "matched" | **PASS** — a month with no rows → `incomplete` |
+| Fiscal ≠ academic | **PASS** — fiscal `2025-10-01..2026-09-30` vs academic `2026-06-01..2027-05-31` |
+| Cross-scope refused | **PASS** — 403/FORBIDDEN for day, month and fiscal year |
+| No PII / secrets in the payload | **PASS** — screened for `passwordHash`, `national_id`, any 13-digit national id, `Bearer`, JWT-shaped strings, `hmac`, facescan ids |
+| **`mismatched` is reachable and correct** | **PASS** — the raw fixture seed month (a stored row with no daily rows) yields `mismatched`, while the `cleanMonth` scenario yields `matched`: the same code distinguishes a real disagreement from a mere gap |
+| **The read-only gate is not vacuous** | **PASS (mutation)** — injecting `await daily.upsertDay(...)` into `reconcileDay` made the read-only test **fail** with `write attempted: upsertDay`. Reverted; 27/27 and the full suite green again. A test that passes whether or not the code writes would prove nothing |
+
+Two guarantees in the suite are stronger than the §5.3 matrix implies, and are worth naming:
+
+* **Determinism is tested across clock difference, not just a repeat.** The same data is reconciled with the
+  clock set to `2026-10-16T00:00:00Z` and then `2027-05-01T13:45:00Z` — over a year apart. The `snapshotHash`
+  is asserted **equal** while `asOf` and `cutoff` are asserted **different**. That is what proves the hash
+  input really excludes the clock rather than merely being stable within one second.
+* **The same-name scenario asserts non-disclosure.** Beyond keeping the two employees distinct, it asserts the
+  shared Thai name and the other employee's `employee_uid` appear **nowhere** in the payload. Identity data
+  does not leak through a reconciliation response.
+
+### 5.3 Scenario matrix (from the suites)
+
+| Scenario | Kind | Status | Signal |
+|---|---|---|---|
+| clean month (day) | day | **`matched`** | every check passes |
+| clean month (month) | month | **`matched`** | every check passes |
+| same-name employees | day | **`matched`** ×2 | two distinct populations, both clean — proves no name-based join |
+| duplicate scans | day | `incomplete` | device artefact reported, `scan_count` stays `matched` |
+| **conflicting employee codes** | day | **`blocked`** | identity conflict flagged, never merged |
+| missing scans | month | `incomplete` | |
+| partial month | month | `incomplete` | |
+| pending policy (2027) | day | `incomplete` | `employee_identity` `matched`, rule unapproved |
+| never derived | month | `incomplete` | explicitly asserted **not** `matched` |
+| unattributed + foreign scans | day | `incomplete` | never reassigned |
+| lease February 2028 / boundaries | period | overridden | leap + fiscal boundary pinned |
+| fiscal year, partially derived | fiscal | `incomplete` | missing months are a gap, not a mismatch |
+
+### 5.4 Residual test-coverage gap (recorded)
+
+The suites pin `matched`, `incomplete` and `blocked` at snapshot level, and `mismatched` is unit-tested at the
+`verdictOf` level. **Closed by R-04-T (2026-10-16):** `reconciliation.test.js` now asserts a snapshot-level
+`mismatched` from real fixture data — the raw seed month (a stored `monthly_summaries` row with no daily rows)
+whose stored totals disagree with the all-zero totals the stored daily rows imply. The verdict is pinned
+rather than incidental.
+
+### 5.5 R-04-C — transcribed FY2569 aggregate evidence (public-safe)
+
+`backend/tests/fixtures/fy2569Aggregates.js` (new, test-only) carries the FY2569 evidence as **aggregate
+counts only**:
+
+* the 12 monthly aggregates — late / early / half-day leave / needs-review for `2568-10 .. 2569-09`
+  (`2025-10 .. 2026-09`), plus the totals **1,600 / 24 / 11 / 8**;
+* the 26 documented person-month discrepancies as **three classification counts** (12 accepted, 9 reclassified
+  as half-day leave, 5 single-scan) plus `total` and `populationCodes: 53`;
+* a `provenance` record naming the source repo, the file (`CodexWorker/prepared/README.md`) and the date.
+
+`backend/tests/reconciliationFiscalEvidence.test.js` (new) asserts the monthly sums equal the transcribed
+totals, the discrepancy groups sum to 26, and the 12 fiscal months are exactly Oct..Sep in order and line up
+with the **existing** `fiscalYearPeriod(2569)` window (`2025-10-01 .. 2026-09-30`) rather than a re-implemented
+one. It also **scans the serialized fixture** and asserts it contains no 13-digit national id, no email and no
+employee-code-then-name pattern — the guard that keeps a personal value out of this **public** repo. The guard
+is shown to be non-vacuous by matching samples built only in memory.
+
+**This is transcription, not integration.** The counts were copied by hand from the sibling **private** repo
+`numtip/Attendance-Report`; no V2 code reads that repo at runtime and no external data enters a snapshot.
+`realSourceVerified` therefore **stays `false`**, and the guard test asserts the fixture carries no rosters,
+codes or names — only counts.
+
+The three R-04 suites now run **34 tests** (was 27): 6 in `reconciliationFiscalEvidence.test.js` and 1 new
+snapshot-level `mismatched` case in `reconciliation.test.js`.
+
+**Gates re-run for R-04-C (2026-10-16):** `cd backend && npm run lint` **PASS**;
+`node --test tests/reconciliation*.test.js tests/reconciliationFiscalEvidence.test.js` **PASS — 34/34**;
+`cd backend && npm test` **PASS — 468 tests, 458 pass, 0 fail, 10 skipped** (was 461/451);
+`node scripts/secret-scan.mjs` **PASS — 382 files**. A PII scan over every created/changed file reported
+**0** national ids, **0** emails and **0** code-then-name patterns introduced (the only matches anywhere in
+those files are the pre-existing synthetic `@example.test` addresses and synthetic national id in
+`src/dev/fixtures.js`, unchanged from `HEAD`).
+
+### 5.6 Adversarial QA pass (independent workstream, 2026-10-16)
+
+An independent adversarial pass attacked the claims rather than confirming them. Results:
+
+| Claim | Verdict |
+|---|---|
+| **A** Authorization / IDOR on R-02, R-03 and R-04 | **PASS** — 401 anonymous, 403 cross-scope with the JSON envelope, 200 in scope, on all three route families (no file body on a refusal) |
+| **B** Identity negative paths | **PASS, 3 tests added** — `rejected` link, one-employee-one-approved-link (`IDENTITY_CONFLICT`), and low-confidence enrichment were previously untested |
+| **C** A missing source never yields `matched` | **PARTIAL** — true for the events source (`blocked`), but the rules source made the month `mismatched`. **Fixed** — see §4 defect 2 |
+| **D** No data leaks in the changed files | **PASS** — 0 id13 / 0 non-test emails / 0 code+name / 0 JWT in every file of `d7b393f` and `57e0836` |
+| **E** Nothing leaked from the private siblings | **FAIL — one violation**, escalated as its own incident: [`docs/SECURITY_INCIDENT_PII_IN_FIXTURES_20261016.md`](../SECURITY_INCIDENT_PII_IN_FIXTURES_20261016.md). It is **pre-existing**, present on `origin/main`, and **not** introduced by this slice |
+| **F** The fixture PII guard is non-vacuous | **PASS** — a mutated copy in a temp dir was caught by all three guard regexes |
+| **G** Determinism / no external I/O | **PASS** — identical results across two runs; no `fs` in the reconciliation graph |
+| **H** Gates | **PASS** — see §5.1 |
+
+The pass also added a regression test for the events-source-unavailable path (previously untested). Five tests
+were added in total; one of them is the test updated by §4 defect 2.
+
+## 6. Unresolved / out of scope
+
+1. **`R-04-C`: the FY2569 evidence exists but is not integrated.** The reference project was audited
+   ([`13_REFERENCE_PROJECT_AUDIT.md`](13_REFERENCE_PROJECT_AUDIT.md)) and does hold FY2569 aggregate evidence,
+   but nothing in this repo reads it, so everything in §5 is fixture-verified only. **Aggregate counts only** may
+   be consumed — the sibling repo is private and holds real names, while this repo is public.
+2. **The fiscal convention needs owner confirmation** (§1.3): Oct–Sep is a stated reporting convention, not an
+   approved policy value.
+3. **`mismatched` is now pinned by a scenario test** (§5.4) — closed by R-04-T.
+4. **Reconciliation is not exposed in the frontend.** Not required by this slice, and `AttendanceDailyView`
+   still renders raw records rather than a report.
+5. **No scheduled/automated reconciliation run.** Snapshot generation is on-demand; there is no cron, alert or
+   stored history of past snapshots.
+6. **`approvedBy` remains a session label** (R2), so a `matched` snapshot does not name an accountable
+   approver.
+7. **`realSourceVerified` has no positive path yet.** When a real source becomes available, the flag must
+   become conditional and the test in §3 updated — today it is unconditionally `false`.
+
+## 7. Review checklist
+
+- [ ] Read-only by construction accepted: no write path, `pristine: true`, and an immutability test that
+      snapshots every store.
+- [ ] Status precedence accepted, including that a period with nothing to compare is `incomplete`, never
+      `matched`.
+- [ ] Identity ambiguity → `blocked`, never merged or reassigned, and never joined by name.
+- [ ] The fiscal year (Oct–Sep, BE `:fiscalYear`) accepted as a **separate** convention from the R-02
+      academic year (Jun–May).
+- [ ] `mismatched` only between commensurable values (the §4 defect) accepted as the rule.
+- [ ] `realSourceVerified: false` + an explicit note in the payload accepted as the honest treatment of a
+      missing external source, with `R-04-B` tracked.
+- [ ] `snapshotHash` excluding clock-derived fields accepted as what makes determinism meaningful.
+
+## 8. Next actions
+
+| ID | Task | Note |
+|---|---|---|
+| **R-04-C** | ~~Integrate the FY2569 aggregate evidence~~ **DONE 2026-10-16 as TRANSCRIPTION, not integration** — the 12 monthly counts + the 26 discrepancies are in test-only fixtures (`tests/fixtures/fy2569Aggregates.js`) with counts only, no names or codes (§5.5) | The sibling repo is private and this one is public; `realSourceVerified` stays `false` because nothing is read at runtime |
+| ~~R-04-T~~ | ~~Pin a snapshot-level `mismatched` with a scenario test~~ **DONE 2026-10-16** — §5.4 | — |
+| R-05 | Annual HR form (แบบรายงานประจำปี) | Reuses the R-03 renderer |
+| — | Owner confirmation of the fiscal-year window | §1.3 — now **corroborated** by the donor's own FY2569 labelling (Oct–Sep) |
+| ~~—~~ | ~~Reword `REAL_SOURCE_NOTE` from "unavailable" to "not integrated"~~ **DONE 2026-10-16 (R-04-C)** — §3 | — |
+| — | `AR-0001` `sourceOfTruth` corrected to `config/settings.yaml` of `numtip/Attendance-Report` (§5.5 / audit finding 2) | — |

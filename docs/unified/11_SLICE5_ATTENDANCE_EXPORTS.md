@@ -15,7 +15,7 @@ Builds on [`10_SLICE4_ATTENDANCE_REPORTS.md`](10_SLICE4_ATTENDANCE_REPORTS.md) (
 | Worktree | **None.** Per `AGENTS.md`. Subagents worked in the same workspace with file-level ownership. |
 | WIP / stashes | Untouched: the 18 pre-existing entries and **2** stashes. |
 | Migration | **None.** R-03 is read-only. |
-| Reference datum | **`G:\ProjectAI\attendance-report-generator` DOES NOT EXIST** (checked 2026-10-16). No FY2569 historical reconciliation evidence was reachable; see §6. |
+| Reference datum | `G:\ProjectAI\attendance-report-generator` was **absent** when checked at ~13:53 and ~14:06 on 2026-10-16, and **present** when re-checked at ~14:24. It is now audited: see [`13_REFERENCE_PROJECT_AUDIT.md`](13_REFERENCE_PROJECT_AUDIT.md). No FY2569 evidence was consulted for this slice. |
 | Redaction | No PII, secret or national ID in this document or in any R-03 file. Sample artifacts use fixture data only. |
 | Labels | **VERIFIED** · **REPORTED** · **UNKNOWN** |
 
@@ -210,10 +210,12 @@ error envelope on a non-200 — which is what proves a refusal never writes a pa
 
 ## 6. Unresolved / out of scope
 
-1. **The reference project does not exist.** `G:\ProjectAI\attendance-report-generator` is **MISSING**
-   (VERIFIED 2026-10-16). No FY2569 historical reconciliation evidence could be read, so **no claim about
-   real-source reconciliation is made anywhere in this slice.** Everything above was produced from synthetic
-   fixtures. This is the open item for R-04's item 9.
+1. **The reference project was missing when this slice was built.** `G:\ProjectAI\attendance-report-generator`
+   was **absent** at ~13:53 and ~14:06 on 2026-10-16 (VERIFIED) and **present** at ~14:24. Because it was absent
+   while R-03 was implemented, **no FY2569 historical evidence was read for this slice**, and everything above
+   was produced from synthetic fixtures. It has since been audited — see
+   [`13_REFERENCE_PROJECT_AUDIT.md`](13_REFERENCE_PROJECT_AUDIT.md) — which found that the FY2569 evidence
+   **does exist** and that R-04, not R-03, is the slice that needs it.
 2. **PDF Thai text extraction is not byte-exact.** Words containing `ำ` (U+0E33) can extract decomposed
    (`ทำงาน` → `ทำางาน`) because pdfkit applies GSUB and maps the reordered glyph back to both codepoints.
    Visual output is correct, and numbers and dates extract exactly. A pdfkit/fontkit shaping behaviour, not
@@ -246,6 +248,6 @@ error envelope on a non-200 — which is what proves a refusal never writes a pa
 | ID | Task | Note |
 |---|---|---|
 | R-04 | Read-only reconciliation snapshot (daily / month / **fiscal year Oct–Sep**) | Next; must NOT be confused with the R-02 academic year (Jun–May) |
-| R-04-B | Resolve the missing `G:\ProjectAI\attendance-report-generator` reference, or formally record that FY2569 reconciliation cannot be verified against a real source | Blocks the "validate against historical evidence" half of R-04 |
+| R-04-B | Resolve the missing `G:\ProjectAI\attendance-report-generator` reference | **SUPERSEDED** — see R-04-B/R-04-C in `13_REFERENCE_PROJECT_AUDIT.md` |
 | R-05 | Annual HR form (แบบรายงานประจำปี) | Reuses this renderer |
 | R-03-FE | Export controls for the day and academic-year views | Needs those views to read the report endpoint first |

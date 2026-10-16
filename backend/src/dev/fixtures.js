@@ -105,6 +105,11 @@ const orgMemberships = [];
 // AR-0001 carries the DRAFT candidate values from the donor project (08:30-16:30, late after 08:30,
 // early before 16:30, working week Mon-Fri).
 //
+// PROVENANCE CORRECTION 2026-10-16: these values come from `config/settings.yaml` in the sibling project
+// `numtip/Attendance-Report` (private), NOT from `attendance-core` - that repo has no `config/settings.yaml`.
+// `attendance-core/policy.py` carries the same 08:30/16:30 defaults, but the file cited before was wrong.
+// See docs/unified/13_REFERENCE_PROJECT_AUDIT.md finding 2. The approved values themselves are unchanged.
+//
 // OWNER DECISION 2026-10-16: the project owner APPROVED these values, so AR-0001 is `approved` and covers
 // the 2026 calendar year. Its approved_to is deliberately set, with AR-0002 below as the unapproved
 // successor, so the honesty gate stays demonstrable in the fixture: a 2026 date computes, and a 2027 date
@@ -132,7 +137,9 @@ const attendanceRuleVersions = [
     leaveTypesJson: JSON.stringify(['sick', 'personal', 'vacation', 'other']),
     leaveAliasesJson: JSON.stringify({}),
     businessStatusesJson: JSON.stringify([]),
-    sourceOfTruth: 'donor attendance-core config/settings.yaml, approved by the owner 2026-10-16',
+    // Provenance correction 2026-10-16: the values live in `numtip/Attendance-Report` `config/settings.yaml`,
+    // not in attendance-core (which has no config/settings.yaml). Owner approval wording is unchanged.
+    sourceOfTruth: 'donor config/settings.yaml, numtip/Attendance-Report (private), approved by the owner 2026-10-16',
     approvedBy: 'owner:session-2026-10-16',
     approvedAt: '2026-10-16T00:00:00.000Z',
     notes: 'Values approved by the project owner on 2026-10-16 (docs/memory/DECISIONS.md). approved_by is a session label, NOT a person: replace it with the accountable individual before production use.',

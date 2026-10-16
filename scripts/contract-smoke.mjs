@@ -31,6 +31,7 @@ function materializePath(template) {
   let path = template
     .replace(':employeeUid', userUid)
     .replace(':date', '2026-03-02')
+    .replace(':fiscalYear', '2569')
     .replace(':year', '2026')
     .replace(':month', '3');
   if (template.includes('/leave/balance/')) {

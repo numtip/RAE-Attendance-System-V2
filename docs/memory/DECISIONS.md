@@ -101,14 +101,52 @@ silently resolved by an agent.
   both codepoints. Visual output, numbers and dates are all correct; this affects search and copy-paste only.
   Accepted and documented rather than worked around, because fixing it means rewriting the CMap.
 
+### Reconciliation decisions — R-04 (2026-10-16)
+
+| # | Decision | Why | Recorded at |
+|---|---|---|---|
+| E50 | **Reconciliation derives nothing and writes nothing.** It reuses `attendanceReportService` for report totals and audits the stored rows; every snapshot carries `pristine: true`, and an immutability test deep-snapshots every store before and after. | An audit that changes what it audits is worthless, and a second computation path would let the audit and the data disagree. | `12_SLICE6…` §1.1, §5.2 |
+| E51 | **"Nothing to compare" is `incomplete`, never `matched`**, and the precedence is `blocked > mismatched > incomplete > matched`. | Same trap E26 guards on the monthly side: a period with no rows is not agreement. | `12_SLICE6…` §1.2 |
+| E52 | **`mismatched` is only raised between commensurable values.** Period aggregates compare only months that were actually derived, and report `incomplete` when months are missing. | Summing 1 derived month against 12 months produced a false `mismatched`. Comparing incommensurable totals is the same class of error as R-01's phantom month. Found by this slice's own test. | `12_SLICE6…` §1.2, §4 |
+| E53 | **Identity ambiguity is `blocked`, and arbitration is never attempted.** Two effective assignments on one date, or a conflicting identifier, is flagged; reconciliation never merges, never joins by name, and never reassigns a record. | Requirement 5. A silent merge would silently move someone's attendance to another person. | `12_SLICE6…` §1.2, §5.3 |
+| E54 | **The fiscal year (Oct–Sep, BE `:fiscalYear`) is a separate convention from the R-02 academic year (Jun–May)**, in its own module, with a test asserting the windows differ. | Two different Thai year conventions exist; conflating them would silently reconcile the wrong twelve months. The window is named in every response. | `12_SLICE6…` §1.3 |
+| E55 | **`realSourceVerified: false` and its note live INSIDE the payload**, not only in a document, and a test pins them. | With the external reference missing, a consumer must not be able to read a `matched` snapshot and believe the original HIP/MJU source was verified. | `12_SLICE6…` §3 |
+| E56 | **`snapshotHash` excludes clock-derived fields (`asOf`, `cutoff`) and itself**, and says so at the hash site. | A hash that moves every run makes the determinism test meaningless. Documenting which fields are excluded keeps it honest rather than convenient. | `12_SLICE6…` §2.3 |
+
+## 2.5 Reference-project boundary (E57)
+
+| # | Decision | Why | Recorded at |
+|---|---|---|---|
+| E57 | **The sibling `numtip/Attendance-Report` project may only be consumed by V2 at AGGREGATE level.** No names, no employee codes, no rosters, no entry logs, no screenshots. | That project is **private** and holds **real employee names** in 13 tracked files (no national IDs were found); **V2 is public**. The donor already applies the same discipline to Agent Core ("aggregate counts and verification flags only"), so this is consistency, not a new restriction. | `13_REFERENCE_PROJECT_AUDIT.md` §4, §7 |
+
+## 2.6 Transcribed-evidence and identity-source decisions (2026-10-16)
+
+| # | Decision | Why | Recorded at |
+|---|---|---|---|
+| E58 | **Transcribed external evidence is a FIXTURE, not an integration, and `realSourceVerified` stays `false`.** | Hand-copied aggregate counts can exercise the code but prove nothing about the original source. Calling that "verified" would be the exact over-claim the honesty gate exists to prevent. | `12_SLICE6…` §5.5 |
+| E59 | **`mju-person-enrich` is a CORROBORATION-ONLY source; it must never establish an identity.** It may supply `citizenID` equality against V2's own HMAC digest, offline. | Its only lookup key is a **name**, the `/filter/` endpoint is **fuzzy** (7/308 returned names differ from the query), ambiguity **fails open** to `data[0]` (a real 2-record case had two different ids), and it holds 303 plaintext national IDs at rest on a **non-git** disk where `.gitignore` is inert. | `IDENTITY_INTEGRATION_AUDIT.md` §2, §3, §8 |
+| E60 | **The MJU Person API cannot populate the MJU identity kind** — it returns no `personnelID` (0/308), while `identityKind` requires `personnel_id` with `source_system='mju_person_api'`. | The obvious integration plan is therefore not merely risky but **impossible as specified**. The design must go via `citizenID` equality after the employee is already resolved. | `IDENTITY_INTEGRATION_AUDIT.md` §1.1, §6; `IDENTITY_MAPPING_CONTRACT.md` §3 |
+| E61 | **Real identity integration stays at a DESIGN GATE.** No live ID-card processing, no identity import, no migration, no key creation. | Requires owner approval of the contract plus a written data-protection basis for receiving citizen IDs, which does not exist yet. | `IDENTITY_MAPPING_CONTRACT.md` §9 |
+| E62 | **The identity-link layer must not rely on a single caller for its guards.** `createCandidate` accepts an email-shaped subject; only the SSO adapter rejects one today. | Defence in depth: a future ingestion path would bypass the guard entirely. Recorded as finding F1, with hardening proposed rather than assumed. | `IDENTITY_INTEGRATION_AUDIT.md` §F1 |
+
 ## 3. OPEN owner decisions (do NOT treat as engineering defaults)
 
-> ### ⚠️ R-04 INPUT MISSING
+> ### ✅ R-04-B RESOLVED (partly) — the reference project EXISTS
 >
-> `G:\ProjectAI\attendance-report-generator` — the reference named for FY2569 historical reconciliation — **does
-> not exist** (checked 2026-10-16). It is outside this repo, so it cannot be committed or verified here. Until
-> it is provided, R-04 can only be validated against synthetic fixtures, and any statement about reconciling
-> real FY2569 sources would be a fabrication. Recorded as `R-04-B` in `NEXT_ACTIONS.md`.
+> `G:\ProjectAI\attendance-report-generator` was **absent** at ~13:53 and ~14:06 on 2026-10-16 and **present**
+> at ~14:24. It has been audited: [`docs/unified/13_REFERENCE_PROJECT_AUDIT.md`](../unified/13_REFERENCE_PROJECT_AUDIT.md).
+>
+> It is a **sibling project** (`numtip/Attendance-Report`, **private**) in the same GitHub family as this repo
+> and `numtip/attendance-core`, and it is the **origin of the `AR-0001` values** this repo approved
+> (`config/settings.yaml`: `work_start 08:30`, `work_end 16:30`, `late_after 08:30`, `early_before 16:30`) —
+> and of the FY2569 evidence R-04 wanted.
+>
+> So the blocker is no longer availability but **integration** (`R-04-C`). R-04 still reads nothing external,
+> so `realSourceVerified: false` remains correct; only the *reason* changes.
+>
+> **⚠️ Governance:** that repo is **private and holds real employee names** in 13 tracked files (no national
+> IDs were found). **This repo is public.** Any integration must consume **aggregate counts only** — never
+> rosters, names, codes, entry logs or screenshots.
 
 ### 3a. Attendance policy — the engine is blocked on these
 
@@ -141,6 +179,12 @@ untraceable approval cannot be written.
 | X-01 | Blueprint worktrees vs `AGENTS.md` "no worktrees" | **open** — resolved in practice by D-A (no worktree), rule unchanged |
 | HY-1 | Delete the stale local branch `feat/attendance-core-service` (2 local-only, superseded commits)? | **open** — evidence in `PROJECT_STATE.md` §4a; needs explicit approval |
 | HY-2 | Refresh `docs/SESSION_HANDOFF.md` with the Slice 1/2 status? | **open** — it carries another session's WIP |
+| **R-04-F** | **Is the reconciliation "fiscal year" the Thai government Oct–Sep year?** | **open** — implemented as `1 Oct – 30 Sep` (BE `:fiscalYear`), named in every response, and deliberately separate from the R-02 academic year (Jun–May). Needs owner confirmation before it is treated as a policy value (same treatment as P-05/P-06). |
+| **R-04-B** | Provide `G:\ProjectAI\attendance-report-generator`, or declare FY2569 real-source reconciliation out of scope? | **RESOLVED 2026-10-16** — the project exists and is audited (`docs/unified/13_REFERENCE_PROJECT_AUDIT.md`). What remains is **integration** (`R-04-C`) |
+| **R-04-C** | Integrate FY2569 evidence as aggregate-only reconciliation fixtures? | **DONE 2026-10-16** — 12 monthly aggregates + totals + 26 discrepancies as 3 counts, no names or codes; PII guard is tested and non-vacuous. Transcribed, not integrated, so `realSourceVerified` stays `false` |
+| **ID-3** | 🛑 Activate **real** identity integration (Person API ingestion, effective-dated links, migration §8)? | **open — BLOCKED at the design gate.** Needs owner approval of `IDENTITY_MAPPING_CONTRACT.md` §8/§9 **and a completed DPIA + privacy-officer sign-off** (the requirement is documented in an MJU API governance policy found on this machine; **no completed DPIA was found**). No live ID-card processing until then |
+| **ID-4** | `MJU_PERSON_ENRICHMENT_KB.md` does not exist — provide it, or drop the Blueprint reference? | **open** — it is cited as the "personal-data local-only policy", so its absence leaves that policy undocumented |
+| **ID-8** | The MJU API governance obligations (DPIA, multi-stakeholder approval, MFA, Secret-Manager rotation, quarterly access review, per-endpoint owner + OpenAPI spec) were undocumented in this repo | **documented 2026-10-16** in `IDENTITY_MAPPING_CONTRACT.md` §6.1 and `IDENTITY_INTEGRATION_AUDIT.md` §0.2 — they must be **satisfied**, not just cited, before integration |
 
 ## 4. Decisions explicitly NOT taken (and why)
 

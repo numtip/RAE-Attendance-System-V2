@@ -272,7 +272,7 @@ test('service close is administrator-only and succeeds for an admin', async () =
 });
 
 test('validator errors never echo the rejected value', () => {
-  const marker = 'pii-marker-1180200015351';
+  const marker = 'pii-marker-9900000000002';
   const tooLongCode = `${marker}${'x'.repeat(40)}`;
   const tooLongDepartment = `${marker}${'y'.repeat(100)}`;
   const throwers = [

@@ -3,17 +3,33 @@ const test = require('node:test');
 const { createHash, randomBytes } = require('node:crypto');
 const c = require('../src/security/nationalIdContract');
 
+/**
+ * A checksum-VALID national id, DERIVED at runtime rather than committed as a literal.
+ *
+ * Why: a real Thai national id always passes the mod-11 checksum, so committing any checksum-valid
+ * literal risks embedding a real person's id (which is exactly what happened here once - see
+ * docs/SECURITY_INCIDENT_PII_IN_FIXTURES_20261016.md). Deriving it from a deliberately impossible
+ * prefix means the value can never be someone's: no real id starts 000000000001.
+ *
+ * `backend/tests/nationalIdFixtureHygiene.test.js` enforces that no checksum-valid literal is committed.
+ */
+function validSyntheticNationalId() {
+  const twelve = '000000000001';
+  const sum = twelve.split('').reduce((acc, digit, index) => acc + Number(digit) * (13 - index), 0);
+  return twelve + String((11 - (sum % 11)) % 10);
+}
+
 const b64 = (n) => randomBytes(n).toString('base64');
 const FAKE = '9999999999991';
 // TEST-ONLY fixed key (32 x 0x01) for the golden vector. Never a real key.
 const GOLDEN_KEY = Buffer.alloc(32, 1);
 
 test('canonicalization: strict, Thai digits, separators, no stripping of letters', () => {
-  assert.equal(c.canonicalizeNationalId('1-1802-00015-35-1'), '1180200015351');
-  assert.equal(c.canonicalizeNationalId(' 1180200015351 '), '1180200015351');
-  assert.equal(c.canonicalizeNationalId('๑๑๘๐๒๐๐๐๑๕๓๕๑'), '1180200015351');
-  assert.equal(c.canonicalizeNationalId('１１８０２０００１５３５１'), '1180200015351'); // full-width via NFKC
-  for (const bad of ['', null, undefined, 'abc', '118020001535', '11802000153511', 'x1180200015351', '1180200015351\n;DROP', '１２'])
+  assert.equal(c.canonicalizeNationalId('9-9000-00000-00-2'), '9900000000002');
+  assert.equal(c.canonicalizeNationalId(' 9900000000002 '), '9900000000002');
+  assert.equal(c.canonicalizeNationalId('๙๙๐๐๐๐๐๐๐๐๐๐๒'), '9900000000002');
+  assert.equal(c.canonicalizeNationalId('９９００００００００００２'), '9900000000002'); // full-width via NFKC
+  for (const bad of ['', null, undefined, 'abc', '118020001535', '99000000000021', 'x9900000000002', '9900000000002\n;DROP', '１２'])
     assert.equal(c.canonicalizeNationalId(bad), '', String(bad));
 });
 
@@ -79,7 +95,7 @@ test('audit events are metadata-only and reject PII-shaped text', () => {
 });
 
 test('checksum is a separate screening rule, not part of lookup canonicalization', () => {
-  assert.equal(c.isValidNationalIdChecksum('1180200015351'), true);
+  assert.equal(c.isValidNationalIdChecksum(validSyntheticNationalId()), true);
   assert.equal(c.isValidNationalIdChecksum(FAKE), false);
   assert.ok(c.canonicalizeNationalId(FAKE));
 });

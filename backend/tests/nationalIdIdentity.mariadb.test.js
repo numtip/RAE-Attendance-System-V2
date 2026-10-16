@@ -125,7 +125,7 @@ for (const port of ports) {
       const [[n2]] = await pool.query("SELECT COUNT(*) c FROM employee_identifier WHERE employee_uid='emp-9'");
       assert.equal(Number(n2.c), 1);
 
-      const many = await settle([ID_C, '9999999999994', '9999999999995', '9999999999996'].map((id) => service.linkIdentifier({ employeeUid: 'emp-10', idType: 'national_id', idValue: id })));
+      const many = await settle([ID_C, '9999999999990', '9999999999995', '9999999999996'].map((id) => service.linkIdentifier({ employeeUid: 'emp-10', idType: 'national_id', idValue: id })));
       assert.equal(many.filter((r) => r.status === 'fulfilled').length, 1);
       assert.ok(many.filter((r) => r.status === 'rejected').every((r) => r.reason.code === 'EMPLOYEE_ALREADY_HAS_NATIONAL_ID'));
 

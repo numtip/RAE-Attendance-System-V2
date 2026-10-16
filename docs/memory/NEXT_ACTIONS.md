@@ -41,9 +41,24 @@ number the JSON endpoint reports, and `computationStatus` / `isFinal` / `dateCut
 population / caveats all travel into the file. Anything that is not final is a **watermarked draft** — 96 pt
 `DRAFT` on every PDF page plus a red header on every XLSX sheet. Detail:
 [`docs/unified/11_SLICE5_ATTENDANCE_EXPORTS.md`](../unified/11_SLICE5_ATTENDANCE_EXPORTS.md). **No
-migration.** No new branch is required beyond the R-03 stack; see the slice doc §0.
+migration.** Draft PR [#42](https://github.com/numtip/RAE-Attendance-System-V2/pull/42), 8/8 CI green.
 
-> ### 🔜 The next milestone is R-04 — reconciliation snapshot
+> ### ✅ Reconciliation snapshot (R-04) — DELIVERED 2026-10-16 (fixture-verified only)
+
+`GET /api/v1/attendance/reconciliation/day|month|fiscal-year/:employeeUid/...` (read-only). Compares the
+canonical stored facts against the verified source records with 18 checks and a deterministic verdict
+(`blocked` > `mismatched` > `incomplete` > `matched`). A period with nothing to compare is `incomplete`,
+never `matched`; identity ambiguity is `blocked`, never merged. The fiscal year is **Oct–Sep** (BE
+`:fiscalYear`), deliberately a different convention from the R-02 academic year (Jun–May). Detail:
+[`docs/unified/12_SLICE6_RECONCILIATION.md`](../unified/12_SLICE6_RECONCILIATION.md). **No migration.**
+
+**⚠️ Not verified against any real source.** The reference project
+`G:\ProjectAI\attendance-report-generator` **does not exist**, so every snapshot carries
+`realSourceVerified: false` plus an explicit note in the payload. See `R-04-B` below.
+
+> ### 🔜 The next milestone
+
+R-05 (annual HR form) reuses the R-03 renderer. Before any wider enablement, clear the blockers in §5.
 
 ## 2. Pending Slice 2 follow-ups
 
@@ -85,8 +100,24 @@ Remaining before a report is *complete*:
 | R-02 | Report endpoints for one employee: day / month / academic year, scope-enforced | M | R-01 | **DONE 2026-10-16** (no migration; not committed). 401 anonymous, 403 cross-scope; every report names its rule version, date cutoff and population, and surfaces `computationStatus` + `isFinal` instead of hiding a partial month. `docs/unified/10_SLICE4_ATTENDANCE_REPORTS.md` |
 | R-02-FE | Wire `frontend/src/views/AttendanceMonthlyView.vue` to `/attendance/report/month/...` so the UI shows the completeness verdict | S | R-02 | **DONE 2026-10-16** — verdict rendered before the figures; a never-derived month shows no figures instead of zeros. Verified in review/fixture mode. |
 | R-03 | Export layer (XLSX with Thai fonts, PDF, annual form) | L | R-02 | **DONE 2026-10-16** (no migration). PDF + XLSX, day/month/academic-year, scope-enforced, `format` required with no default, non-final exports watermarked `DRAFT` / `ข้อมูลยังไม่สมบูรณ์` across every page and sheet. Zero-dependency XLSX (`exceljs` rejected); only `pdfkit` added. `docs/unified/11_SLICE5_ATTENDANCE_EXPORTS.md` |
-| R-04 | Read-only reconciliation snapshot: daily / month / **fiscal year (Oct–Sep)** | M | R-02 | Compares canonical facts against verified source records; statuses `matched` / `mismatched` / `incomplete` / `blocked`; records source, cutoff, period, rule version and unresolved exceptions. Must NOT modify source records. **Fiscal year (Oct–Sep) is NOT the R-02 academic year (Jun–May).** |
-| R-04-B | **`G:\ProjectAI\attendance-report-generator` does not exist** (VERIFIED 2026-10-16), so FY2569 real-source reconciliation cannot be validated | S | — | Either resolve the reference or formally record that R-04's historical-evidence half is unverifiable and rely on synthetic fixtures |
+| R-04 | Read-only reconciliation snapshot: daily / month / **fiscal year (Oct–Sep)** | M | R-02 | **DONE 2026-10-16** (no migration). 18 checks; deterministic `blocked` > `mismatched` > `incomplete` > `matched`; nothing-to-compare is `incomplete` never `matched`; identity ambiguity `blocked` never merged; never joins by name; `pristine: true` with an immutability test. Fiscal year is Oct–Sep (BE `:fiscalYear`), separate from the R-02 academic year (Jun–May). `docs/unified/12_SLICE6_RECONCILIATION.md` |
+| R-04-B | Re-scope: the reference project **exists** (audited 2026-10-16) | S | — | Was "source missing"; it is now **"source exists, integration not done"**. See `R-04-C` |
+| **R-04-C** | Integrate the FY2569 reconciliation evidence as a fixture — **aggregate counts only, no names or codes** | M | R-04, audit §5 | **DONE 2026-10-16.** `backend/tests/fixtures/fy2569Aggregates.js` (12 monthly aggregates + totals 1,600/24/11/8 + 26 discrepancies as 3 classification counts) and `reconciliationFiscalEvidence.test.js` (sums, fiscal alignment via the existing `fiscalYearPeriod`, and a **non-vacuous PII guard**). **Transcription, not integration** — `realSourceVerified` stays `false`. `docs/unified/12_SLICE6_RECONCILIATION.md` §5.5 |
+| ~~R-04-T~~ | ~~Pin a snapshot-level `mismatched` verdict with a scenario test~~ | — | — | **DONE 2026-10-16** — `reconciliation.test.js` asserts it from real fixture data, with the reason recorded |
+
+## 5a. Identity integration — DESIGN GATE (not activated)
+
+| ID | Task | Note |
+|---|---|---|
+| **ID-1** | Identity source audit of `mju-person-enrich` | **DONE 2026-10-16** — `docs/IDENTITY_INTEGRATION_AUDIT.md`. It is **corroboration-only**, not an identity authority: name-based fuzzy lookup, ambiguity fails open, 303 plaintext national IDs at rest on a non-git disk |
+| **ID-2** | Identity mapping architecture & data contract | **DONE 2026-10-16** — `docs/IDENTITY_MAPPING_CONTRACT.md`; migration proposal only, **nothing executed** |
+| **ID-3** | 🛑 **OWNER DECISION — activate real identity integration?** | **BLOCKED at the design gate.** Needs approval of contract §8/§9 **and a completed DPIA + privacy-officer sign-off** (the requirement is documented; no completed DPIA was found). **No live ID-card processing** |
+| **ID-4** | **`MJU_PERSON_ENRICHMENT_KB.md` does not exist** (verified; only a dangling reference in the Blueprint) — yet it is named as the "personal-data local-only policy" | Provide it or drop the reference |
+| **ID-8** | **MJU API governance obligations are undocumented in this repo** — found at `G:\AI\docs\integrations\MJU_API_GOVERNANCE_POLICY.md`: DPIA + privacy-officer sign-off, multi-stakeholder approval, MFA for Admin/DataOwner, Secret-Manager token rotation, quarterly access review, per-endpoint owner + OpenAPI spec | Cite them in the contract (done) and satisfy them before any integration |
+| **ID-5** | **The MJU Person API returns no `personnelID`** (0/308), so it **cannot populate the MJU identity kind**, which expects `personnel_id` from `mju_person_api` | Decide: find an endpoint that returns one, or re-scope the MJU kind |
+| **ID-6** | Harden `createCandidate` (audit finding **F1**): enforce the `EMAIL_LIKE` + `ac` guard at the link layer, not only in the SSO adapter | approve the hardening |
+| **ID-7** | Make `ENRICHMENT_SOURCES` a checked, tested constant (audit finding **F2**) | any new automated source must not bypass the ambiguity guard |
+| R-04-F | Owner confirmation of the fiscal-year window (Oct–Sep) as a policy value | S | — | Reporting convention today, same treatment as P-05/P-06 |
 | R-03-FE | Export controls in the day and academic-year views | S | R-02-FE pattern | `AttendanceDailyView.vue` renders raw `AttendanceRecord[]`, so it needs the report endpoint first |
 | R-04 | Reconciliation test: recompute a closed month and match a frozen synthetic snapshot | M | R-02 | Recalculation of a past month reproduces the stored numbers exactly |
 
