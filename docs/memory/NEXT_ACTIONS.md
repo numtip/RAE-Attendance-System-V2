@@ -1,7 +1,9 @@
 # NEXT_ACTIONS — RAE Attendance System V2
 
-**As of:** 2026-10-15. Ordered so that each item unblocks the next. Every item still needs its own approval,
-branch and PR; nothing here authorises a push, merge, migration or deploy.
+**As of:** 2026-10-16 16:20 (Asia/Bangkok), at the close of `DAY_20261016_CLOSED`.
+**Current state:** [`../STATUS.md`](../STATUS.md) · **Start here next time:** [`NEXT_SESSION_HANDOFF.md`](NEXT_SESSION_HANDOFF.md)
+Ordered so that each item unblocks the next. Every item still needs its own approval, branch and PR; nothing
+here authorises a push, merge, migration or deploy.
 
 **Legend:** **VERIFIED** · **REPORTED** · **UNKNOWN**. Size: **S** ≈ hours, **M** ≈ 1–2 days, **L** ≈ 3–5 days.
 
@@ -10,7 +12,6 @@ branch and PR; nothing here authorises a push, merge, migration or deploy.
 ## 0. Every session starts here
 
 > ### 🔁 Consult Jev (Agent Core) once, then work
-
 **Owner instruction (2026-10-16): Jev must be invoked every session.** Enforced by the always-applied rule
 [`.cursor/rules/agent-core-jev.mdc`](../.cursor/rules/agent-core-jev.mdc).
 
@@ -33,32 +34,48 @@ replaced by it:
 
 ## 1. The immediate next milestone
 
-> ### ✅ Attendance report export (R-03) — DELIVERED 2026-10-16
+> ### ✅ R-02, R-03, R-04, R-04-C and R-05 — ALL DELIVERED 2026-10-16
 
-`GET /api/v1/attendance/export/day|month|academic-year/:employeeUid/...?format=pdf|xlsx` (read-only,
-scope-enforced). The export derives nothing: it renders the R-02 payload, so an exported total is the same
-number the JSON endpoint reports, and `computationStatus` / `isFinal` / `dateCutoff` / rule versions /
-population / caveats all travel into the file. Anything that is not final is a **watermarked draft** — 96 pt
-`DRAFT` on every PDF page plus a red header on every XLSX sheet. Detail:
-[`docs/unified/11_SLICE5_ATTENDANCE_EXPORTS.md`](../unified/11_SLICE5_ATTENDANCE_EXPORTS.md). **No
-migration.** Draft PR [#42](https://github.com/numtip/RAE-Attendance-System-V2/pull/42), 8/8 CI green.
+| Item | Endpoint / artefact | PR |
+|---|---|---|
+| **R-02** individual reports (day / month / academic year) | `GET /attendance/report/...` | [#41](https://github.com/numtip/RAE-Attendance-System-V2/pull/41) |
+| **R-03** export (PDF + XLSX, DRAFT watermark) | `GET /attendance/export/...?format=pdf\|xlsx` | [#42](https://github.com/numtip/RAE-Attendance-System-V2/pull/42) |
+| **R-04** reconciliation snapshot | `GET /attendance/reconciliation/...` | [#43](https://github.com/numtip/RAE-Attendance-System-V2/pull/43) |
+| **R-04-C** transcribed FY2569 aggregate evidence | `backend/tests/fixtures/fy2569Aggregates.js` | #43 |
+| **R-05** annual HR report (fiscal Oct–Sep **and** academic) | `GET /attendance/report/fiscal-year/...`, `/annual-academic/...` | [#46](https://github.com/numtip/RAE-Attendance-System-V2/pull/46) |
 
-> ### ✅ Reconciliation snapshot (R-04) — DELIVERED 2026-10-16 (fixture-verified only)
+Full state, gates and blockers: [`../STATUS.md`](../STATUS.md).
 
-`GET /api/v1/attendance/reconciliation/day|month|fiscal-year/:employeeUid/...` (read-only). Compares the
-canonical stored facts against the verified source records with 18 checks and a deterministic verdict
-(`blocked` > `mismatched` > `incomplete` > `matched`). A period with nothing to compare is `incomplete`,
-never `matched`; identity ambiguity is `blocked`, never merged. The fiscal year is **Oct–Sep** (BE
-`:fiscalYear`), deliberately a different convention from the R-02 academic year (Jun–May). Detail:
-[`docs/unified/12_SLICE6_RECONCILIATION.md`](../unified/12_SLICE6_RECONCILIATION.md). **No migration.**
+> ### 🔜 The next milestone is NOT a feature. Triage the open blockers, in this order.
 
-**⚠️ Not verified against any real source.** The reference project
-`G:\ProjectAI\attendance-report-generator` **does not exist**, so every snapshot carries
-`realSourceVerified: false` plus an explicit note in the payload. See `R-04-B` below.
+1. **R1/R3 — the privacy incident.** A real national ID is still retrievable from **public** `origin/main`
+   history. The decision package is ready; **no notification sent, no rewrite done.**
+2. **`G-mig` / `ID-7b-rem`** — approve or reject migration `025`.
+3. **ID-3 / G7** — real identity integration (needs a DPIA + privacy-officer sign-off; also blocked by ID-5).
+4. **R-05b**, then **D-02**.
 
-> ### 🔜 The next milestone
+**Correction to earlier versions of this file:** the reference project
+`G:\ProjectAI\attendance-report-generator` was reported here as "does not exist". It was **found and audited**
+on 2026-10-16 — see [`../unified/13_REFERENCE_PROJECT_AUDIT.md`](../unified/13_REFERENCE_PROJECT_AUDIT.md).
+It is a **sibling private project** and the origin of the `AR-0001` values.
 
-R-05 (annual HR form) reuses the R-03 renderer. Before any wider enablement, clear the blockers in §5.
+## 1a. Identity, security and design items (all newly recorded 2026-10-16)
+
+| ID | Item | Status |
+|---|---|---|
+| **ID-6** | Subject guard moved into the domain and shared by both link-creation paths | **DONE** — PR #45 |
+| **ID-7** | Frozen `IDENTITY_LINK_SOURCES` allowlist; an unknown source is refused at creation | **DONE** — PR #45 |
+| **ID-7b** | 🔴 → ✅ **The outcome half of the ambiguity guard was inert on MariaDB.** | **FIXED** — allowlist + absence check, no migration; verified on a real MariaDB 11.4.2 (2/2). PR #47 |
+| **ID-7b-rem** | The durable form needs the `enrichment_outcome` column → migration `025` | **PROPOSAL ONLY, not applied** |
+| **ID-6b / S-02** | Durable identity-evidence storage and approval provenance | **DESIGNED** — `docs/IDENTITY_EVIDENCE_MODEL.md`, `docs/adr/ADR-011-*`, `docs/security/*`. PR #48 |
+| **ID-3 / G7** | Activate real identity integration | **BLOCKED** at the design gate — DPIA + privacy-officer sign-off |
+| **ID-5** | The MJU Person API returns **no `personnelID`** (0/308) | **OPEN** — cannot populate the MJU identity kind |
+| **ID-4** | `MJU_PERSON_ENRICHMENT_KB.md` **does not exist** | **OPEN** |
+| **ID-8** | MJU API governance obligations (DPIA, multi-stakeholder approval, MFA, quarterly review, per-endpoint OpenAPI spec) | **DOCUMENTED** in the contract §6.1; must be **satisfied** before integration |
+| **R1** | Privacy-officer notification | **OPEN — draft ready, NOT sent** |
+| **R3** | History remediation | **OPEN — not done; value still public** |
+| **R-05b** | Cross-employee code-holder change is not positively detectable | **OPEN** |
+| **D-02** | Locate the legacy `attendance_db` | **OPEN** — not on the local USBServer MySQL 5.6 |
 
 ## 2. Pending Slice 2 follow-ups
 
