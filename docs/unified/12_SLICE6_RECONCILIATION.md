@@ -162,13 +162,24 @@ A separate probe drove the service directly against fixture repositories:
 
 | Claim | Result |
 |---|---|
-| **Source immutability** — no store changed by a reconciliation | **PASS** — deep key-sorted snapshot of every enumerable store, before and after all 5 kinds (day, 3 months, fiscal year): **0 stores changed**, and `pristine: true` in every payload |
-| Deterministic | **PASS** — two runs produced an identical `snapshotHash` |
+| **Source immutability** — no store changed by a reconciliation | **PASS** — deep key-sorted snapshot of every enumerable store, before and after all 5 kinds (day, 3 months, fiscal year): **0 stores changed**, and `pristine: true` in every payload. The suite's own version is stronger still: it **poisons all 11 write methods across 5 repositories** so an accidental write throws, and a mutation confirmed that gate is real (§5.2 last row) |
+| Deterministic | **PASS** — identical `snapshotHash` across two runs; the suite's version spans clocks a year apart |
 | Empty period is not "matched" | **PASS** — a month with no rows → `incomplete` |
 | Fiscal ≠ academic | **PASS** — fiscal `2025-10-01..2026-09-30` vs academic `2026-06-01..2027-05-31` |
 | Cross-scope refused | **PASS** — 403/FORBIDDEN for day, month and fiscal year |
 | No PII / secrets in the payload | **PASS** — screened for `passwordHash`, `national_id`, any 13-digit national id, `Bearer`, JWT-shaped strings, `hmac`, facescan ids |
 | **`mismatched` is reachable and correct** | **PASS** — the raw fixture seed month (a stored row with no daily rows) yields `mismatched`, while the `cleanMonth` scenario yields `matched`: the same code distinguishes a real disagreement from a mere gap |
+| **The read-only gate is not vacuous** | **PASS (mutation)** — injecting `await daily.upsertDay(...)` into `reconcileDay` made the read-only test **fail** with `write attempted: upsertDay`. Reverted; 27/27 and the full suite green again. A test that passes whether or not the code writes would prove nothing |
+
+Two guarantees in the suite are stronger than the §5.3 matrix implies, and are worth naming:
+
+* **Determinism is tested across clock difference, not just a repeat.** The same data is reconciled with the
+  clock set to `2026-10-16T00:00:00Z` and then `2027-05-01T13:45:00Z` — over a year apart. The `snapshotHash`
+  is asserted **equal** while `asOf` and `cutoff` are asserted **different**. That is what proves the hash
+  input really excludes the clock rather than merely being stable within one second.
+* **The same-name scenario asserts non-disclosure.** Beyond keeping the two employees distinct, it asserts the
+  shared Thai name and the other employee's `employee_uid` appear **nowhere** in the payload. Identity data
+  does not leak through a reconciliation response.
 
 ### 5.3 Scenario matrix (from the suites)
 
