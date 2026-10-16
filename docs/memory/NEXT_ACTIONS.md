@@ -118,7 +118,7 @@ Remaining before a report is *complete*:
 | **ID-6** | Harden `createCandidate` (audit finding **F1**): enforce the `EMAIL_LIKE` + `ac` guard at the link layer, not only in the SSO adapter | **DONE 2026-10-16.** Guard moved into `domain/identityLink.js` and shared by **both** creation paths; it also rejects malformed, non-finite, over-long (255 char) and whitespace-padded subjects. Mutation-tested: removing it fails 5 tests. `backend/tests/identityLinkHardening.test.js` |
 | **ID-7** | Make `ENRICHMENT_SOURCES` a checked, tested constant (audit finding **F2**) | **DONE 2026-10-16.** Frozen `IDENTITY_LINK_SOURCES` allowlist; an unknown source is refused at creation (`400 IDENTITY_SOURCE_UNKNOWN`). This closed a real bypass, not just a hygiene gap: an invented source string used to escape the ambiguity guard entirely. Drift guarded in both directions by `identityLinkSourcePolicy.test.js`. Mutation-tested: removing it fails 4 tests |
 | **ID-6b** | **Residual (S-02):** store the approval EVIDENCE TYPE as its own field, not only `approvedBy: 'system:sso'` | **DESIGNED 2026-10-16** — see `docs/IDENTITY_EVIDENCE_MODEL.md`, `docs/adr/ADR-011-identity-evidence-storage.md`, `docs/security/IDENTITY_EVIDENCE_THREAT_MODEL.md` + `_TEST_PLAN.md`, and the SQL **proposal** under `database/proposals/`. **`PROPOSED — NOT APPROVED`; no SQL executed.** Key finding: a keyed digest does **not** verify a lookup claim alone — it becomes a proof only as an **equality check against the same employee's `employee_identifier` row** under the same key version |
-| **ID-7b** | 🔴 **The outcome half of the ambiguity guard is INOPERATIVE on MariaDB.** `enrichment_outcome` was **never a column** in any migration; the MariaDB twin hardcodes `enrichmentOutcome: null`, while the fixture twin persists it — so the guard works in every local test and silently does nothing in production. An enrichment link with a blocked outcome but `confidence` of `high`/`medium` is approvable on MariaDB | **Found 2026-10-16** by the ID-6b track, independently verified. Needs a **migration** (the column, or fold it into the ADR-011 evidence table) plus a fixture/MariaDB parity test. Stop-gap without a migration: **fail closed on an ABSENT outcome** for enrichment sources instead of treating silence as success. See `IDENTITY_MAPPING_CONTRACT.md` F3/F4 |
+| **ID-7b** | 🔴 **The outcome half of the ambiguity guard was INOPERATIVE on MariaDB.** `enrichment_outcome` was **never a column**; the MariaDB twin hardcodes `enrichmentOutcome: null`, while the fixture twin persists it — so the guard worked in every local test and silently did nothing in production | **FIXED 2026-10-16, no migration required.** The guard is now an **allowlist with an explicit absence check** (`ALLOWED_ENRICHMENT_OUTCOMES = ['found']`), so absent/empty/whitespace/unrecognised outcomes all fail closed. Verified on a **real MariaDB 11.4.2** (`identityLinkEnrichment.mariadb.test.js`, 2/2 PASS) plus 10 fixture tests. **Known consequence:** until the column exists, no enrichment link can be approved on MariaDB at all — the intended posture. Durable fix remains migration `025` |
 | R-04-F | Owner confirmation of the fiscal-year window (Oct–Sep) as a policy value | S | — | Reporting convention today, same treatment as P-05/P-06 |
 | R-03-FE | Export controls in the day and academic-year views | S | R-02-FE pattern | `AttendanceDailyView.vue` renders raw `AttendanceRecord[]`, so it needs the report endpoint first |
 | R-04 | Reconciliation test: recompute a closed month and match a frozen synthetic snapshot | M | R-02 | Recalculation of a past month reproduces the stored numbers exactly |
@@ -182,6 +182,20 @@ Remaining before a report is *complete*:
     to known enrichment sources, so an invented source string escaped it entirely. When a control is scoped
     by an input value, that input needs its own closed allowlist — and the allowlist needs a test that fails
     when a new value appears without being registered.
+13. **A BLOCKLIST control fails open on absence. Use an allowlist.** The enrichment-outcome guard refused only
+    *known-bad* values, so a **missing** value was treated as "nothing to block" — and because the column does
+    not exist, that was the state of EVERY production row, while every fixture test passed. The fix was to
+    invert the test to an allowlist plus an explicit absence check. When a control's default has to be "deny",
+    write it as an allowlist so an unrecognised or missing value is denied by construction.
+14. **The local MariaDB aggregate run is NOT a valid pass/fail signal on Windows.** With
+    `node --test --test-force-exit tests/*.test.js`, four files abort at teardown with a libuv assertion on
+    Windows (`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src\win\async.c`) and the runner reports
+    them as `'test failed'` even though **every test inside them passed** (verified: `actual_test_failures=0`
+    in each). CI runs on Linux and never sees this. Run MariaDB suites **one file per process** locally:
+    `node --test --test-force-exit tests/<one-file>.test.js`. Also set `TZ=UTC`, and use a FRESH database,
+    because `facescanIngestion.mariadb.test.js` is not re-runnable on a used DB (`'duplicate'` vs
+    `'inserted'`) and `facescanNormalization.mariadb.test.js` fails on a UTC+7 host (`15:00:00` vs
+    `08:00:00`).
 12. **Never attribute a `git log -S` result to a ref you did not scope it to.** The PII incident was recorded
     as introduced by `83aaa53` (2026-10-09) because the lookup was scoped to a path —
     `backend/tests/nationalIdContract.test.js` — that **does not exist on `origin/main` at all**. Git
