@@ -16,6 +16,8 @@ const { createAttendanceComputeService } = require('../../services/attendanceCom
 const { createAttendanceComputeController } = require('../../controllers/attendanceComputeController');
 const { createDailyAttendanceController } = require('../../controllers/dailyAttendanceController');
 const { createDailyAttendanceService } = require('../../services/dailyAttendanceService');
+const { createMonthlySummaryController } = require('../../controllers/monthlySummaryController');
+const { createMonthlySummaryService } = require('../../services/monthlySummaryService');
 
 function createV1Router(container) {
   const authService = createAuthService(container);
@@ -37,6 +39,10 @@ function createV1Router(container) {
   const dailyAttendance = createDailyAttendanceController(createDailyAttendanceService({
     repositories: container.repositories,
     agentAdvisory: container.agentAdvisory ?? null,
+  }));
+  // Slice 3: monthly summaries are derived from the stored daily rows, not recomputed from scans.
+  const monthlySummary = createMonthlySummaryController(createMonthlySummaryService({
+    repositories: container.repositories,
   }));
 
   const router = express.Router();
@@ -74,6 +80,13 @@ function createV1Router(container) {
   router.get('/attendance/explain/:employeeUid/:date', authenticate, dailyAttendance.explain);
   router.post('/attendance/recalculate', authenticate, dailyAttendance.recalculate);
   router.post('/attendance/recalculate/:employeeUid', authenticate, dailyAttendance.recalculate);
+
+  // Slice 3: monthly summary derived from the daily rows.
+  router.get('/attendance/monthly-summary/:employeeUid/:year/:month', authenticate, monthlySummary.stored);
+  router.get('/attendance/monthly-summary/:employeeUid/:year', authenticate, monthlySummary.year);
+  router.get('/attendance/monthly-summary-explain/:employeeUid/:year/:month', authenticate, monthlySummary.explain);
+  router.post('/attendance/monthly-summary/recalculate/:employeeUid/:year/:month', authenticate, monthlySummary.recalculateMonth);
+  router.post('/attendance/monthly-summary/recalculate', authenticate, monthlySummary.recalculate);
 
   return router;
 }

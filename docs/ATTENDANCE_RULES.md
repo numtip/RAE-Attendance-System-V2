@@ -1,7 +1,10 @@
 # Attendance rules (versioned) — contract
 
-**Status:** implemented in Slice 2. **No rule version is approved.** The only seeded rule is
-`AR-0001` with status `pending_approval`, so nothing in this repository currently computes lateness.
+**Status:** implemented in Slice 2; month derivation added in Slice 3. **`AR-0001` was approved by the
+project owner on 2026-10-16** (work `08:30–16:30`, late after `08:30`, early before `16:30`, working week
+Mon–Fri), so 2026 dates compute. Its `approved_by` is a **session label, not a person** — naming the
+accountable approver is still required before production use. A 2027 date reports `pending_policy` because
+the only rule covering it (`AR-0002`) is **not** approved.
 
 Companion documents: [`unified/07_SLICE2_ATTENDANCE_ENGINE.md`](unified/07_SLICE2_ATTENDANCE_ENGINE.md),
 [`ATTENDANCE_CORE.md`](ATTENDANCE_CORE.md) (the donor we no longer proxy to for calculation),
@@ -37,6 +40,8 @@ Consequences worth stating plainly:
 
 * A `draft` or `pending_approval` rule is discoverable (`findEffectiveRuleVersionAnyStatus`) purely so the
   API and CLI can tell an operator *why* a day is pending. It is never selected for a calculation.
+* The shipped fixture demonstrates both sides: `AR-0001` is **approved** for 2026, and `AR-0002` is
+  **pending_approval** for 2027, so a 2026 date computes while a 2027 date reports `pending_policy`.
 * `daily_attendance.status` gained a `pending` value in migration `023` **specifically** so that "we have the
   facts but cannot judge this day" is representable. Without it the only options would be `present` or
   `absent`, both of which assert something unproven.
@@ -93,8 +98,8 @@ Lateness and leave come from different places, deliberately.
 
 | # | Open policy question | Current behaviour while unresolved |
 |---|---|---|
-| P-01 | Are the work hours `08:30–16:30` correct for each employee type? | `AR-0001` stays `pending_approval`; every day is `pending_policy`. |
-| P-02 | Is the working week Mon–Fri for everyone, and do any units differ? | Schedule-overridable; a missing value falls back to Mon–Fri **and is flagged**. |
+| P-01 | Are the work hours `08:30–16:30` correct for each employee type? | **Owner-approved 2026-10-16** for the whole of 2026 via `AR-0001`. Still open: whether other employee types need a different rule, and who the accountable approver is. |
+| P-02 | Is the working week Mon–Fri for everyone, and do any units differ? | Approved as Mon–Fri for 2026. A schedule can override per employee; a missing value falls back to Mon–Fri **and is flagged**. |
 | P-03 | How is lateness defined for a **night shift**? No approved source defines an overnight-relative threshold. | The span is recorded; lateness and early departure are **withheld** and `overnightLatenessPolicyMissing` is set. |
 | P-04 | Are `late_after`/`early_before` grace periods, and is there a rounding rule? | Exact comparison, boundary inclusive. |
 | P-05 | Which holiday scope applies (national / university / department)? | The table supports all three; only `approved` rows count. The calendar is empty. |
@@ -114,3 +119,46 @@ with `chk_rule_version_approval`, so an untraceable approval cannot be written.
   fields that move.
 * With no `employeeUid`, only employees **that have scans in the range** are rebuilt.
 * One bad day is recorded as `failed` with its reason and does not abort the run.
+
+## 8. Month derivation (Slice 3)
+
+A month is **derived from the stored daily rows** — never recomputed from scans — so a month total is
+always traceable to the days that produced it.
+
+**The completeness verdict.** A month carries `computation_status`:
+
+| Status | Meaning |
+|---|---|
+| `no_data` | no stored daily rows at all |
+| `pending_policy` | at least one day is `pending_policy` (an approved rule is missing), so recalculating cannot fix the month |
+| `partial` | at least one day is `insufficient_data` or `failed` |
+| `calculated` | every stored day was judged |
+
+**A month is never `calculated` while any day inside it is unjudged.** `pending_days` reports the size of
+the hole.
+
+A day whose *day-level* status is `no_data` is a **complete judgement** — the rule said working day and no
+scan arrived, so the person was absent — and does **not** make the month partial. Treating an absence as
+unknown would make every normal month look incomplete.
+
+**Two different "work day" numbers, on purpose:**
+
+* `total_work_days` — days the rule classified as workdays in the stored rows.
+* `expected_working_days` — what the approved calendar says should have been worked (working week minus
+  approved holidays; `ignoreHolidays = 0` means holidays are worked).
+
+They differ when rows are missing, and that difference is the **reconciliation signal**.
+`expected_working_days` is **NULL, never 0**, when it cannot be derived, and `derivation_notes` says why
+(`no_approved_rule`, `working_week_not_specified`, `calendar not supplied`).
+
+**No phantom months.** A month with no daily rows and no existing row is not written — an empty row would
+read as a real month of zeros. It is reported in the run summary instead.
+
+**Staleness is judged by value, not by timestamp.** `explain` compares the derived result fields (counts,
+minutes, hours, completeness, rule versions) because `calculated_at` always moves on a rerun, and a
+derivation and a daily recalculation can share a millisecond.
+
+**Authorization.** Deriving writes derived data, so it requires manager/admin, and the organization-wide
+form additionally requires a resolved **broad** data scope — role alone is not enough.
+
+Full contract: [`unified/09_SLICE3_MONTHLY_SUMMARY.md`](unified/09_SLICE3_MONTHLY_SUMMARY.md).

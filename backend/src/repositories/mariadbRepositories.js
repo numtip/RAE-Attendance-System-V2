@@ -11,6 +11,7 @@ const { createEmployeeIdentifierMariaDbRepository } = require('./mariadb/employe
 const { createEmployeeAssignmentMariaDbRepository } = require('./mariadb/employeeAssignmentMariaDbRepository');
 const { createAttendanceRuleMariaDbRepository } = require('./mariadb/attendanceRuleMariaDbRepository');
 const { createDailyAttendanceMariaDbRepository } = require('./mariadb/dailyAttendanceMariaDbRepository');
+const { createMonthlySummaryMariaDbRepository } = require('./mariadb/monthlySummaryMariaDbRepository');
 const { createFacescanIngestionMariaDbRepository } = require('./mariadb/facescanIngestionMariaDbRepository');
 const { createAttendanceEventMariaDbRepository } = require('./mariadb/attendanceEventMariaDbRepository');
 
@@ -36,6 +37,7 @@ function createMariaDbRepositories(database = config.database) {
       employeeAssignments: blockedRepo(),
       attendanceRules: blockedRepo(),
       dailyAttendance: blockedRepo(),
+      monthlySummaries: blockedRepo(),
       facescanIngestion: blockedRepo(),
       attendanceEvents: blockedRepo(),
     };
@@ -54,6 +56,7 @@ function createMariaDbRepositories(database = config.database) {
     employeeAssignments: createEmployeeAssignmentMariaDbRepository(pool),
     attendanceRules: createAttendanceRuleMariaDbRepository(pool),
     dailyAttendance: createDailyAttendanceMariaDbRepository(pool),
+    monthlySummaries: createMonthlySummaryMariaDbRepository(pool),
     facescanIngestion: createFacescanIngestionMariaDbRepository(pool),
     attendanceEvents: createAttendanceEventMariaDbRepository(pool),
   };

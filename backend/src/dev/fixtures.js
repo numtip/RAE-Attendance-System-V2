@@ -100,19 +100,48 @@ const authorizationGrants = [];
 const orgMemberships = [];
 
 // ---------------------------------------------------------------------------
-// Slice 2: versioned attendance rules, holiday calendar and schedules.
+// Slice 2/3: versioned attendance rules, holiday calendar and schedules.
 //
-// The rule values below are the DRAFT candidate carried over from the donor project (08:30-16:30, late
-// after 08:30, early before 16:30). They are deliberately seeded as `pending_approval`, NOT `approved`:
-// no owner has signed these values off, and the engine refuses to compute against an unapproved rule.
+// AR-0001 carries the DRAFT candidate values from the donor project (08:30-16:30, late after 08:30,
+// early before 16:30, working week Mon-Fri).
+//
+// OWNER DECISION 2026-10-16: the project owner APPROVED these values, so AR-0001 is `approved` and covers
+// the 2026 calendar year. Its approved_to is deliberately set, with AR-0002 below as the unapproved
+// successor, so the honesty gate stays demonstrable in the fixture: a 2026 date computes, and a 2027 date
+// reports pending_policy because the only rule covering it is not approved.
+//
+// `approvedBy` is a SESSION LABEL, not a person. The database CHECK only requires it to be present; naming
+// the accountable individual is required before any production use of these values.
 // Everything here is synthetic.
 // ---------------------------------------------------------------------------
 const attendanceRuleVersions = [
   {
     ruleVersionCode: 'AR-0001',
-    name: 'Default work hours (candidate, awaiting owner approval)',
-    status: 'pending_approval',
+    name: 'Default work hours (owner-approved 2026-10-16)',
+    status: 'approved',
     effectiveFrom: '2026-01-01',
+    effectiveTo: '2026-12-31',
+    workStart: '08:30:00',
+    workEnd: '16:30:00',
+    lateAfter: '08:30:00',
+    earlyBefore: '16:30:00',
+    overnightShift: false,
+    maxShiftSpanMinutes: 960,
+    ignoreHolidays: true,
+    workDays: [1, 2, 3, 4, 5],
+    leaveTypesJson: JSON.stringify(['sick', 'personal', 'vacation', 'other']),
+    leaveAliasesJson: JSON.stringify({}),
+    businessStatusesJson: JSON.stringify([]),
+    sourceOfTruth: 'donor attendance-core config/settings.yaml, approved by the owner 2026-10-16',
+    approvedBy: 'owner:session-2026-10-16',
+    approvedAt: '2026-10-16T00:00:00.000Z',
+    notes: 'Values approved by the project owner on 2026-10-16 (docs/memory/DECISIONS.md). approved_by is a session label, NOT a person: replace it with the accountable individual before production use.',
+  },
+  {
+    ruleVersionCode: 'AR-0002',
+    name: 'Proposed work hours for 2027 (NOT approved - demonstrates the policy gate)',
+    status: 'pending_approval',
+    effectiveFrom: '2027-01-01',
     effectiveTo: null,
     workStart: '08:30:00',
     workEnd: '16:30:00',
@@ -125,10 +154,10 @@ const attendanceRuleVersions = [
     leaveTypesJson: JSON.stringify(['sick', 'personal', 'vacation', 'other']),
     leaveAliasesJson: JSON.stringify({}),
     businessStatusesJson: JSON.stringify([]),
-    sourceOfTruth: 'donor attendance-core config/settings.yaml (NOT owner-approved)',
+    sourceOfTruth: 'proposal only - no owner sign-off',
     approvedBy: null,
     approvedAt: null,
-    notes: 'Candidate only. Promote to approved (with approvedBy/approvedAt) only after owner sign-off.',
+    notes: 'Unapproved successor. A date in 2027 reports pending_policy because this is the only rule covering it.',
   },
 ];
 

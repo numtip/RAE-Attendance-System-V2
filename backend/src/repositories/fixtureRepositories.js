@@ -8,14 +8,19 @@ const { createFixtureEmployeeIdentifierRepository } = require('./fixtureEmployee
 const { createFixtureEmployeeAssignmentRepository } = require('./fixtureEmployeeAssignmentRepository');
 const { createFixtureAttendanceRuleRepository } = require('./fixtureAttendanceRuleRepository');
 const { createFixtureDailyAttendanceRepository } = require('./fixtureDailyAttendanceRepository');
+const { createFixtureMonthlySummaryRepository } = require('./fixtureMonthlySummaryRepository');
 const { createFixtureFacescanIngestionRepository } = require('./fixtureFacescanIngestionRepository');
 const { createFixtureAttendanceEventRepository } = require('./fixtureAttendanceEventRepository');
 
 function createFixtureRepositories({ nationalId = null, identifiers = null } = {}) {
   const refreshTokens = new Map();
+  const employeeExists = (employeeUid) => fixtures.employees.some((row) => row.employeeUid === employeeUid);
+  // One store for the month, read by BOTH the legacy /attendance/monthly route and the Slice 3 derived
+  // endpoints, so fixture mode cannot show two different versions of the same month.
+  const monthlySummaries = createFixtureMonthlySummaryRepository(fixtures.monthly, { employeeExists });
   return {
     employees: new EmployeeRepository(fixtures.employees),
-    attendance: new AttendanceRepository(fixtures.attendance, fixtures.monthly),
+    attendance: new AttendanceRepository(fixtures.attendance, fixtures.monthly, monthlySummaries),
     leave: new LeaveRepository(fixtures.leave, fixtures.balances),
     refreshTokens: {
       async save(record) {
@@ -50,7 +55,7 @@ function createFixtureRepositories({ nationalId = null, identifiers = null } = {
     identityLinks: createFixtureIdentityLinkRepository(),
     employeeIdentifiers: createFixtureEmployeeIdentifierRepository(identifiers || fixtures.employeeIdentifiers, { nationalId }),
     employeeAssignments: createFixtureEmployeeAssignmentRepository(fixtures.employeeAssignments, {
-      employeeExists: (employeeUid) => fixtures.employees.some((row) => row.employeeUid === employeeUid),
+      employeeExists,
     }),
     attendanceRules: createFixtureAttendanceRuleRepository({
       ruleVersions: fixtures.attendanceRuleVersions,
@@ -58,9 +63,10 @@ function createFixtureRepositories({ nationalId = null, identifiers = null } = {
       schedules: fixtures.attendanceSchedules,
     }, {
       // Mirrors the FK on attendance_schedule, so the fixture twin fails like MariaDB does.
-      employeeExists: (employeeUid) => fixtures.employees.some((row) => row.employeeUid === employeeUid),
+      employeeExists,
     }),
     dailyAttendance: createFixtureDailyAttendanceRepository(fixtures.dailyAttendance),
+    monthlySummaries,
     facescanIngestion: createFixtureFacescanIngestionRepository(),
     attendanceEvents: createFixtureAttendanceEventRepository(),
   };
