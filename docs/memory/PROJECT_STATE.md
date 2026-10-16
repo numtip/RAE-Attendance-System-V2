@@ -73,7 +73,8 @@ flow.
 | Manager/HR dashboards, exports, annual forms | **missing** | not started |
 | Individual attendance reports (R-02) | **implemented 2026-10-16 — read-only, no migration** | `GET /attendance/report/day`, `/month`, `/academic-year`; `docs/unified/10_SLICE4_ATTENDANCE_REPORTS.md` |
 | **Attendance report export (R-03)** | **implemented 2026-10-16 — read-only, no migration** | `GET /attendance/export/…?format=pdf\|xlsx`; `docs/unified/11_SLICE5_ATTENDANCE_EXPORTS.md` |
-| Reconciliation snapshot (R-04) | **missing** | next milestone; fiscal year Oct–Sep |
+| Reconciliation snapshot (R-04) | **implemented 2026-10-16 — read-only, no migration, fixture-verified only** | `GET /attendance/reconciliation/day`, `/month`, `/fiscal-year`; `docs/unified/12_SLICE6_RECONCILIATION.md` |
+| Annual HR form (R-05) | **missing** | next milestone; reuses the R-03 renderer |
 | **Agent Core (Jev) decision path** | **WORKING — verified against the live gateway 2026-10-16** | `docs/AGENT_CORE_LIVE_USAGE.md`, PR #40 |
 | MJU SSO live | **blocked external** | `ac` semantics unconfirmed |
 | Production migrations | **NOT APPROVED** | live ledger is pre-`013` (REPORTED) |

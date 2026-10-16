@@ -41,9 +41,24 @@ number the JSON endpoint reports, and `computationStatus` / `isFinal` / `dateCut
 population / caveats all travel into the file. Anything that is not final is a **watermarked draft** — 96 pt
 `DRAFT` on every PDF page plus a red header on every XLSX sheet. Detail:
 [`docs/unified/11_SLICE5_ATTENDANCE_EXPORTS.md`](../unified/11_SLICE5_ATTENDANCE_EXPORTS.md). **No
-migration.** No new branch is required beyond the R-03 stack; see the slice doc §0.
+migration.** Draft PR [#42](https://github.com/numtip/RAE-Attendance-System-V2/pull/42), 8/8 CI green.
 
-> ### 🔜 The next milestone is R-04 — reconciliation snapshot
+> ### ✅ Reconciliation snapshot (R-04) — DELIVERED 2026-10-16 (fixture-verified only)
+
+`GET /api/v1/attendance/reconciliation/day|month|fiscal-year/:employeeUid/...` (read-only). Compares the
+canonical stored facts against the verified source records with 18 checks and a deterministic verdict
+(`blocked` > `mismatched` > `incomplete` > `matched`). A period with nothing to compare is `incomplete`,
+never `matched`; identity ambiguity is `blocked`, never merged. The fiscal year is **Oct–Sep** (BE
+`:fiscalYear`), deliberately a different convention from the R-02 academic year (Jun–May). Detail:
+[`docs/unified/12_SLICE6_RECONCILIATION.md`](../unified/12_SLICE6_RECONCILIATION.md). **No migration.**
+
+**⚠️ Not verified against any real source.** The reference project
+`G:\ProjectAI\attendance-report-generator` **does not exist**, so every snapshot carries
+`realSourceVerified: false` plus an explicit note in the payload. See `R-04-B` below.
+
+> ### 🔜 The next milestone
+
+R-05 (annual HR form) reuses the R-03 renderer. Before any wider enablement, clear the blockers in §5.
 
 ## 2. Pending Slice 2 follow-ups
 
@@ -85,8 +100,10 @@ Remaining before a report is *complete*:
 | R-02 | Report endpoints for one employee: day / month / academic year, scope-enforced | M | R-01 | **DONE 2026-10-16** (no migration; not committed). 401 anonymous, 403 cross-scope; every report names its rule version, date cutoff and population, and surfaces `computationStatus` + `isFinal` instead of hiding a partial month. `docs/unified/10_SLICE4_ATTENDANCE_REPORTS.md` |
 | R-02-FE | Wire `frontend/src/views/AttendanceMonthlyView.vue` to `/attendance/report/month/...` so the UI shows the completeness verdict | S | R-02 | **DONE 2026-10-16** — verdict rendered before the figures; a never-derived month shows no figures instead of zeros. Verified in review/fixture mode. |
 | R-03 | Export layer (XLSX with Thai fonts, PDF, annual form) | L | R-02 | **DONE 2026-10-16** (no migration). PDF + XLSX, day/month/academic-year, scope-enforced, `format` required with no default, non-final exports watermarked `DRAFT` / `ข้อมูลยังไม่สมบูรณ์` across every page and sheet. Zero-dependency XLSX (`exceljs` rejected); only `pdfkit` added. `docs/unified/11_SLICE5_ATTENDANCE_EXPORTS.md` |
-| R-04 | Read-only reconciliation snapshot: daily / month / **fiscal year (Oct–Sep)** | M | R-02 | Compares canonical facts against verified source records; statuses `matched` / `mismatched` / `incomplete` / `blocked`; records source, cutoff, period, rule version and unresolved exceptions. Must NOT modify source records. **Fiscal year (Oct–Sep) is NOT the R-02 academic year (Jun–May).** |
-| R-04-B | **`G:\ProjectAI\attendance-report-generator` does not exist** (VERIFIED 2026-10-16), so FY2569 real-source reconciliation cannot be validated | S | — | Either resolve the reference or formally record that R-04's historical-evidence half is unverifiable and rely on synthetic fixtures |
+| R-04 | Read-only reconciliation snapshot: daily / month / **fiscal year (Oct–Sep)** | M | R-02 | **DONE 2026-10-16** (no migration). 18 checks; deterministic `blocked` > `mismatched` > `incomplete` > `matched`; nothing-to-compare is `incomplete` never `matched`; identity ambiguity `blocked` never merged; never joins by name; `pristine: true` with an immutability test. Fiscal year is Oct–Sep (BE `:fiscalYear`), separate from the R-02 academic year (Jun–May). `docs/unified/12_SLICE6_RECONCILIATION.md` |
+| R-04-B | **`G:\ProjectAI\attendance-report-generator` does not exist** (VERIFIED 2026-10-16), so FY2569 real-source reconciliation is unverifiable; every snapshot reports `realSourceVerified: false` | S | — | Either resolve the reference or formally record that this half of R-04 is out of scope. **Blocks real-source verification only, not the snapshot itself** |
+| R-04-T | Pin a snapshot-level `mismatched` verdict with a scenario test | S | R-04 | The suites pin `matched`/`incomplete`/`blocked`; `mismatched` is reached only by the orchestrator probe |
+| R-04-F | Owner confirmation of the fiscal-year window (Oct–Sep) as a policy value | S | — | Reporting convention today, same treatment as P-05/P-06 |
 | R-03-FE | Export controls in the day and academic-year views | S | R-02-FE pattern | `AttendanceDailyView.vue` renders raw `AttendanceRecord[]`, so it needs the report endpoint first |
 | R-04 | Reconciliation test: recompute a closed month and match a frozen synthetic snapshot | M | R-02 | Recalculation of a past month reproduces the stored numbers exactly |
 

@@ -22,6 +22,8 @@ const { createAttendanceReportController } = require('../../controllers/attendan
 const { createAttendanceReportService } = require('../../services/attendanceReportService');
 const { createExportController } = require('../../controllers/exportController');
 const { createExportService } = require('../../services/exportService');
+const { createReconciliationController } = require('../../controllers/reconciliationController');
+const { createReconciliationService } = require('../../services/reconciliationService');
 
 function createV1Router(container) {
   const authService = createAuthService(container);
@@ -55,6 +57,12 @@ function createV1Router(container) {
   }));
   // R-03: exports are rendered from the R-02 payload, so the two can never disagree about a number.
   const exportReport = createExportController(createExportService({
+    repositories: container.repositories,
+  }));
+  // R-04: read-only reconciliation snapshots (day / month / fiscal year). They COMPARE stored V2 records
+  // only; they never derive a month and never write. The fiscal year is the Oct-Sep government convention
+  // and is named explicitly in the response so it cannot be confused with the CE `:year` used elsewhere.
+  const reconciliation = createReconciliationController(createReconciliationService({
     repositories: container.repositories,
   }));
 
@@ -113,6 +121,13 @@ function createV1Router(container) {
   router.get('/attendance/export/day/:employeeUid/:date', authenticate, exportReport.day);
   router.get('/attendance/export/month/:employeeUid/:year/:month', authenticate, exportReport.month);
   router.get('/attendance/export/academic-year/:employeeUid/:year', authenticate, exportReport.academicYear);
+
+  // R-04: read-only reconciliation snapshots. Read-only by construction — no POST/derive variant exists.
+  // `:fiscalYear` is the BUDDHIST ERA year (e.g. 2569) and the response states both the BE year and the
+  // Gregorian window.
+  router.get('/attendance/reconciliation/day/:employeeUid/:date', authenticate, reconciliation.day);
+  router.get('/attendance/reconciliation/month/:employeeUid/:year/:month', authenticate, reconciliation.month);
+  router.get('/attendance/reconciliation/fiscal-year/:employeeUid/:fiscalYear', authenticate, reconciliation.fiscalYear);
 
   return router;
 }

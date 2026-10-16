@@ -101,6 +101,18 @@ silently resolved by an agent.
   both codepoints. Visual output, numbers and dates are all correct; this affects search and copy-paste only.
   Accepted and documented rather than worked around, because fixing it means rewriting the CMap.
 
+### Reconciliation decisions — R-04 (2026-10-16)
+
+| # | Decision | Why | Recorded at |
+|---|---|---|---|
+| E50 | **Reconciliation derives nothing and writes nothing.** It reuses `attendanceReportService` for report totals and audits the stored rows; every snapshot carries `pristine: true`, and an immutability test deep-snapshots every store before and after. | An audit that changes what it audits is worthless, and a second computation path would let the audit and the data disagree. | `12_SLICE6…` §1.1, §5.2 |
+| E51 | **"Nothing to compare" is `incomplete`, never `matched`**, and the precedence is `blocked > mismatched > incomplete > matched`. | Same trap E26 guards on the monthly side: a period with no rows is not agreement. | `12_SLICE6…` §1.2 |
+| E52 | **`mismatched` is only raised between commensurable values.** Period aggregates compare only months that were actually derived, and report `incomplete` when months are missing. | Summing 1 derived month against 12 months produced a false `mismatched`. Comparing incommensurable totals is the same class of error as R-01's phantom month. Found by this slice's own test. | `12_SLICE6…` §1.2, §4 |
+| E53 | **Identity ambiguity is `blocked`, and arbitration is never attempted.** Two effective assignments on one date, or a conflicting identifier, is flagged; reconciliation never merges, never joins by name, and never reassigns a record. | Requirement 5. A silent merge would silently move someone's attendance to another person. | `12_SLICE6…` §1.2, §5.3 |
+| E54 | **The fiscal year (Oct–Sep, BE `:fiscalYear`) is a separate convention from the R-02 academic year (Jun–May)**, in its own module, with a test asserting the windows differ. | Two different Thai year conventions exist; conflating them would silently reconcile the wrong twelve months. The window is named in every response. | `12_SLICE6…` §1.3 |
+| E55 | **`realSourceVerified: false` and its note live INSIDE the payload**, not only in a document, and a test pins them. | With the external reference missing, a consumer must not be able to read a `matched` snapshot and believe the original HIP/MJU source was verified. | `12_SLICE6…` §3 |
+| E56 | **`snapshotHash` excludes clock-derived fields (`asOf`, `cutoff`) and itself**, and says so at the hash site. | A hash that moves every run makes the determinism test meaningless. Documenting which fields are excluded keeps it honest rather than convenient. | `12_SLICE6…` §2.3 |
+
 ## 3. OPEN owner decisions (do NOT treat as engineering defaults)
 
 > ### ⚠️ R-04 INPUT MISSING
@@ -109,6 +121,10 @@ silently resolved by an agent.
 > not exist** (checked 2026-10-16). It is outside this repo, so it cannot be committed or verified here. Until
 > it is provided, R-04 can only be validated against synthetic fixtures, and any statement about reconciling
 > real FY2569 sources would be a fabrication. Recorded as `R-04-B` in `NEXT_ACTIONS.md`.
+>
+> Concretely: R-04 verifies V2's **internal** consistency (stored rows vs the rows they were derived from).
+> It does **not** verify V2 against the original HIP/MJU source system, and every snapshot says so
+> (`realSourceVerified: false` plus a note in the payload).
 
 ### 3a. Attendance policy — the engine is blocked on these
 
@@ -141,6 +157,8 @@ untraceable approval cannot be written.
 | X-01 | Blueprint worktrees vs `AGENTS.md` "no worktrees" | **open** — resolved in practice by D-A (no worktree), rule unchanged |
 | HY-1 | Delete the stale local branch `feat/attendance-core-service` (2 local-only, superseded commits)? | **open** — evidence in `PROJECT_STATE.md` §4a; needs explicit approval |
 | HY-2 | Refresh `docs/SESSION_HANDOFF.md` with the Slice 1/2 status? | **open** — it carries another session's WIP |
+| **R-04-F** | **Is the reconciliation "fiscal year" the Thai government Oct–Sep year?** | **open** — implemented as `1 Oct – 30 Sep` (BE `:fiscalYear`), named in every response, and deliberately separate from the R-02 academic year (Jun–May). Needs owner confirmation before it is treated as a policy value (same treatment as P-05/P-06). |
+| **R-04-B** | Provide `G:\ProjectAI\attendance-report-generator`, or declare FY2569 real-source reconciliation out of scope? | **open** — the reference **does not exist** (verified 2026-10-16), so no snapshot can claim real-source verification |
 
 ## 4. Decisions explicitly NOT taken (and why)
 
