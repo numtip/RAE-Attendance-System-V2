@@ -55,7 +55,7 @@ This is not a greenfield design. The following are implemented and tested:
 | Link status model, **only `approved` is authenticatable** | `backend/src/domain/identityLink.js` `LINK_STATUS`, `isAuthenticatableStatus` |
 | **Enrichment results can be blocked from approval** — `mju_person_enrich` is already a known source, and `ambiguous`/`not_found`/`timeout`/`api_error`/`fallback`/`firstname_only` all block | `identityLink.js` `ENRICHMENT_SOURCES`, `BLOCKED_ENRICHMENT_OUTCOMES`, `enrichmentBlocksApproval`; enforced at `identityResolutionService.js:125` → `403 IDENTITY_REVIEW_REQUIRED` |
 | Candidate links are **never promoted automatically** (Policy S9) | `identityResolutionService.js:36,227` → `403 IDENTITY_NOT_APPROVED`; `ssoIdentityRuntime.test.js` (`S9:`), `ssoIdentityChain.test.js`, and `docs/unified/03_SECURITY_INCIDENT_REGISTER.md:147-151` |
-| No email/name linking at the SSO boundary | `backend/src/services/sso/mjuSubjectAdapter.js` `EMAIL_LIKE` → `email_only_rejected` (lines 54, 67, 98) |
+| No email/name linking at the SSO boundary | `backend/src/services/sso/mjuSubjectAdapter.js` `EMAIL_LIKE` → `email_only_rejected` (lines 54, 67, 98) — now the shared predicates in `domain/identityLink.js` |
 
 **Consequence:** the design below is mostly *contract and governance*, plus two genuine additions: the
 **Person-API ingestion path** and **effective dating on identity links**.
@@ -230,6 +230,54 @@ reported success, because the sources reach the link as a ternary and as a defau
 `person_api_enrich` is allowlisted but **declared unused by design** (the Person-API ingestion path is behind
 the open design gate). The policy test fails if an allowlist entry becomes dead without such a declaration,
 and fails if a declared-unused entry becomes used, so the list cannot rot in either direction.
+
+### Finding F3 — the enrichment-outcome guard is INOPERATIVE on MariaDB (found 2026-10-16)
+
+**This is a real divergence between what is tested and what runs, found by the ID-6b design track and
+independently verified here.**
+
+`enrichmentBlocksApproval` refuses approval when `link.enrichmentOutcome` is one of the blocked outcomes. But:
+
+| Evidence | Result |
+|---|---|
+| `enrichment_outcome` in any `database/migrations/*.sql` | **NOT PRESENT — never a column** (grep across all 24 files) |
+| MariaDB repository `mapRow` | hardcodes `enrichmentOutcome: null` (`mariadb/identityLinkMariaDbRepository.js:37`) |
+| Fixture repository | persists it (`enrichmentOutcome: input.enrichmentOutcome ?? null`) |
+
+**Consequence:** on **MariaDB** the value read is always `null`, so the outcome half of the guard **never
+fires**. On the **fixtures** it works. Every local test therefore exercises a guard that is half-inoperative
+in production — precisely standing rule 6 ("the fixture/MariaDB twin pattern hides type divergence").
+
+What is and is not affected:
+
+| Part of the guard | MariaDB | Why |
+|---|---|---|
+| `isKnownSource(source)` / `assertKnownSource` | **WORKS** | service-level, before any repository call |
+| `subject` guard (ID-6) | **WORKS** | service-level |
+| `BLOCKED_ENRICHMENT_CONFIDENCE_SET.has(confidence)` | **WORKS** | `confidence` is a real ENUM column including `ambiguous` and `low` |
+| `isEnrichmentSource(link.source)` | **WORKS** | `source` is a real column |
+| `BLOCKED_ENRICHMENT_OUTCOME_SET.has(enrichmentOutcome)` | **BROKEN** | the column does not exist, so it is always `null` |
+
+**Residual risk:** an enrichment link whose outcome was `ambiguous`/`not_found`/`timeout`/`api_error`/
+`fallback`/`firstname_only` but whose `confidence` was recorded as `high`/`medium` would be **approvable on
+MariaDB** and blocked only on fixtures. The confidence check covers the common case, which is why this is a
+partial bypass rather than a full one — but it is a real one.
+
+**Fix (needs a migration, therefore owner approval):** add `enrichment_outcome` to `employee_identity_links`
+(or fold it into the evidence table proposed by ADR-011), persist it in both twins, and add a
+fixture/MariaDB parity test. Tracked as **ID-7b**. A cheaper stop-gap, if the column is not added, is to
+refuse approval for any enrichment-source link whose outcome was never recorded — failing closed on absence
+rather than treating silence as success.
+
+### Finding F4 — the ambiguity guard silently loses a signal, which the mutation test could not see
+
+Directly related to F3 and recorded separately because it is a **testing** defect, not a code one: the ID-7
+mutation test killed the guard using the **fixture** repository, where `enrichmentOutcome` is stored. A
+mutation test proves a guard bites *on the repository it runs against*. It cannot prove the guard bites on
+the repository the product uses. Mutation testing and the twin-parity rule are complementary; neither
+substitutes for the other.
+
+
 
 ## 5. Effective-dating of identity
 `employee_identifier` is already effective-dated (migration `020`, `identifierValidity.js`). What is **not**

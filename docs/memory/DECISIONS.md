@@ -141,6 +141,17 @@ silently resolved by an agent.
 
 ## 3. OPEN owner decisions (do NOT treat as engineering defaults)
 
+> ### 🔴 R13 — a control that passes every local test and does nothing in production
+>
+> `enrichment_outcome` has **never been a column** in any migration. The MariaDB repository hardcodes
+> `enrichmentOutcome: null`; the fixture repository persists it. So the outcome half of
+> `enrichmentBlocksApproval` is **inert on MariaDB** and active on fixtures — every local test and the ID-7
+> mutation test exercised the inoperative half.
+>
+> **This is standing rule 6 made concrete**, and it is why mutation testing is not sufficient on its own:
+> a mutation test proves a guard bites *on the repository it runs against*. Needs a migration (owner
+> approval) plus a twin-parity test. Tracked as **ID-7b / R13**.
+
 > ### ✅ R-04-B RESOLVED (partly) — the reference project EXISTS
 >
 > `G:\ProjectAI\attendance-report-generator` was **absent** at ~13:53 and ~14:06 on 2026-10-16 and **present**

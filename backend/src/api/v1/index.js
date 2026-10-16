@@ -24,6 +24,8 @@ const { createExportController } = require('../../controllers/exportController')
 const { createExportService } = require('../../services/exportService');
 const { createReconciliationController } = require('../../controllers/reconciliationController');
 const { createReconciliationService } = require('../../services/reconciliationService');
+const { createAnnualReportController } = require('../../controllers/annualReportController');
+const { createAnnualReportService } = require('../../services/annualReportService');
 
 function createV1Router(container) {
   const authService = createAuthService(container);
@@ -63,6 +65,14 @@ function createV1Router(container) {
   // only; they never derive a month and never write. The fiscal year is the Oct-Sep government convention
   // and is named explicitly in the response so it cannot be confused with the CE `:year` used elsewhere.
   const reconciliation = createReconciliationController(createReconciliationService({
+    repositories: container.repositories,
+  }));
+  // R-05: the ANNUAL HR report. Read-only by construction (no POST/derive). Every monthly number comes from
+  // R-02 and the artifact is rendered by the R-03 renderer, so the annual layer derives nothing of its own.
+  // The fiscal year (Oct-Sep, Buddhist-Era label) and the academic year (Jun-May) are named distinctly in
+  // the payload, so the two windows can never be confused. Paths: `fiscal-year` for the fiscal window, and
+  // `annual-academic` for the annual academic window (R-02 already owns `/attendance/report/academic-year`).
+  const annualReport = createAnnualReportController(createAnnualReportService({
     repositories: container.repositories,
   }));
 
@@ -128,6 +138,14 @@ function createV1Router(container) {
   router.get('/attendance/reconciliation/day/:employeeUid/:date', authenticate, reconciliation.day);
   router.get('/attendance/reconciliation/month/:employeeUid/:year/:month', authenticate, reconciliation.month);
   router.get('/attendance/reconciliation/fiscal-year/:employeeUid/:fiscalYear', authenticate, reconciliation.fiscalYear);
+
+  // R-05: read-only annual HR report. `:fiscalYear` is the BUDDHIST ERA year (e.g. 2569); `:year` on the
+  // academic route is the GREGORIAN year the academic year starts. The export pair mirrors R-03: `format`
+  // is required and has no default, and the response is a file, not the JSON envelope.
+  router.get('/attendance/report/fiscal-year/:employeeUid/:fiscalYear', authenticate, annualReport.fiscalYear);
+  router.get('/attendance/report/annual-academic/:employeeUid/:year', authenticate, annualReport.academicAnnual);
+  router.get('/attendance/export/fiscal-year/:employeeUid/:fiscalYear', authenticate, annualReport.exportFiscalYear);
+  router.get('/attendance/export/annual-academic/:employeeUid/:year', authenticate, annualReport.exportAcademicAnnual);
 
   return router;
 }

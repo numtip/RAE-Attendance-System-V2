@@ -117,7 +117,8 @@ Remaining before a report is *complete*:
 | **ID-5** | **The MJU Person API returns no `personnelID`** (0/308), so it **cannot populate the MJU identity kind**, which expects `personnel_id` from `mju_person_api` | Decide: find an endpoint that returns one, or re-scope the MJU kind |
 | **ID-6** | Harden `createCandidate` (audit finding **F1**): enforce the `EMAIL_LIKE` + `ac` guard at the link layer, not only in the SSO adapter | **DONE 2026-10-16.** Guard moved into `domain/identityLink.js` and shared by **both** creation paths; it also rejects malformed, non-finite, over-long (255 char) and whitespace-padded subjects. Mutation-tested: removing it fails 5 tests. `backend/tests/identityLinkHardening.test.js` |
 | **ID-7** | Make `ENRICHMENT_SOURCES` a checked, tested constant (audit finding **F2**) | **DONE 2026-10-16.** Frozen `IDENTITY_LINK_SOURCES` allowlist; an unknown source is refused at creation (`400 IDENTITY_SOURCE_UNKNOWN`). This closed a real bypass, not just a hygiene gap: an invented source string used to escape the ambiguity guard entirely. Drift guarded in both directions by `identityLinkSourcePolicy.test.js`. Mutation-tested: removing it fails 4 tests |
-| **ID-6b** | **Residual (S-02):** store the approval EVIDENCE TYPE as its own field, not only `approvedBy: 'system:sso'` | The SSO path now requires a *declared* matched national-ID lookup (`403 IDENTITY_EVIDENCE_REQUIRED`), but the declaration cannot be independently re-verified in the link layer and is not a stored column. Needs a **migration**, therefore needs approval |
+| **ID-6b** | **Residual (S-02):** store the approval EVIDENCE TYPE as its own field, not only `approvedBy: 'system:sso'` | **DESIGNED 2026-10-16** — see `docs/IDENTITY_EVIDENCE_MODEL.md`, `docs/adr/ADR-011-identity-evidence-storage.md`, `docs/security/IDENTITY_EVIDENCE_THREAT_MODEL.md` + `_TEST_PLAN.md`, and the SQL **proposal** under `database/proposals/`. **`PROPOSED — NOT APPROVED`; no SQL executed.** Key finding: a keyed digest does **not** verify a lookup claim alone — it becomes a proof only as an **equality check against the same employee's `employee_identifier` row** under the same key version |
+| **ID-7b** | 🔴 **The outcome half of the ambiguity guard is INOPERATIVE on MariaDB.** `enrichment_outcome` was **never a column** in any migration; the MariaDB twin hardcodes `enrichmentOutcome: null`, while the fixture twin persists it — so the guard works in every local test and silently does nothing in production. An enrichment link with a blocked outcome but `confidence` of `high`/`medium` is approvable on MariaDB | **Found 2026-10-16** by the ID-6b track, independently verified. Needs a **migration** (the column, or fold it into the ADR-011 evidence table) plus a fixture/MariaDB parity test. Stop-gap without a migration: **fail closed on an ABSENT outcome** for enrichment sources instead of treating silence as success. See `IDENTITY_MAPPING_CONTRACT.md` F3/F4 |
 | R-04-F | Owner confirmation of the fiscal-year window (Oct–Sep) as a policy value | S | — | Reporting convention today, same treatment as P-05/P-06 |
 | R-03-FE | Export controls in the day and academic-year views | S | R-02-FE pattern | `AttendanceDailyView.vue` renders raw `AttendanceRecord[]`, so it needs the report endpoint first |
 | R-04 | Reconciliation test: recompute a closed month and match a frozen synthetic snapshot | M | R-02 | Recalculation of a past month reproduces the stored numbers exactly |
@@ -181,6 +182,14 @@ Remaining before a report is *complete*:
     to known enrichment sources, so an invented source string escaped it entirely. When a control is scoped
     by an input value, that input needs its own closed allowlist — and the allowlist needs a test that fails
     when a new value appears without being registered.
+12. **Never attribute a `git log -S` result to a ref you did not scope it to.** The PII incident was recorded
+    as introduced by `83aaa53` (2026-10-09) because the lookup was scoped to a path —
+    `backend/tests/nationalIdContract.test.js` — that **does not exist on `origin/main` at all**. Git
+    answered truthfully about a different line of history and the result was silently attributed to `main`.
+    On `main` the value actually arrived at `3244553` (2026-10-02), which is main's **current tip**. A rewrite
+    keyed on the wrong commit would have left the value public while looking successful. Scope the search to
+    the ref AND a path that exists there, and assert the path exists (`git cat-file -e <ref>:<path>`) before
+    trusting the answer. Found by the Track C review; independently re-verified.
 9. **Call Jev once per session** (see §0). It is advisory: never block on it, never claim a consult you did
    not make, and never let it authorise a privileged action.
 7. **Never rename an applied migration.** The ledger keys on the full filename with no checksum.
