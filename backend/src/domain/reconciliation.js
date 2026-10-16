@@ -71,12 +71,16 @@ const REPORT_TOTAL_FIELDS = Object.freeze([
 
 /**
  * Stated plainly in the payload, not only in a doc: the V2 records are the only source that exists here.
- * `G:\ProjectAI\attendance-report-generator` was verified absent on 2026-10-16, so no external FY2569 source
- * was available or consulted. A test asserts this stays false until a real source exists, so it cannot
- * silently remain false once one does.
+ * The FY2569 evidence in the sibling project `numtip/Attendance-Report` has been TRANSCRIBED into test-only
+ * fixtures (R-04-C), but NO external source was integrated at RUNTIME and reconciliation reads nothing
+ * external. So the flag stays false until a real source is read here. A test asserts this stays false until
+ * then, so it cannot silently become true.
+ *
+ * The wording below was corrected on 2026-10-16 (R-04-C): "was available or consulted" was stale once the
+ * reference project was confirmed to exist. The honest statement is "was NOT integrated".
  */
-const REAL_SOURCE_NOTE = 'Reconciled against stored V2 records only. No external FY2569 source (e.g. the '
-  + 'attendance-report-generator reference) was available or consulted, so this snapshot does NOT verify the '
+const REAL_SOURCE_NOTE = 'Reconciled against stored V2 records only. The external FY2569 source (e.g. the '
+  + 'attendance-report-generator reference) was NOT integrated, so this snapshot does NOT verify the '
   + 'original HIP/MJU source data.';
 
 function makeCheck(code, status, { observed = null, expected = null, detail = null } = {}) {

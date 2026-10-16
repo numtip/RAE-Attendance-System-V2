@@ -166,13 +166,18 @@ The audit makes two statements I wrote earlier today **factually stale**. Both a
 `backend/src/domain/reconciliation.js` `REAL_SOURCE_NOTE` says *"No external FY2569 source … was available or
 consulted"*. The "was available" clause is no longer true; "consulted" still is.
 
+> **Resolved 2026-10-16 (R-04-C):** `REAL_SOURCE_NOTE` now reads *"…was NOT integrated…"*, and the `AR-0001`
+> `sourceOfTruth` now names `config/settings.yaml` of `numtip/Attendance-Report`. See
+> `12_SLICE6_RECONCILIATION.md` §5.5. This audit's description above is left as the record of what was true
+> when it was written.
+
 ## 7. Findings, ranked
 
 | # | Severity | Finding |
 |---|---|---|
 | 1 | **governance (high)** | Real employee names + internal codes are committed in 13 tracked files of the sibling repo. It is **private**, so this is not a public leak — but it is the reason V2 (public) must consume this project at **aggregate level only**. No national IDs were found. |
-| 2 | **accuracy (medium)** | V2's `AR-0001` `sourceOfTruth` reads *"donor attendance-core config/settings.yaml"*. `attendance-core` has **no `config/` directory and no `settings.yaml`** (VERIFIED); the file is in **this** project. The rule values are correct; the **file citation is wrong**, and it is a provenance record on an approved rule (V2 risk R2). |
-| 3 | **accuracy (medium)** | My own R-04 docs/`REAL_SOURCE_NOTE` said the reference "does not exist" / "was not available". Now false in the "available" half. Corrected for docs; the code string is left for a decision. |
+| 2 | **accuracy (medium)** | V2's `AR-0001` `sourceOfTruth` reads *"donor attendance-core config/settings.yaml"*. `attendance-core` has **no `config/` directory and no `settings.yaml`** (VERIFIED); the file is in **this** project. The rule values are correct; the **file citation is wrong**, and it is a provenance record on an approved rule (V2 risk R2). **Corrected 2026-10-16 (R-04-C).** |
+| 3 | **accuracy (medium)** | My own R-04 docs/`REAL_SOURCE_NOTE` said the reference "does not exist" / "was not available". Now false in the "available" half. Corrected for docs; the code string was left for a decision. **Resolved 2026-10-16 (R-04-C) — the code string now says "was NOT integrated".** |
 | 4 | **process (medium)** | The generator's own Agent Core doc defines a **browser scope** (`POST /v2/browser/plan`) and a `monthly_save_clicked` guard stopping before the ERP save. V2's activated scope is `decision` only. If V2 ever inherits the ERP-filling workflow, that guard and the human-only save rule must come with it. |
 | 5 | **low** | The generator's leave-alias matcher (`ลา → อื่นๆ`) is live in the donor. V2 rejected it (E13) but **P-07 is still open**, so the two systems can disagree about leave until P-07 is decided. |
 | 6 | **low** | The generator has **uncommitted local WIP** (3 modified, 26 untracked). Not touched by this audit; another writer owns it. |
@@ -183,10 +188,10 @@ consulted"*. The "was available" clause is no longer true; "consulted" still is.
 | ID | Action | Why |
 |---|---|---|
 | **R-04-B** | Re-scope from *"source missing"* to *"source exists, integration not done"* | The evidence is now available; the honest blocker is that no V2 code reads it |
-| **R-04-C** *(new)* | Integrate FY2569 **aggregate** evidence as a reconciliation fixture — the 12 monthly aggregate counts and the 26 documented person-month discrepancies — with **no names and no codes** | Would turn R-04 from fixture-validated to **evidence-validated**, using data that already exists in a sibling private repo |
+| ~~**R-04-C**~~ *(new)* | ~~Integrate FY2569 **aggregate** evidence as a reconciliation fixture — the 12 monthly aggregate counts and the 26 documented person-month discrepancies — with **no names and no codes**~~ **DONE 2026-10-16 as transcription, not integration** (`tests/fixtures/fy2569Aggregates.js`, §5.5 of doc 12) | The evidence is transcribed and asserted; it is not read at runtime, so `realSourceVerified` stays `false` |
 | **R-04-F** | Fiscal-year confirmation is now **corroborated** (the donor labels FY2569 as ต.ค.2568–ก.ย.2569 = Oct–Sep) | Downgrades the risk; owner confirmation still desirable |
-| **DOC-R2** | Fix the `AR-0001` provenance citation to name the correct file/repo | An approved rule should cite a path that exists |
-| — | Decide whether to replace the stale clause in `REAL_SOURCE_NOTE` | It is user-visible output text; it should not claim a source was unavailable when it is not |
+| ~~**DOC-R2**~~ | ~~Fix the `AR-0001` provenance citation to name the correct file/repo~~ **DONE 2026-10-16 (R-04-C)** | — |
+| ~~—~~ | ~~Decide whether to replace the stale clause in `REAL_SOURCE_NOTE`~~ **DONE 2026-10-16 (R-04-C)** — now says "was NOT integrated" | — |
 
 ## 9. Reproduction
 

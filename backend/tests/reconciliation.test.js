@@ -18,9 +18,11 @@ const { createReconciliationService } = require('../src/services/reconciliationS
 const { createApp } = require('../src/app');
 const { formatBangkokWall, wallDateOnly } = require('../src/utils/bangkokTime');
 const { verdictOf, makeCheck } = require('../src/domain/reconciliation');
+const { createFixtureRepositories } = require('../src/repositories/fixtureRepositories');
 const sources = require('./helpers/reconciliationSources');
 
 const FIXED_NOW = () => new Date('2026-10-16T00:00:00.000Z');
+const FIXTURE_USER_UID = '22222222-2222-2222-2222-222222222222';
 
 function makeService(repositories, now = FIXED_NOW) {
   return createReconciliationService({ repositories, now });
@@ -293,6 +295,29 @@ test('NULL discipline: an underivable expectedWorkingDays stays null, never zero
   const check = checkOf(snapshot, 'expected_working_days');
   assert.equal(check.status, 'matched');
   assert.equal(check.detail, 'expected_working_days_null_agreed');
+});
+
+// --- snapshot-level mismatched ----------------------------------------------
+
+test('mismatched: the raw fixture month disagrees with the daily rows it implies', async () => {
+  // WHY this is a mismatch (not merely a gap): the shipped fixtures (`src/dev/fixtures.js`) store a 2026-03
+  // `monthly_summaries` row for the fixture user while `dailyAttendance` is EMPTY. The stored month asserts
+  // 22 work days / 20 present / 1 late etc., but the stored daily rows imply an all-zero month, so the two
+  // comparable values factually disagree. `mismatched` is the honest verdict; a missing month would instead
+  // be `incomplete`. This pins the snapshot-level verdict, which was previously only reachable via verdictOf.
+  const repositories = createFixtureRepositories();
+  const service = makeService(repositories);
+  const { snapshot } = await service.reconcileMonth(sources.authFor(FIXTURE_USER_UID), {
+    employeeUid: FIXTURE_USER_UID, year: 2026, month: 3,
+  });
+
+  assert.equal(snapshot.status, 'mismatched');
+  const monthTotals = checkOf(snapshot, 'month_totals');
+  assert.equal(monthTotals.status, 'mismatched');
+  assert.match(monthTotals.detail, /^month_totals_differ:/);
+  assert.ok(snapshot.counts.mismatched >= 1);
+  assert.equal(snapshot.realSourceVerified, false);
+  assert.equal(snapshot.pristine, true);
 });
 
 // --- realSourceVerified -----------------------------------------------------

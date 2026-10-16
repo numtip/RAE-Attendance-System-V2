@@ -119,6 +119,16 @@ silently resolved by an agent.
 |---|---|---|---|
 | E57 | **The sibling `numtip/Attendance-Report` project may only be consumed by V2 at AGGREGATE level.** No names, no employee codes, no rosters, no entry logs, no screenshots. | That project is **private** and holds **real employee names** in 13 tracked files (no national IDs were found); **V2 is public**. The donor already applies the same discipline to Agent Core ("aggregate counts and verification flags only"), so this is consistency, not a new restriction. | `13_REFERENCE_PROJECT_AUDIT.md` §4, §7 |
 
+## 2.6 Transcribed-evidence and identity-source decisions (2026-10-16)
+
+| # | Decision | Why | Recorded at |
+|---|---|---|---|
+| E58 | **Transcribed external evidence is a FIXTURE, not an integration, and `realSourceVerified` stays `false`.** | Hand-copied aggregate counts can exercise the code but prove nothing about the original source. Calling that "verified" would be the exact over-claim the honesty gate exists to prevent. | `12_SLICE6…` §5.5 |
+| E59 | **`mju-person-enrich` is a CORROBORATION-ONLY source; it must never establish an identity.** It may supply `citizenID` equality against V2's own HMAC digest, offline. | Its only lookup key is a **name**, the `/filter/` endpoint is **fuzzy** (7/308 returned names differ from the query), ambiguity **fails open** to `data[0]` (a real 2-record case had two different ids), and it holds 303 plaintext national IDs at rest on a **non-git** disk where `.gitignore` is inert. | `IDENTITY_INTEGRATION_AUDIT.md` §2, §3, §8 |
+| E60 | **The MJU Person API cannot populate the MJU identity kind** — it returns no `personnelID` (0/308), while `identityKind` requires `personnel_id` with `source_system='mju_person_api'`. | The obvious integration plan is therefore not merely risky but **impossible as specified**. The design must go via `citizenID` equality after the employee is already resolved. | `IDENTITY_INTEGRATION_AUDIT.md` §1.1, §6; `IDENTITY_MAPPING_CONTRACT.md` §3 |
+| E61 | **Real identity integration stays at a DESIGN GATE.** No live ID-card processing, no identity import, no migration, no key creation. | Requires owner approval of the contract plus a written data-protection basis for receiving citizen IDs, which does not exist yet. | `IDENTITY_MAPPING_CONTRACT.md` §9 |
+| E62 | **The identity-link layer must not rely on a single caller for its guards.** `createCandidate` accepts an email-shaped subject; only the SSO adapter rejects one today. | Defence in depth: a future ingestion path would bypass the guard entirely. Recorded as finding F1, with hardening proposed rather than assumed. | `IDENTITY_INTEGRATION_AUDIT.md` §F1 |
+
 ## 3. OPEN owner decisions (do NOT treat as engineering defaults)
 
 > ### ✅ R-04-B RESOLVED (partly) — the reference project EXISTS
@@ -171,7 +181,9 @@ untraceable approval cannot be written.
 | HY-2 | Refresh `docs/SESSION_HANDOFF.md` with the Slice 1/2 status? | **open** — it carries another session's WIP |
 | **R-04-F** | **Is the reconciliation "fiscal year" the Thai government Oct–Sep year?** | **open** — implemented as `1 Oct – 30 Sep` (BE `:fiscalYear`), named in every response, and deliberately separate from the R-02 academic year (Jun–May). Needs owner confirmation before it is treated as a policy value (same treatment as P-05/P-06). |
 | **R-04-B** | Provide `G:\ProjectAI\attendance-report-generator`, or declare FY2569 real-source reconciliation out of scope? | **RESOLVED 2026-10-16** — the project exists and is audited (`docs/unified/13_REFERENCE_PROJECT_AUDIT.md`). What remains is **integration** (`R-04-C`) |
-| **R-04-C** | Integrate FY2569 evidence as aggregate-only reconciliation fixtures? | **open** — the sibling repo is **private** and holds real names; this repo is **public**. Counts only, never names or codes |
+| **R-04-C** | Integrate FY2569 evidence as aggregate-only reconciliation fixtures? | **DONE 2026-10-16** — 12 monthly aggregates + totals + 26 discrepancies as 3 counts, no names or codes; PII guard is tested and non-vacuous. Transcribed, not integrated, so `realSourceVerified` stays `false` |
+| **ID-3** | 🛑 Activate **real** identity integration (Person API ingestion, effective-dated links, migration §8)? | **open — BLOCKED at the design gate.** Needs owner approval of `IDENTITY_MAPPING_CONTRACT.md` §8/§9 **and** a written data-protection basis for receiving citizen IDs. No live ID-card processing until then |
+| **ID-4** | `MJU_PERSON_ENRICHMENT_KB.md` does not exist — provide it, or drop the Blueprint reference? | **open** — it is cited as the "personal-data local-only policy", so its absence leaves that policy undocumented |
 
 ## 4. Decisions explicitly NOT taken (and why)
 

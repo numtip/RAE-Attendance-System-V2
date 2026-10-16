@@ -133,15 +133,14 @@ reads no external data, every snapshot still carries `realSourceVerified: false`
 
 ```json
 "realSourceVerified": false,
-"realSourceNote": "Reconciled against stored V2 records only. No external FY2569 source (e.g. the
-  attendance-report-generator reference) was available or consulted, so this snapshot does NOT verify the
+"realSourceNote": "Reconciled against stored V2 records only. The external FY2569 source (e.g. the
+  attendance-report-generator reference) was NOT integrated, so this snapshot does NOT verify the
   original HIP/MJU source data."
 ```
 
-> **Known stale clause (flagged, not silently changed):** *"was available"* is no longer true now that the
-> reference exists; *"consulted"* still is. The note is user-visible output text and should be reworded to say
-> **"not integrated"** rather than **"unavailable"** — see §8. It is left as-is here because changing it is a
-> decision about the honesty contract, not a documentation tidy-up.
+> **Reworded 2026-10-16 (R-04-C):** the note previously read *"…was available or consulted…"*. The
+> *"was available"* clause was false once the reference project was confirmed to exist; *"consulted"* still
+> holds. It now says **"was NOT integrated"**, which is the honest statement of the blocker. See §5.5.
 
 This is deliberately machine-visible rather than a sentence in a document: a consumer cannot read a
 `matched` snapshot and believe the original HIP/MJU data was verified. A test asserts the flag is `false` and
@@ -216,9 +215,44 @@ Two guarantees in the suite are stronger than the §5.3 matrix implies, and are 
 ### 5.4 Residual test-coverage gap (recorded)
 
 The suites pin `matched`, `incomplete` and `blocked` at snapshot level, and `mismatched` is unit-tested at the
-`verdictOf` level. **No scenario in the suite asserts a snapshot-level `mismatched` from real data** — it is
-reached only by the orchestrator probe in §5.2. Cheap to close (the raw fixture seed month is exactly such a
-case), and better closed than assumed.
+`verdictOf` level. **Closed by R-04-T (2026-10-16):** `reconciliation.test.js` now asserts a snapshot-level
+`mismatched` from real fixture data — the raw seed month (a stored `monthly_summaries` row with no daily rows)
+whose stored totals disagree with the all-zero totals the stored daily rows imply. The verdict is pinned
+rather than incidental.
+
+### 5.5 R-04-C — transcribed FY2569 aggregate evidence (public-safe)
+
+`backend/tests/fixtures/fy2569Aggregates.js` (new, test-only) carries the FY2569 evidence as **aggregate
+counts only**:
+
+* the 12 monthly aggregates — late / early / half-day leave / needs-review for `2568-10 .. 2569-09`
+  (`2025-10 .. 2026-09`), plus the totals **1,600 / 24 / 11 / 8**;
+* the 26 documented person-month discrepancies as **three classification counts** (12 accepted, 9 reclassified
+  as half-day leave, 5 single-scan) plus `total` and `populationCodes: 53`;
+* a `provenance` record naming the source repo, the file (`CodexWorker/prepared/README.md`) and the date.
+
+`backend/tests/reconciliationFiscalEvidence.test.js` (new) asserts the monthly sums equal the transcribed
+totals, the discrepancy groups sum to 26, and the 12 fiscal months are exactly Oct..Sep in order and line up
+with the **existing** `fiscalYearPeriod(2569)` window (`2025-10-01 .. 2026-09-30`) rather than a re-implemented
+one. It also **scans the serialized fixture** and asserts it contains no 13-digit national id, no email and no
+employee-code-then-name pattern — the guard that keeps a personal value out of this **public** repo. The guard
+is shown to be non-vacuous by matching samples built only in memory.
+
+**This is transcription, not integration.** The counts were copied by hand from the sibling **private** repo
+`numtip/Attendance-Report`; no V2 code reads that repo at runtime and no external data enters a snapshot.
+`realSourceVerified` therefore **stays `false`**, and the guard test asserts the fixture carries no rosters,
+codes or names — only counts.
+
+The three R-04 suites now run **34 tests** (was 27): 6 in `reconciliationFiscalEvidence.test.js` and 1 new
+snapshot-level `mismatched` case in `reconciliation.test.js`.
+
+**Gates re-run for R-04-C (2026-10-16):** `cd backend && npm run lint` **PASS**;
+`node --test tests/reconciliation*.test.js tests/reconciliationFiscalEvidence.test.js` **PASS — 34/34**;
+`cd backend && npm test` **PASS — 468 tests, 458 pass, 0 fail, 10 skipped** (was 461/451);
+`node scripts/secret-scan.mjs` **PASS — 382 files**. A PII scan over every created/changed file reported
+**0** national ids, **0** emails and **0** code-then-name patterns introduced (the only matches anywhere in
+those files are the pre-existing synthetic `@example.test` addresses and synthetic national id in
+`src/dev/fixtures.js`, unchanged from `HEAD`).
 
 ## 6. Unresolved / out of scope
 
@@ -228,7 +262,7 @@ case), and better closed than assumed.
    be consumed — the sibling repo is private and holds real names, while this repo is public.
 2. **The fiscal convention needs owner confirmation** (§1.3): Oct–Sep is a stated reporting convention, not an
    approved policy value.
-3. **`mismatched` is not pinned by a scenario test** (§5.4).
+3. **`mismatched` is now pinned by a scenario test** (§5.4) — closed by R-04-T.
 4. **Reconciliation is not exposed in the frontend.** Not required by this slice, and `AttendanceDailyView`
    still renders raw records rather than a report.
 5. **No scheduled/automated reconciliation run.** Snapshot generation is on-demand; there is no cron, alert or
@@ -256,8 +290,9 @@ case), and better closed than assumed.
 
 | ID | Task | Note |
 |---|---|---|
-| **R-04-C** | Integrate the FY2569 **aggregate** evidence (12 monthly count totals + the 26 documented person-month discrepancies) as a reconciliation fixture — **counts only, no names or codes** | Replaces "source missing" with real integration; the sibling repo is private and this one is public |
-| R-04-T | Pin a snapshot-level `mismatched` with a scenario test | §5.4 |
+| **R-04-C** | ~~Integrate the FY2569 aggregate evidence~~ **DONE 2026-10-16 as TRANSCRIPTION, not integration** — the 12 monthly counts + the 26 discrepancies are in test-only fixtures (`tests/fixtures/fy2569Aggregates.js`) with counts only, no names or codes (§5.5) | The sibling repo is private and this one is public; `realSourceVerified` stays `false` because nothing is read at runtime |
+| ~~R-04-T~~ | ~~Pin a snapshot-level `mismatched` with a scenario test~~ **DONE 2026-10-16** — §5.4 | — |
 | R-05 | Annual HR form (แบบรายงานประจำปี) | Reuses the R-03 renderer |
 | — | Owner confirmation of the fiscal-year window | §1.3 — now **corroborated** by the donor's own FY2569 labelling (Oct–Sep) |
-| — | Reword `REAL_SOURCE_NOTE` from "unavailable" to "not integrated" | §3; a decision about the honesty contract, not a tidy-up |
+| ~~—~~ | ~~Reword `REAL_SOURCE_NOTE` from "unavailable" to "not integrated"~~ **DONE 2026-10-16 (R-04-C)** — §3 | — |
+| — | `AR-0001` `sourceOfTruth` corrected to `config/settings.yaml` of `numtip/Attendance-Report` (§5.5 / audit finding 2) | — |
