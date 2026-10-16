@@ -65,14 +65,32 @@ function resolveAgentCoreConfig(env = process.env, options = {}) {
     safeEnv.AGENT_PROJECT_TOKEN,
   ]);
 
+  // Cloudflare Access service token. The public edge in front of the gateway refuses a request without it
+  // BEFORE the origin sees it, so a request carrying only the project token gets an HTML 403 and looks like
+  // a mystery. Verified against the live edge on 2026-10-16.
+  const cfAccessClientId = firstNonBlank([
+    safeOptions.cfAccessClientId,
+    safeEnv.AGENT_CORE_CF_CLIENT_ID,
+    safeEnv.AGENT_CF_ACCESS_CLIENT_ID,
+  ]);
+  const cfAccessClientSecret = firstNonBlank([
+    safeOptions.cfAccessClientSecret,
+    safeEnv.AGENT_CORE_CF_CLIENT_SECRET,
+    safeEnv.AGENT_CF_ACCESS_CLIENT_SECRET,
+  ]);
+
   return {
     baseUrl,
     projectId,
     projectToken,
+    cfAccessClientId,
+    cfAccessClientSecret,
     configured: isNonBlank(baseUrl),
     source,
     projectIdSource,
     tokenPresent: isNonBlank(projectToken),
+    // Exposed as a boolean only; neither value is ever returned in a diagnostic projection.
+    cfAccessPresent: isNonBlank(cfAccessClientId) && isNonBlank(cfAccessClientSecret),
   };
 }
 
@@ -100,6 +118,7 @@ function describeAgentCoreConfig(config = {}) {
     baseUrlIsHttps,
     projectId: config.projectId || '',
     tokenPresent: Boolean(config.tokenPresent ?? config.projectToken),
+    cfAccessPresent: Boolean(config.cfAccessPresent),
     source: config.source || 'none',
   };
 }
