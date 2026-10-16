@@ -142,16 +142,30 @@ test('migration 024 DDL, real JSON/NULL shapes, and the derived month', { skip: 
     assert.equal(expectedCol[0].IS_NULLABLE, 'YES', 'expected_working_days must stay nullable');
   });
 
-  await t.test('an approved rule is required before a month can be judged', async () => {
-    await seedDailyRow(MONDAY);
+  await t.test('the month aggregates the day verdicts and derives the calendar from an approved rule', async () => {
+    // IMPORTANT: the month does NOT re-judge a day. It aggregates what the daily engine already stored, so
+    // to exercise the pending case the DAY row must carry the verdict the daily engine produces when no
+    // approved rule covers it (computation_status 'pending_policy'). Writing a 'calculated' day here and
+    // expecting a pending month would be testing a fiction. The day-level behaviour itself is covered by
+    // slice2.mariadb.test.js.
+    await seedDailyRow(MONDAY, {
+      computationStatus: 'pending_policy',
+      ruleVersionCode: null,
+      status: 'pending',
+      isLate: false,
+      lateMinutes: 0,
+      workDuration: 0,
+    });
 
-    // No approved rule covers 2031, so the month is pending_policy with nothing derived from policy.
     const pending = await service.recalculateMonth(auth, EMPLOYEE_UID, YEAR, MONTH);
-    assert.equal(pending.stored.computationStatus, 'pending_policy');
-    assert.equal(pending.stored.expectedWorkingDays, null, 'NULL, not 0, when it cannot be derived');
+    assert.equal(pending.stored.computationStatus, 'pending_policy', 'an unjudged day makes the month pending');
+    assert.equal(pending.stored.expectedWorkingDays, null, 'NULL, not 0, when no approved rule covers the month');
     assert.match(pending.stored.derivationNotes, /no_approved_rule/);
+    assert.equal(pending.stored.totalLate, 0, 'no lateness is claimed while the policy is missing');
+    assert.deepEqual(pending.stored.ruleVersions, [], 'no rule version contributed');
 
-    // Now approve a rule for the period and re-derive.
+    // Now approve a rule covering the period, and mark the day as judged (what the daily engine would store
+    // once the rule exists).
     await repositories.attendanceRules.insertRuleVersion({
       ruleVersionCode: RULE_CODE,
       name: 'Synthetic Slice 3 approved rule',
@@ -165,6 +179,14 @@ test('migration 024 DDL, real JSON/NULL shapes, and the derived month', { skip: 
       workDays: [1, 2, 3, 4, 5],
       approvedBy: 'operator:synthetic',
       approvedAt: '2026-01-01T00:00:00.000Z',
+    });
+    await seedDailyRow(MONDAY, {
+      computationStatus: 'calculated',
+      ruleVersionCode: RULE_CODE,
+      status: 'late',
+      isLate: true,
+      lateMinutes: 15,
+      workDuration: 7.75,
     });
 
     const derived = await service.recalculateMonth(auth, EMPLOYEE_UID, YEAR, MONTH);
