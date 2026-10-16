@@ -18,6 +18,8 @@ const { createDailyAttendanceController } = require('../../controllers/dailyAtte
 const { createDailyAttendanceService } = require('../../services/dailyAttendanceService');
 const { createMonthlySummaryController } = require('../../controllers/monthlySummaryController');
 const { createMonthlySummaryService } = require('../../services/monthlySummaryService');
+const { createAttendanceReportController } = require('../../controllers/attendanceReportController');
+const { createAttendanceReportService } = require('../../services/attendanceReportService');
 
 function createV1Router(container) {
   const authService = createAuthService(container);
@@ -42,6 +44,11 @@ function createV1Router(container) {
   }));
   // Slice 3: monthly summaries are derived from the stored daily rows, not recomputed from scans.
   const monthlySummary = createMonthlySummaryController(createMonthlySummaryService({
+    repositories: container.repositories,
+  }));
+  // R-02: read-only individual attendance reports (day / month / academic year). This layer never writes
+  // and never recomputes; deriving a month stays behind the manager/admin-only monthly-summary route.
+  const attendanceReport = createAttendanceReportController(createAttendanceReportService({
     repositories: container.repositories,
   }));
 
@@ -87,6 +94,12 @@ function createV1Router(container) {
   router.get('/attendance/monthly-summary-explain/:employeeUid/:year/:month', authenticate, monthlySummary.explain);
   router.post('/attendance/monthly-summary/recalculate/:employeeUid/:year/:month', authenticate, monthlySummary.recalculateMonth);
   router.post('/attendance/monthly-summary/recalculate', authenticate, monthlySummary.recalculate);
+
+  // R-02: read-only individual reports. Every one of them surfaces `computationStatus` and `isFinal`, so a
+  // partial or pending-policy month can never be rendered as a final figure.
+  router.get('/attendance/report/day/:employeeUid/:date', authenticate, attendanceReport.day);
+  router.get('/attendance/report/month/:employeeUid/:year/:month', authenticate, attendanceReport.month);
+  router.get('/attendance/report/academic-year/:employeeUid/:year', authenticate, attendanceReport.academicYear);
 
   return router;
 }

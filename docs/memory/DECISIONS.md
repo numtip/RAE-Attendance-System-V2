@@ -73,6 +73,15 @@ silently resolved by an agent.
 | E37 | **`live-smoke.mjs` is the only script that touches the real gateway, makes exactly one call, and refuses to run without credentials.** | Bounds cost and blast radius, and makes the live path explicit rather than incidental. | `agent/scripts/live-smoke.mjs` |
 | E38 | **Jev stays OFF the attendance request path.** The Express runtime still does not import `agent/`. | An Agent Core outage must not block or alter a calculation; a test injects a failing advisory and proves the stored number is unchanged. | `07_SLICE2…` §3 |
 
+### Report decisions — R-02 (2026-10-16)
+
+| # | Decision | Why | Recorded at |
+|---|---|---|---|
+| E39 | **A report is READ-ONLY: it never calculates a day and never derives a month.** Deriving stays behind the manager/admin-only monthly-summary route. | A report that recomputed would be a second source of truth for the same period, and a read must not be able to change the data it describes. | `10_SLICE4…` §2.2 |
+| E40 | **`isFinal` is defined per scope, and a day-level `no_data` IS final while a month-level `no_data` is NOT.** | The daily engine only yields `no_data` when an approved rule confirmed a working day and no scan arrived — "absent" is a finding (E24), not a gap. A month-level `no_data` means the days were never derived, so a month of zeros must never read as a month of attendance (E26). Collapsing the two would either over-claim or make every normal month look incomplete. | `10_SLICE4…` §1 |
+| E41 | **A Thai academic year is 1 June – 31 May, it is a REPORTING convention (not a policy value), and every response names the window it used.** | A report must not leave its period to be assumed. `:year` is the Gregorian year the academic year starts; months that have not started yet are excluded from the completeness verdict because a month that has not happened cannot be missing data. | `10_SLICE4…` §1.2 |
+| E42 | **The known limitations travel WITH the numbers as `report.caveats`** (`HOLIDAY_CALENDAR_EMPTY`, `NIGHT_SHIFT_LATENESS_WITHHELD`, `APPROVER_IS_SESSION_LABEL`), derived rather than assumed. | R2, R8 and P-03 all make a figure narrower than it looks. A caveat that is only in a document will not be read next to the number; one attached to the response will be. Deriving them means recording the accountable approver or importing the holiday calendar removes the caveat automatically. | `10_SLICE4…` §1.1 |
+
 ## 3. OPEN owner decisions (do NOT treat as engineering defaults)
 
 ### 3a. Attendance policy — the engine is blocked on these
