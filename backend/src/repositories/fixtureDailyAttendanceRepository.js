@@ -273,6 +273,18 @@ function createFixtureDailyAttendanceRepository(initialRows = []) {
       return true;
     },
 
+    /** Slice 3: distinct employees with any stored daily row in the inclusive range, sorted for a stable run. */
+    async listEmployeeUidsWithDailyRows({ from, to } = {}) {
+      const uids = new Set();
+      for (const row of rows) {
+        if (!row.employeeUid) continue;
+        if (from != null && row.date < from) continue;
+        if (to != null && row.date > to) continue;
+        uids.add(row.employeeUid);
+      }
+      return Array.from(uids).sort();
+    },
+
     /** Test hook: a deep-ish copy of every stored row and its provenance links. */
     all() {
       return {

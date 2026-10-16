@@ -419,6 +419,17 @@ function createDailyAttendanceMariaDbRepository(pool) {
       );
       return result.affectedRows > 0;
     },
+
+    /** Slice 3: distinct employees with any stored daily row in the inclusive range, sorted for a stable run. */
+    async listEmployeeUidsWithDailyRows({ from, to } = {}) {
+      const [rows] = await pool.query(
+        `SELECT DISTINCT employee_uid FROM daily_attendance
+         WHERE employee_uid IS NOT NULL AND date BETWEEN ? AND ?
+         ORDER BY employee_uid`,
+        [from, to],
+      );
+      return rows.map((row) => row.employee_uid);
+    },
   };
 }
 

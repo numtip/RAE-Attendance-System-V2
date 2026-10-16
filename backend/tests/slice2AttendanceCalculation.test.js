@@ -64,21 +64,36 @@ function serviceWith(repositories, agentAdvisory = null) {
   return createDailyAttendanceService({ repositories, agentAdvisory });
 }
 
-test('the shipped fixture rule is pending, so nothing is silently assumed', () => {
+test('the shipped fixture carries an approved rule for 2026 and an unapproved successor for 2027', () => {
   const seeded = fixtures.attendanceRuleVersions;
-  assert.equal(seeded.length, 1);
-  assert.equal(seeded[0].status, 'pending_approval');
-  assert.notEqual(seeded[0].status, 'approved');
+  assert.equal(seeded.length, 2);
+
+  const approved = seeded.find((row) => row.ruleVersionCode === 'AR-0001');
+  // OWNER DECISION 2026-10-16: these values are approved. The DB CHECK requires an approver, so assert it.
+  assert.equal(approved.status, 'approved');
+  assert.equal(approved.effectiveFrom, '2026-01-01');
+  assert.equal(approved.effectiveTo, '2026-12-31');
+  assert.ok(approved.approvedBy, 'an approved rule must name an approver');
+  assert.ok(approved.approvedAt, 'an approved rule must carry a timestamp');
+  assert.deepEqual(approved.workDays, [1, 2, 3, 4, 5]);
+
+  // The gate stays demonstrable: the only rule covering 2027 is NOT approved.
+  const successor = seeded.find((row) => row.ruleVersionCode === 'AR-0002');
+  assert.equal(successor.status, 'pending_approval');
+  assert.equal(successor.approvedBy, null);
+  assert.ok(successor.effectiveFrom >= '2027-01-01');
 });
 
 test('an unapproved rule yields pending_policy end to end, then a real result once approved', async () => {
   const repositories = createFixtureRepositories();
   const service = serviceWith(repositories);
-  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${MONDAY} 08:45:00`, checkType: 'I' });
-  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${MONDAY} 16:30:00`, checkType: 'O' });
 
-  // 1. Only the seeded pending_approval rule exists.
-  const before = await service.recalculateRange({ employeeUid: USER_UID, from: MONDAY, to: MONDAY });
+  // A 2027 date, where the ONLY rule covering it (AR-0002) is still pending_approval.
+  const PENDING_DAY = '2027-03-01'; // a Monday
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${PENDING_DAY} 08:45:00`, checkType: 'I' });
+  await addScan(repositories, { employeeUid: USER_UID, eventTime: `${PENDING_DAY} 16:30:00`, checkType: 'O' });
+
+  const before = await service.recalculateRange({ employeeUid: USER_UID, from: PENDING_DAY, to: PENDING_DAY });
   assert.equal(before.summary.pendingPolicy, 1);
   const pendingRow = before.days[0];
   assert.equal(pendingRow.computationStatus, 'pending_policy');
@@ -86,12 +101,12 @@ test('an unapproved rule yields pending_policy end to end, then a real result on
   assert.equal(pendingRow.lateMinutes, 0, 'no lateness may be produced from an unapproved rule');
   assert.equal(pendingRow.ruleVersionCode, null, 'an unapproved rule must not be recorded as the rule used');
 
-  // 2. Approve it, and the same scans now produce a real calculation.
-  await repositories.attendanceRules.insertRuleVersion(APPROVED_RULE);
-  const after = await service.recalculateRange({ employeeUid: USER_UID, from: MONDAY, to: MONDAY });
+  // Now approve a rule covering that date, and the same scans produce a real calculation.
+  await repositories.attendanceRules.insertRuleVersion({ ...APPROVED_RULE, effectiveFrom: '2027-01-01' });
+  const after = await service.recalculateRange({ employeeUid: USER_UID, from: PENDING_DAY, to: PENDING_DAY });
   assert.equal(after.summary.calculated, 1);
 
-  const stored = await repositories.dailyAttendance.findForEmployeeDate(USER_UID, MONDAY);
+  const stored = await repositories.dailyAttendance.findForEmployeeDate(USER_UID, PENDING_DAY);
   assert.equal(stored.computationStatus, 'calculated');
   assert.equal(stored.status, 'late');
   assert.equal(stored.lateMinutes, 15);
@@ -483,17 +498,19 @@ test('the calculation endpoints are authenticated and scope-bound', async () => 
     assert.equal(unscopedRecalc.status, 403);
     assert.equal(unscopedRecalc.body.error.code, 'FORBIDDEN');
 
-    // An admin may recalculate their OWN record. Fixture mode ships a pending rule only, so the outcome is
-    // pending_policy: nothing may be claimed as calculated.
+    // The fixture ships an approved rule for 2026, so 2026-03-02 is now JUDGED. This admin has no scans on
+    // that date, so the day is a real absence: day-level `no_data` with status `absent`, which counts in
+    // `noData`, not `calculated`. Nothing may be claimed as pending_policy any more.
     const adminRecalc = await api(port, 'POST', '/api/v1/attendance/recalculate', {
       token: admin.accessToken,
       body: { employeeUid: ADMIN_UID, from: MONDAY, to: MONDAY },
     });
     assert.equal(adminRecalc.status, 200);
+    assert.equal(adminRecalc.body.data.summary.pendingPolicy, 0);
     assert.equal(adminRecalc.body.data.summary.calculated, 0);
-    assert.equal(adminRecalc.body.data.summary.pendingPolicy, 1);
+    assert.equal(adminRecalc.body.data.summary.noData, 1);
+    assert.equal(adminRecalc.body.data.days[0].status, 'absent');
     assert.equal(adminRecalc.body.data.advisory.available, false);
-    assert.equal(adminRecalc.body.data.days[0].status, 'pending');
 
     // Another employee's record is out of scope for an admin as well: broad data access needs an explicit
     // authorization grant, which role alone must not confer.
@@ -513,12 +530,14 @@ test('the explain endpoint reports why a day is pending', async () => {
   const { server, port } = await listen(app);
   try {
     const user = await login(port, 'user@example.test');
-    const explained = await api(port, 'GET', `/api/v1/attendance/explain/${USER_UID}/${MONDAY}`, {
+    // 2027: the only rule covering it is the unapproved successor AR-0002.
+    const explained = await api(port, 'GET', `/api/v1/attendance/explain/${USER_UID}/2027-03-01`, {
       token: user.accessToken,
     });
     assert.equal(explained.status, 200);
     const diagnosis = explained.body.data.diagnosis;
     assert.equal(diagnosis.computationStatus, 'pending_policy');
+    assert.equal(diagnosis.rulePending.ruleVersionCode, 'AR-0002');
     assert.equal(diagnosis.rulePending.status, 'pending_approval');
     assert.equal(JSON.stringify(diagnosis).includes('passwordHash'), false);
   } finally {
