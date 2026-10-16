@@ -256,7 +256,14 @@ test('migration 024 DDL, real JSON/NULL shapes, and the derived month', { skip: 
   await t.test('explain reports staleness from the derived values', async () => {
     await service.recalculateMonth(auth, EMPLOYEE_UID, YEAR, MONTH);
     const fresh = await service.explain(auth, EMPLOYEE_UID, YEAR, MONTH);
-    assert.equal(fresh.stale, false, 'a freshly derived month is not stale');
+    // The reasons are in the assertion message on purpose: when this fails in CI the log names the exact
+    // field that differed, instead of leaving the reader to guess which of the twelve compared values moved.
+    assert.equal(
+      fresh.stale,
+      false,
+      `a freshly derived month must not be stale; reasons=${JSON.stringify(fresh.staleReasons)}`
+        + ` stored=${JSON.stringify(fresh.stored)} derived=${JSON.stringify(fresh.derived)}`,
+    );
 
     // Change a day, and the stored month no longer matches the data.
     await seedDailyRow(`${YEAR}-11-04`, { lateMinutes: 45, status: 'late' });
