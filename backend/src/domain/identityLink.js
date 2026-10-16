@@ -64,7 +64,34 @@ const BLOCKED_ENRICHMENT_OUTCOMES = Object.freeze([
   'firstname_only',
 ]);
 
-const BLOCKED_ENRICHMENT_OUTCOME_SET = new Set(BLOCKED_ENRICHMENT_OUTCOMES);
+
+/**
+ * The ONLY outcomes that may be approved for an enrichment source. An ALLOWLIST, not a blocklist.
+ *
+ * WHY AN ALLOWLIST (hardening ID-7b). This is the fix for a control that was asserted but did not work.
+ * `enrichmentBlocksApproval` used to be a blocklist: it refused approval only when the stored outcome was in
+ * `BLOCKED_ENRICHMENT_OUTCOMES`. Two separate holes followed from that shape:
+ *
+ *   1. A NEW failure status emitted by the enrichment tool would silently become approvable, because it was
+ *      simply not on the list. (The tool's own README documents `found`, `not_found`, `ambiguous`,
+ *      `api_error` and `timeout`; a sixth would have to be remembered here.)
+ *   2. Far worse, and this is what actually shipped: an ABSENT outcome was treated as "nothing to block".
+ *      `employee_identity_links` has never had an `enrichment_outcome` column, so on MariaDB the value read
+ *      back is ALWAYS `null` - meaning the guard never fired for any row in production, while every fixture
+ *      test passed because the fixture twin does persist the field. A control that passes locally and does
+ *      nothing in production is the worst kind, because it is trusted.
+ *
+ * An allowlist closes both: an unknown outcome and an absent outcome are both refused, so "we could not
+ * establish that this was a clean single-person match" fails closed instead of failing open.
+ *
+ * CONSEQUENCE, stated rather than hidden: until the column exists (migration `025`, still a proposal), NO
+ * enrichment-source link can be approved at all on MariaDB. That is the intended posture - the alternative is
+ * approving on evidence the system cannot read - and it is why `025` is the durable fix. See
+ * `docs/IDENTITY_MAPPING_CONTRACT.md` F3/F4 and `docs/IDENTITY_EVIDENCE_MODEL.md`.
+ */
+const ALLOWED_ENRICHMENT_OUTCOMES = Object.freeze(['found']);
+
+const ALLOWED_ENRICHMENT_OUTCOME_SET = new Set(ALLOWED_ENRICHMENT_OUTCOMES);
 
 /**
  * Confidence values that block approval from an enrichment source: both mean the evidence is not settled.
@@ -184,11 +211,32 @@ function isAuthenticatableStatus(status) {
  * review is human evidence and a human may approve an ambiguous match after looking at it. The risk that
  * guard-scoping created was a caller INVENTING a source to escape it; `isKnownSource` closes that, because
  * an unknown source can no longer be written at all (see `identityResolutionService.createCandidate`).
+ *
+ * ID-7b: the outcome test is an ALLOWLIST with an explicit absence check, not a blocklist. See the comment on
+ * `ALLOWED_ENRICHMENT_OUTCOMES` for the two holes that the blocklist shape left open - the second of which
+ * was live in production, because the column does not exist and the value read back was always `null`.
+ *
+ * The check is deliberately written as three separate guards rather than one condition, so a future reader
+ * can see exactly which kind of absence is being refused, and so each branch has its own test.
  */
 function enrichmentBlocksApproval(link) {
   if (!isEnrichmentSource(link?.source)) return false;
-  if (BLOCKED_ENRICHMENT_OUTCOME_SET.has(link.enrichmentOutcome)) return true;
+
+  const outcome = link.enrichmentOutcome == null ? null : String(link.enrichmentOutcome).trim();
+
+  // Guard 1 - MISSING outcome. This is the ID-7b fix. An enrichment link must carry a readable outcome before
+  // it can be approved; "we cannot see what the enrichment returned" is not a reason to approve it.
+  if (outcome == null || outcome === '') return true;
+
+  // Guard 2 - an outcome that is not a known-good outcome. An unrecognised value is refused rather than
+  // tolerated, so a new status emitted by the enrichment tool cannot silently become approvable.
+  if (!ALLOWED_ENRICHMENT_OUTCOME_SET.has(outcome)) return true;
+
+  // Guard 3 - the confidence signal. Kept even though a clean `found` outcome already implies a settled
+  // match, because confidence is an INDEPENDENT column and the two must agree; a `found`/`low` pair is
+  // contradictory evidence and must be reviewed rather than approved.
   if (BLOCKED_ENRICHMENT_CONFIDENCE_SET.has(link.confidence)) return true;
+
   return false;
 }
 
@@ -198,6 +246,7 @@ module.exports = {
   IDENTITY_LINK_SOURCES,
   ENRICHMENT_SOURCES,
   BLOCKED_ENRICHMENT_OUTCOMES,
+  ALLOWED_ENRICHMENT_OUTCOMES,
   BLOCKED_ENRICHMENT_CONFIDENCES,
   EMAIL_LIKE,
   SUBJECT_REJECTION,

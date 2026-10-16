@@ -263,11 +263,33 @@ What is and is not affected:
 MariaDB** and blocked only on fixtures. The confidence check covers the common case, which is why this is a
 partial bypass rather than a full one — but it is a real one.
 
-**Fix (needs a migration, therefore owner approval):** add `enrichment_outcome` to `employee_identity_links`
-(or fold it into the evidence table proposed by ADR-011), persist it in both twins, and add a
-fixture/MariaDB parity test. Tracked as **ID-7b**. A cheaper stop-gap, if the column is not added, is to
-refuse approval for any enrichment-source link whose outcome was never recorded — failing closed on absence
-rather than treating silence as success.
+**Fix — IMPLEMENTED 2026-10-16 (ID-7b), verified on a real MariaDB.**
+
+Rather than wait for a migration, the guard was made **fail-closed without any schema change**:
+
+* `enrichmentBlocksApproval` is now an **allowlist with an explicit absence check**
+  (`ALLOWED_ENRICHMENT_OUTCOMES = ['found']`), not a blocklist. It refuses approval when the outcome is
+  **absent**, **empty**, **whitespace**, or **unrecognised** — so "we cannot establish that this was a clean
+  single-person match" fails closed instead of failing open.
+* **No migration required** for the security fix. `confidence` is a real column, and the absence check needs
+  no column at all.
+* **Legitimate non-enrichment flows are preserved**: an `operator_review` link with no outcome is still
+  approvable (it is human evidence), because the guard only applies to `ENRICHMENT_SOURCES`.
+
+**Known consequence, stated rather than hidden:** until the `enrichment_outcome` column exists (migration
+`025`, still a proposal), **no enrichment-source link can be approved at all on MariaDB**. That is the
+intended posture — the only alternative is approving on evidence the system cannot read.
+
+**Evidence (a real MariaDB 11.4.2, matching CI; 24 migrations applied):**
+
+| Test | Where it runs | Result |
+|---|---|---|
+| The store cannot persist an outcome, so approval fails closed | MariaDB (`identityLinkEnrichment.mariadb.test.js`) | **PASS** — the round trip returns `null`, and `approve()` refuses with `403 IDENTITY_REVIEW_REQUIRED` |
+| The twin drift is asserted, not assumed | MariaDB | **PASS** — the column is proven absent, so a future migration fails this test and forces the guard to be revisited |
+| Absent/empty/whitespace/unrecognised outcome blocks; clean outcome approves; operator flow preserved | fixtures (`identityLinkEnrichmentGuard.test.js`) | **PASS — 10/10** |
+
+The durable fix remains migration `025` (which lets the guard become a pure allowlist instead of
+fail-closed-on-absence); it is a **proposal** and is **not applied**.
 
 ### Finding F4 — the ambiguity guard silently loses a signal, which the mutation test could not see
 
@@ -276,6 +298,10 @@ mutation test killed the guard using the **fixture** repository, where `enrichme
 mutation test proves a guard bites *on the repository it runs against*. It cannot prove the guard bites on
 the repository the product uses. Mutation testing and the twin-parity rule are complementary; neither
 substitutes for the other.
+
+**Closed 2026-10-16 (ID-7b):** the MariaDB-backed tests above now exist, and they pass. The general lesson is
+worth keeping: when a control reads a column, the *mutation test* must run against the twin that owns the
+column in production.
 
 
 
