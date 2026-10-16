@@ -251,6 +251,53 @@ test('explain reports a month that was never derived', async () => {
   assert.equal(result.derived.computationStatus, 'no_data');
 });
 
+// --- regressions found by CI -------------------------------------------------
+
+test('timestamps are compared by instant, not as strings', () => {
+  // Caught in CI: a naive wall datetime ('2031-11-03 23:00:00', which a DATETIME column can yield) and an
+  // ISO timestamp ('2026-10-16T04:16:45.000Z') do not order lexicographically. Comparing the raw strings
+  // made a 2031 wall value look "newer" than a 2026 ISO value purely because '3' > '2' in the year digits,
+  // so a freshly derived month was wrongly reported as stale.
+  const { toEpochMillis } = require('../src/services/monthlySummaryService');
+
+  assert.ok(toEpochMillis('2031-11-03 23:00:00') > toEpochMillis('2026-10-16T04:16:45.000Z'));
+  assert.ok(toEpochMillis('2026-10-16T04:16:45.000Z') > toEpochMillis('2026-10-15 23:00:00'));
+
+  // The naive form must be read as UTC, so the same instant compares EQUAL across the two formats.
+  assert.equal(
+    toEpochMillis('2026-10-16 04:16:45'),
+    toEpochMillis('2026-10-16T04:16:45.000Z'),
+  );
+  assert.equal(toEpochMillis(new Date('2026-10-16T04:16:45.000Z')), Date.parse('2026-10-16T04:16:45.000Z'));
+
+  // Unparseable values give null so the caller decides, rather than becoming NaN comparisons.
+  assert.equal(toEpochMillis(null), null);
+  assert.equal(toEpochMillis(''), null);
+  assert.equal(toEpochMillis('nonsense'), null);
+  assert.equal(toEpochMillis(new Date('invalid')), null);
+});
+
+test('a daily computed_at AFTER the month derivation marks the month stale', async () => {
+  const repositories = createFixtureRepositories();
+  const { monthly } = services(repositories);
+  const auth = { employeeUid: USER_UID, role: 'admin' };
+  await populateMarch(repositories);
+  await monthly.recalculateMonth(auth, USER_UID, YEAR, MONTH);
+
+  // Push ONE daily row's timestamp into the future: the month was derived before it, so the month is stale
+  // even though its aggregate values are unchanged. This is the secondary signal, and it is legitimate.
+  // It must go through the repository — `all()` returns copies, so mutating those would change nothing.
+  const monday = await repositories.dailyAttendance.findForEmployeeDate(USER_UID, MONDAY);
+  await repositories.dailyAttendance.upsertDay({
+    ...monday,
+    calculatedAt: '2031-01-01T00:00:00.000Z',
+  });
+
+  const explained = await monthly.explain(auth, USER_UID, YEAR, MONTH);
+  assert.equal(explained.stale, true);
+  assert.ok(explained.staleReasons.includes('daily_rows_changed_after_derivation'));
+});
+
 // --- authorization -----------------------------------------------------------
 
 test('scope is enforced on reads, and the organization-wide run needs a broad scope', async () => {

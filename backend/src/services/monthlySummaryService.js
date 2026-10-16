@@ -73,16 +73,43 @@ function differingResultFields(stored, derived) {
   return differing;
 }
 
-/** Newest `calculatedAt` among the day rows, or null. Used for the staleness check. */
+/**
+ * Normalize a stored timestamp to epoch milliseconds so two timestamps can be compared MEANINGFULLY.
+ *
+ * Comparing the raw strings is a trap this slice hit: a naive wall value ('2031-11-03 23:00:00', which is
+ * what a DATETIME column can yield) and an ISO value ('2026-10-16T04:16:45.000Z', which is what the daily
+ * repository returns) compare LEXICOGRAPHICALLY, so '2031-...' looks newer than '2026-...' purely because
+ * of the year digits and the separator character. A naive value is read as UTC here so that a naive and an
+ * ISO timestamp describing the same instant compare equal. Returns null when unparseable, so the caller can
+ * decide instead of guessing.
+ */
+function toEpochMillis(value) {
+  if (value == null) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.getTime();
+  const text = String(value).trim();
+  if (!text) return null;
+  const isoish = text.includes('T') ? text : text.replace(' ', 'T');
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(isoish);
+  const stamp = Date.parse(hasZone ? isoish : `${isoish}Z`);
+  return Number.isNaN(stamp) ? null : stamp;
+}
+
+/** Newest `calculatedAt` among the day rows, compared by instant (not lexicographically), or null. */
 function newestDailyCalculatedAt(rows) {
-  let newest = null;
+  let newestMs = null;
+  let newestText = null;
   for (const row of Array.isArray(rows) ? rows : []) {
     const stamp = row?.calculatedAt;
     if (stamp == null) continue;
     const text = stamp instanceof Date ? stamp.toISOString() : String(stamp);
-    if (newest == null || text > newest) newest = text;
+    const ms = toEpochMillis(text);
+    if (ms == null) continue;
+    if (newestMs == null || ms > newestMs) {
+      newestMs = ms;
+      newestText = text;
+    }
   }
-  return newest;
+  return newestText;
 }
 
 function createMonthlySummaryService({ repositories, now = () => new Date() } = {}) {
@@ -320,9 +347,11 @@ function createMonthlySummaryService({ repositories, now = () => new Date() } = 
           staleness.push('derived_values_differ');
           staleness.push(...differing.map((field) => `field_changed:${field}`));
         }
-        // Secondary signals: the inputs themselves moved.
-        const storedAt = stored.calculatedAt == null ? null : String(stored.calculatedAt);
-        if (storedAt == null || (newestDaily != null && newestDaily > storedAt)) {
+        // Secondary signal: the inputs themselves moved. Compared by INSTANT, not as strings, because a
+        // naive wall datetime and an ISO timestamp do not order lexicographically.
+        const storedAtMs = toEpochMillis(stored.calculatedAt);
+        const newestDailyMs = toEpochMillis(newestDaily);
+        if (storedAtMs == null || (newestDailyMs != null && newestDailyMs > storedAtMs)) {
           staleness.push('daily_rows_changed_after_derivation');
         }
         if ((stored.dayCounts?.rows ?? null) !== dailyRows.length) {
@@ -354,5 +383,6 @@ module.exports = {
   assertCanRecalculate,
   monthBounds,
   newestDailyCalculatedAt,
+  toEpochMillis,
   dayKeyOf,
 };

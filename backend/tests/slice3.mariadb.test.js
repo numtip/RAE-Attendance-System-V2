@@ -94,7 +94,9 @@ test('migration 024 DDL, real JSON/NULL shapes, and the derived month', { skip: 
       sourceEventCount: 2,
       firstEventAt: `${date} 08:45:00`,
       lastEventAt: `${date} 16:30:00`,
-      calculatedAt: `${date} 23:00:00`,
+      // A realistic past instant. Writing the row's own date here (2031-...) would make the daily rows claim
+      // to have been calculated AFTER the month, which the staleness check would correctly flag.
+      calculatedAt: '2026-01-01T00:00:00.000Z',
       reconciliationJson: { reason: 'synthetic_slice3' },
       sourceEventIds: [],
       ...overrides,
