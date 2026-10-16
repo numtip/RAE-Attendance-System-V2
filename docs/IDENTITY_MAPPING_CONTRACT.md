@@ -146,7 +146,7 @@ Verified today by an independent probe driving the real services (31 assertions,
 |---|---|---|
 | B.2 | `maskNationalId` exposes only `****NNNN`; a masked value is **not** canonicalisable, fails the checksum, and `buildLookup` rejects it as `INVALID_IDENTIFIER` | **PASS** |
 | B.2 | The lookup digest is 64-hex, never equals the plaintext, differs per key version, and is labelled with its version | **PASS** |
-| B.2 | A masked value can never be used as a lookup key anywhere (the only `slice(-4)` in `backend/src` is inside `maskNationalId`) | **PASS** |
+| B.2 | A masked value can never be used as a lookup key. **Repo-wide check:** the only `slice(-4)` occurrences are masking helpers for display — `nationalIdContract.js` `maskNationalId` and the same code retained in `docs/patches/main-workspace-idcard-shared-contract.patch`. No code path compares, matches or keys on a masked or shortened identifier. | **PASS** |
 | B.3 | An enrichment link is created as `candidate`, records its `source` and `enrichmentOutcome`, and has an empty `approvedBy` | **PASS** |
 | B.3 | Approval requires an explicit `approvedBy` (`400` otherwise) and records who approved it | **PASS** |
 | B.3 | **All six** blocked enrichment outcomes cannot be approved (`403 IDENTITY_REVIEW_REQUIRED`) | **PASS** |
