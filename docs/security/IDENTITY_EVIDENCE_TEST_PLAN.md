@@ -6,9 +6,14 @@ mutations that must make each of them fail.
 **Date:** 2026-10-16 · **Companions:** [`IDENTITY_EVIDENCE_THREAT_MODEL.md`](IDENTITY_EVIDENCE_THREAT_MODEL.md),
 [`../adr/ADR-011-identity-evidence-storage.md`](../adr/ADR-011-identity-evidence-storage.md)
 
-**Baseline today (do not regress):** `backend` suite **508 tests · 498 pass · 0 fail · 10 skipped**;
+**Baseline today (do not regress):** `backend` suite **526 tests · 516 pass · 0 fail · 10 skipped**;
 `npm run lint` PASS; `nationalIdFixtureHygiene` guard PASS. A sibling track is editing other files
 concurrently, so a failure in a file this track does not own is reported, not "fixed".
+
+**Revised 2026-10-16:** added the **MariaDB-only** evidence-table tests (§3.1, C13–C16) and the
+twin-divergence detector; §3.2 states which tests can run **only** in the `backend-mariadb` CI job. The
+existing `backend/tests/identityLinkEnrichment.mariadb.test.js` (shipped with the ID-7b guard) is the pattern
+these follow: it **skips off-MariaDB and says so** rather than reporting a false pass.
 
 ---
 
@@ -21,7 +26,7 @@ These are not optional style notes; each has bitten this repository already (`do
 | **R1 — a guard must prove it is not vacuous** | Rule 7.10: two checks in this repo "verified" nothing because they read 0 files / matched 0 literals. Every guard test here asserts its own **coverage** (rows read, matches found) and is **mutation-tested**. |
 | **R2 — mutation testing is the evidence standard** | Rule 7.10, and the contract's §4.1. "A guard whose removal changes nothing is decoration." Every control below names the mutation that must kill it. |
 | **R3 — synthetic, checksum-INVALID fixtures only** | `docs/SECURITY_INCIDENT_PII_IN_FIXTURES_20261016.md`. A checksum-valid 13-digit literal must **never** be committed; where a valid value is genuinely needed, **derive it at runtime** (the pattern `backend/tests/nationalIdContract.test.js` already uses). The CI guard `nationalIdFixtureHygiene.test.js` canonicalizes before checking, so an alternately-encoded literal is also caught. |
-| **R4 — the fixture/MariaDB twin hides type divergence** | Rule 7.6: local green is necessary, not sufficient. Every constraint test below is marked **DB-ONLY** where a fixture twin cannot enforce it. |
+| **R4 — the fixture/MariaDB twin hides type divergence** | Rule 7.6, and standing rule 6: local green is necessary, not sufficient. Every constraint test is marked **DB-ONLY** where a fixture twin cannot enforce it, and **C16** pins the divergence itself rather than trusting it. The worked example is the inert `enrichment_outcome` guard (threat **T9**, contract **F3/F4**). |
 | **R5 — an `await` is part of an authorization check** | Rule 7.3. Any test that asserts a refusal must also assert **no row was written**, not just that a rejection was thrown. |
 | **R6 — no `String(value).slice(0,10)` on a stored date** | Rule 7.1. The expiry tests use `wallDateOnly()`. |
 
@@ -37,6 +42,7 @@ These are not optional style notes; each has bitten this repository already (`do
 | `SUBJ_OPAQUE` | an opaque provider subject (not an e-mail, not `ac`) | e.g. a provider-shaped opaque token |
 | `KEY_V1`, `KEY_V2` | two distinct base64 HMAC keys, `EMPLOYEE_IDENTIFIER_HMAC_KEY_VERSION=1` / `=2` | Test-local env only; never a real key |
 | `DIGEST_A@v1` | `identifierLookupHmac('national_id', SYNTH_ID_INVALID, KEY_V1)` | Computed in-test with the production function — never hard-coded |
+| `ENRICH_FOUND` / `ENRICH_AMBIG` / `ENRICH_ABSENT` | three `mju_person_enrich` candidate links with `enrichmentOutcome` = `found` / `ambiguous` / omitted | For the ID-7b / T9 tests (C15, C16). Synthetic only — never a real enrichment artifact or cache row |
 
 All fixtures live under `backend/tests/fixtures/` and are built **with** `nationalIdContract.js`, so a change
 to the domain function moves the fixture with it (no drifting literal).
@@ -46,6 +52,8 @@ to the domain function moves the fixture with it (no drifting literal).
 ## 3. Test matrix
 
 Legend: **U** = unit/domain, **S** = service, **DB** = requires MariaDB (the `backend-mariadb` CI job).
+**DB-ONLY** = the assertion is only meaningful against MariaDB; a fixture twin cannot enforce it, and the test
+**skips where no database is present and says so** (never a silent false pass — rule R4).
 
 ### C1 — A declared boolean is not evidence
 
@@ -184,6 +192,81 @@ Legend: **U** = unit/domain, **S** = service, **DB** = requires MariaDB (the `ba
 
 ---
 
+### 3.1 MariaDB-backed tests for the evidence table (the T9 / F3 hardening)
+
+These exist because C1–C12's DB cases ran nowhere: MariaDB is **not installed on the authoring workstation**,
+so any "DB" test that is not explicitly skippable-and-loud is a false pass. The shipped ID-7b test
+(`tests/identityLinkEnrichment.mariadb.test.js`) is the template: `skip: !shouldRunMariaDbIntegration()`,
+where the helper returns true only for `RUN_MARIADB_TESTS=1` or in CI with a configured database.
+
+#### C13 — The evidence table is shaped as designed, and its CHECKs are *enforced* (DB-ONLY)
+
+| | |
+|---|---|
+| **Control** | model §2, §3.5 |
+| **Exact test** | Against MariaDB: assert `employee_identity_evidence` exists with the designed columns, nullability, the three FKs, `uk_identity_evidence_link_type` and the three indexes; assert `evidence_type` is an `ENUM` with exactly the three designed values. Then prove the CHECKs are **enforced**, not merely declared, by attempting each rejected insert (C8's cases). |
+| **Why this is separate from C8** | C8 asserts *behaviour*; C13 asserts the *shape* and that the server **enforces** it. MariaDB **silently ignores** `CHECK` below 10.2.3 — a declared-but-unenforced CHECK is exactly the T9 class of "asserted but inoperative", so the enforcement half is the point. |
+| **Mutation** | Remove a CHECK from the DDL → both C8 and C13 fail. Drop `uk_identity_evidence_link_type` → C7 and C13 fail. |
+| **Level** | **DB-ONLY** |
+| **Label** | **ASSESSED** — needs `025` applied |
+
+#### C14 — The ledger is append-only *in effect* (DB-ONLY)
+
+| | |
+|---|---|
+| **Control** | model §2 ("no `updated_at`"), §6.1; threat T3 |
+| **Exact test** | (a) assert the table has **no** `updated_at` column; (b) assert `fk_identity_evidence_link ... ON DELETE RESTRICT` — deleting a link that has evidence is **refused**; (c) assert the delete succeeds once the evidence is removed. |
+| **Mutation** | Change RESTRICT to CASCADE → (b) fails. Add an `updated_at` → (a) fails. |
+| **Level** | **DB-ONLY** |
+| **Label** | **ASSESSED** — needs `025` applied |
+
+#### C15 — The ID-7b durable fix: the outcome round-trips and the guard relaxes (DB-ONLY)
+
+| | |
+|---|---|
+| **Control** | model §5.3; contract F3; threat T9 |
+| **Exact test** | **Before `025`:** the shipped test's assertions hold — a link written with `enrichmentOutcome: 'found'` reads back `null`, approval is refused `403 IDENTITY_REVIEW_REQUIRED`, and the column is absent. **After `025` + twin parity:** the same write reads back `'found'`, `enrichmentBlocksApproval` is `false`, and approval succeeds; `ENRICH_AMBIG` reads back `'ambiguous'` and is **refused**; `ENRICH_ABSENT` (NULL, no back-fill) is **refused**. |
+| **Fixture** | `ENRICH_FOUND` / `ENRICH_AMBIG` / `ENRICH_ABSENT`, `EMP_A`, `SUBJ_OPAQUE` |
+| **Mutation** | Leave `mapRow` hardcoding `null` after adding the column → the `'found'` round trip fails and approval stays refused (this is the **twin-divergence** mutation — the exact F3 defect). Invert the absence check in `enrichmentBlocksApproval` → the `ENRICH_ABSENT` case passes and the test fails. |
+| **Non-vacuity** | Both a positive (allowed value approves) and negatives (blocked/absent values refuse) in the same test; a guard hard-wired to `true` fails the positive, one hard-wired to `false` fails the negatives. |
+| **Level** | **DB-ONLY** |
+| **Label** | **VERIFIED** for the pre-`025` half (the shipped test already asserts it); the post-`025` half is **ASSESSED** |
+
+#### C16 — Twin parity: the divergence itself is pinned (DB-ONLY, the F3 detector)
+
+| | |
+|---|---|
+| **Control** | threat **T9**; contract **F3/F4**; test-plan rule **R4** |
+| **Exact test** | Perform the **same** `insertLink` → `findById` sequence through the **fixture** repository and the **MariaDB** repository and assert the two returned rows agree on every field a guard reads (`source`, `confidence`, `enrichmentOutcome`, `evidenceType`, `status`). Any field that the fixture persists and MariaDB drops fails the test **naming the field**. |
+| **Why it matters** | This is the test that would have caught F3 before it shipped. It does not test a feature; it tests the *fidelity of the test double*, which is the thing every other DB-marked test silently depends on. |
+| **Mutation** | Revert `mapRow` to `enrichmentOutcome: null` while the fixture keeps persisting it → C16 fails with `enrichmentOutcome`. Make C16 compare only `status` → it passes on the F3 defect ⇒ the field list is part of the non-vacuity assertion. |
+| **Non-vacuity** | Assert the field list is non-empty and that at least the guard-read fields are covered; a parity loop over zero fields passes trivially otherwise. |
+| **Level** | **DB-ONLY** |
+| **Label** | **VERIFIED** as a defect class (F3 is reproduced); the test must be written |
+
+### 3.2 Which tests can run ONLY in CI, and why
+
+MariaDB is **not available on the authoring workstation** (only the fixture twin is), so every constraint-level
+test is a **CI-only** test. In CI it runs in the **`backend-mariadb`** job (`.github/workflows/ci.yml`), which
+starts a `mariadb:11.4` service, sets `RUN_MARIADB_TESTS=1`, applies the migrations + dev seed, and then runs
+`node --test --test-force-exit tests/*.test.js`. Everywhere else the suite must **skip and say so**.
+
+| Test | Kind | Why it can only run in CI (the `backend-mariadb` job) |
+|---|---|---|
+| **C13** | DB-ONLY | `information_schema` shape + CHECK **enforcement** need a real MariaDB ≥ 10.2.3 |
+| **C14** | DB-ONLY | `ON DELETE RESTRICT` is a real FK action; a JS array has no equivalent |
+| **C15** (post-`025`) | DB-ONLY | the round trip through `insertLink`/`mapRow` and the columns' real types |
+| **C16** | DB-ONLY | it *compares* the two twins; meaningless with only one |
+| **C4, C6, C7, C8, C9** | DB (existing) | unique keys, concurrency, CHECKs, the drift query — all need real constraints (rule R4) |
+| **C1** (DB half) | DB (existing) | the verification JOIN needs real tables |
+| U/S tests (C2, C3, C5, C10, C11, C12) | U / S | run on the workstation; C11's DB half joins the CI-only set |
+
+**Contract with the runner:** a CI-only test must **skip with a visible reason** when the database is absent —
+`skip: !shouldRunMariaDbIntegration()` — and never report a pass it did not earn. `npm test` locally is
+therefore **necessary but not sufficient**, which is the whole lesson of T9.
+
+---
+
 ## 4. Mutation schedule (what "done" means)
 
 A control is **done** only when every mutation below is **KILLED** (at least one test fails) and reverting the
@@ -202,9 +285,12 @@ mutation returns the suite green:
 | M9 | Make the drift query ignore inconsistent rows | C9 |
 | M10 | Replace `wallDateOnly()` with `String().slice(0,10)` | C11 |
 | M11 | Make the doc/SQL PII scan read 0 files or 0 matches | C12(b) |
+| M12 | **After `025`:** leave `mapRow` hardcoding `enrichmentOutcome: null` (twin divergence) | C15, C16 |
+| M13 | Make the twin-parity test compare zero (or one) field | C16 (its own non-vacuity assertion) |
 
 **Passing is not the deliverable.** A check whose removal changes nothing is decoration (Rule R2); the schedule
-above is the acceptance criterion.
+above is the acceptance criterion. M12 is the mutation that encodes the **T9** lesson: the F3 defect was not a
+missing guard, it was a guard whose only failing test ran against a more capable fake.
 
 ---
 

@@ -40,6 +40,21 @@ disclosure of the incident to the individual, and it is irreversible. **Notifica
 | Already fixed in the working tree? | **YES** — literals replaced, CI guard added | VERIFIED |
 | Fixed in public history? | **NO** — requires a rewrite + force push, deliberately not run | VERIFIED |
 
+### 1.1 What we do NOT know (shared, and stated in both variants)
+
+The notification must be **accurate, not reassuring**, so both variants say this plainly:
+
+| We do NOT know | Why it is unknown | What would resolve it |
+|---|---|---|
+| Whether anyone **cloned, forked, archived or scraped** the repository since 2026-10-02 | there is no clone/fork telemetry in this workspace | GitHub Insights → Network/Forks (owner-visible); a scanning vendor with history coverage |
+| Whether anyone actually **looked at or copied** the value | no access logs exist here | the same telemetry; explicit collaborator statements |
+| Whether **GitHub still retains** the blob after any rewrite (`refs/pull/*`, caches, API blobs) | GitHub-internal | GitHub documentation/support; a post-rewrite re-mirror + probe of `refs/pull/*` |
+| Whether the value exists in **other repositories or stores** on this machine / account | out of scope for this review | a masked, canonicalising scan under controlled conditions (**counts only**) |
+| The affected person's **identity / context**, and the exact **legal characterisation** | not derivable here / not an engineering question | MJU-side records; privacy officer / legal counsel |
+
+We state these because a notification that only reassures would be inaccurate. **We have neither proof of harm
+nor proof that no harm occurred.**
+
 ---
 
 ## 2. Variant A — to the privacy officer (technical + compliance)
@@ -74,6 +89,13 @@ disclosure of the incident to the individual, and it is irreversible. **Notifica
 > our governance forbids without explicit approval, and which would disrupt a stack of open Draft pull requests.
 > We are also **not able to determine** whether anyone has already cloned, forked or archived the repository
 > since 2026-10-02.
+>
+> **What we do NOT know, stated plainly (so this is accurate, not reassuring).** We do **not** know whether
+> anyone cloned, forked, archived or scraped the repository; whether anyone actually read or copied the value;
+> whether GitHub will still retain the blob after any history rewrite (pull-request refs, caches, API blobs);
+> whether the value also exists in other repositories or stores on this machine or account; and we cannot
+> determine the affected person's identity or the exact legal characterisation. **We therefore cannot tell you
+> that no one has obtained it — only that it was publicly exposed and that we are acting on that.**
 >
 > **Our asks:**
 > 1. **Direction on history rewriting** — do you want us to proceed with a rewrite + force push (see the
@@ -126,9 +148,13 @@ disclosure of the incident to the individual, and it is irreversible. **Notifica
 > safety check that stops the same mistake from happening again. We have also begun a review of how this
 > information came to be stored in our systems in the first place.
 >
-> **What we cannot yet say.** The number may still be recoverable from older copies of the project online. We
-> are reviewing whether we can remove those too, and that decision is being taken now with our privacy adviser.
-> We cannot know whether anyone actually looked at it.
+> **What we cannot yet say (we are telling you what we do *not* know, not only what would reassure you).** The
+> number may still be recoverable from older copies of the project online. We are reviewing whether we can
+> remove those too, and that decision is being taken now with our privacy adviser. We do **not** know whether
+> anyone actually looked at the number or copied it. We do **not** know whether anyone had already saved a copy
+> of the project before we fixed it. And we cannot yet tell whether the number appears anywhere else on our
+> systems, because that needs a careful, controlled search we have not finished. We would rather tell you this
+> plainly than reassure you with something we cannot prove.
 >
 > **What you can do.** **[Insert the specific, verified guidance once the data-protection review decides it —
 > for example, monitoring for identity misuse, or a contact at the relevant authority. Do not invent advice
