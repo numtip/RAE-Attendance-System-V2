@@ -144,6 +144,14 @@ export const api = {
     apiRequest<import('./types').MonthlySummary>(
       `/attendance/monthly/${employeeUid}/${year}/${month}`,
     ),
+  /**
+   * R-02 report surface. Preferred over `attendanceMonthly`: it carries `computationStatus` and `isFinal`,
+   * so the UI can refuse to present an incomplete month as a final one.
+   */
+  attendanceMonthReport: (employeeUid: string, year: number, month: number) =>
+    apiRequest<import('./types').AttendanceMonthReport>(
+      `/attendance/report/month/${employeeUid}/${year}/${month}`,
+    ),
   leaveList: (employeeUid?: string) => {
     const query = employeeUid ? `?employeeUid=${encodeURIComponent(employeeUid)}` : '';
     return apiRequest<import('./types').LeaveRow[]>(`/leave${query}`);

@@ -33,22 +33,34 @@ replaced by it:
 
 ## 1. The immediate next milestone
 
-> ### 🎯 Individual attendance reports (R-02)
+> ### ✅ Individual attendance reports (R-02) — DELIVERED 2026-10-16
+
+`GET /api/v1/attendance/report/day|month|academic-year/:employeeUid/...` (read-only, scope-enforced). Every
+report names its `ruleVersions`, `dateCutoff` and `population`, and carries `computationStatus` **plus** an
+`isFinal` flag, so a `partial` / `pending_policy` / `not_derived` month can never be rendered as a final
+figure. Limitations travel with the number in `report.caveats` (`HOLIDAY_CALENDAR_EMPTY`,
+`NIGHT_SHIFT_LATENESS_WITHHELD`, `APPROVER_IS_SESSION_LABEL`). Detail and the review checklist:
+[`docs/unified/10_SLICE4_ATTENDANCE_REPORTS.md`](../unified/10_SLICE4_ATTENDANCE_REPORTS.md). **No
+migration.** Committed as `9fbca5f` on `feat/slice4-attendance-reports` (off the tip) and opened as
+**Draft PR [#41](https://github.com/numtip/RAE-Attendance-System-V2/pull/41)** — Draft, unmerged.
+
+**The next milestone is R-03 (exports), and it inherits the same honesty rules:**
 
 **No longer blocked on policy.** On **2026-10-16 the owner approved `AR-0001`** (work `08:30–16:30`, late
 after `08:30`, early before `16:30`, Mon–Fri), and **R-01 (monthly summary) is delivered** with provenance
-and an honest completeness verdict. So a report now has real, traceable numbers to render.
+and an honest completeness verdict. So a report has real, traceable numbers to render.
 
 Remaining before a report is *complete*:
 
-1. **`expected_working_days` is working-week-only** until the holiday calendar is imported (S2-D). Correct,
-   but a report will over-count expected days on holidays.
-2. **Night-shift months report `partial`** until `P-03` defines overnight lateness (S2-B).
+1. **`expected_working_days` is working-week-only** until the holiday calendar is imported (S2-D). The
+   report raises `HOLIDAY_CALENDAR_EMPTY` whenever such a figure is shown.
+2. **Night-shift months report `partial`** until `P-03` defines overnight lateness (S2-B); the report
+   raises `NIGHT_SHIFT_LATENESS_WITHHELD`.
 3. **`approved_by` is still a session label.** Name the accountable approver before these values are used
-   for anything a person is judged on.
-
-A report must **surface** `computation_status` rather than hide it: a `partial` or `pending_policy` month
-must not be rendered as if it were final.
+   for anything a person is judged on; the report raises `APPROVER_IS_SESSION_LABEL`.
+4. **The frontend monthly view now reads the report endpoint** (`R-02-FE`, done 2026-10-16), so the
+   verdict is visible in the UI. The legacy `/attendance/monthly` route stays contracted but unused by the
+   app.
 
 ## 2. Pending Slice 2 follow-ups
 | ID | Task | Size | Depends on | Acceptance criteria |
@@ -69,8 +81,9 @@ must not be rendered as if it were final.
 |---|---|---|---|---|
 | ~~R-00~~ | ~~Owner approves a rule version~~ | — | — | **DONE 2026-10-16.** `AR-0001` approved for 2026. `approved_by` still needs a real name. |
 | ~~R-01~~ | ~~`monthly_summary` derived writer~~ | — | — | **DONE — PR [#39](https://github.com/numtip/RAE-Attendance-System-V2/pull/39)**, migration `024`. Completeness verdict, provenance, idempotent, no phantom months. |
-| R-02 | Report endpoints for one employee: day / month / academic year, scope-enforced | M | R-01 | 401 anonymous, 403 cross-scope; **every report names its rule version, date cutoff and population**, and surfaces `computation_status` instead of hiding a partial month |
-| R-03 | Export layer (XLSX with Thai fonts, PDF, annual form) | L | R-02 | Server-enforced filters and export authorization; cross-scope export returns 403 in tests |
+| R-02 | Report endpoints for one employee: day / month / academic year, scope-enforced | M | R-01 | **DONE 2026-10-16** (no migration; not committed). 401 anonymous, 403 cross-scope; every report names its rule version, date cutoff and population, and surfaces `computationStatus` + `isFinal` instead of hiding a partial month. `docs/unified/10_SLICE4_ATTENDANCE_REPORTS.md` |
+| R-02-FE | Wire `frontend/src/views/AttendanceMonthlyView.vue` to `/attendance/report/month/...` so the UI shows the completeness verdict | S | R-02 | **DONE 2026-10-16** — verdict rendered before the figures; a never-derived month shows no figures instead of zeros. Verified in review/fixture mode. |
+| R-03 | Export layer (XLSX with Thai fonts, PDF, annual form) | L | R-02 | Server-enforced filters and export authorization; cross-scope export returns 403 in tests. **Must carry the same `computationStatus` / caveats contract as R-02.** |
 | R-04 | Reconciliation test: recompute a closed month and match a frozen synthetic snapshot | M | R-02 | Recalculation of a past month reproduces the stored numbers exactly |
 
 ## 4. Slice 1 follow-ups still open

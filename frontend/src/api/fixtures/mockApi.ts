@@ -1,17 +1,21 @@
 import { getAccessToken, getRefreshToken, getStoredEmployee, setTokens } from '../../auth/session';
 import { ApiError } from '../errors';
 import type {
+  AttendanceMonthReport,
   AttendanceRecord,
   EmployeePublic,
   LeaveBalanceRow,
   LeaveRow,
   LoginResult,
+  MonthReportRow,
   MonthlySummary,
+  ReportComputationStatus,
 } from '../types';
 import {
   fixtureBalances,
   fixtureEmployees,
   fixtureLeave,
+  fixtureMonthReportOverrides,
   fixtureMonthly,
   publicEmployee,
 } from './data';
@@ -177,6 +181,149 @@ async function handleAttendanceMonthly(
   return summary;
 }
 
+/** Days of a synthetic month that could not be judged, so a `partial` month is visible in review mode. */
+const SYNTHETIC_UNJUDGED_DAYS = ['2026-07-06', '2026-07-20'];
+
+/**
+ * A stored day for every calendar day of the month, mirroring what a whole-month recalculation writes:
+ * weekdays judged, weekends classified as non-working, and the listed days withheld (`insufficient_data`).
+ */
+function syntheticMonthDays(year: number, month: number): AttendanceMonthReport['days'] {
+  const total = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const rows: AttendanceMonthReport['days'] = [];
+  for (let day = 1; day <= total; day += 1) {
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    const isWeekend = weekday === 0 || weekday === 6;
+    const unjudged = SYNTHETIC_UNJUDGED_DAYS.includes(date);
+    rows.push({
+      date,
+      status: unjudged ? 'pending' : isWeekend ? 'holiday' : 'present',
+      computationStatus: unjudged ? 'insufficient_data' : 'calculated',
+      isFinal: !unjudged,
+    });
+  }
+  return rows;
+}
+
+/**
+ * R-02 report in review mode.
+ *
+ * The completeness verdict is the whole point, so this mirror of the backend NEVER decides that a month is
+ * final on its own: a month is `calculated` only when the fixture really has a stored summary for it, and
+ * a month listed in `fixtureMonthReportOverrides` keeps the non-final status it is given.
+ *
+ * The saved-days list is generated so it agrees with the totals it accompanies: a month that reports
+ * `dayRows: 0` has no stored days (a bare seed row, exactly like the backend fixture), and the synthetic
+ * partial month really does carry one stored day per calendar day.
+ */
+function buildMonthReport(employeeUid: string, year: number, month: number): AttendanceMonthReport {
+  const key = `${year}-${month}`;
+  const override = fixtureMonthReportOverrides[key];
+  const stored = fixtureMonthly.find(
+    (row) => row.employeeUid === employeeUid && row.year === year && row.month === month,
+  );
+
+  const computationStatus: ReportComputationStatus = override
+    ? override.status
+    : stored
+      ? 'calculated'
+      : 'not_derived';
+
+  const body: MonthReportRow | null = override
+    ? override.month
+    : stored
+      ? {
+        year: stored.year,
+        month: stored.month,
+        computationStatus: 'calculated',
+        isFinal: true,
+        totalWorkDays: stored.totalWorkDays,
+        totalPresent: stored.totalPresent,
+        totalLate: stored.totalLate,
+        totalAbsent: stored.totalAbsent,
+        totalLeave: stored.totalLeave,
+        totalLateMinutes: stored.totalLateMinutes,
+        totalEarlyMinutes: 0,
+        totalWorkHours: stored.totalWorkHours,
+        // This seeded fixture month has no stored daily rows and no rule provenance, so the expected-days
+        // figure is NOT derivable and no rule version can be named. Reported as such, not invented.
+        expectedWorkingDays: null,
+        pendingDays: 0,
+        holidayDays: 0,
+        ruleVersions: [],
+        dayCounts: {},
+        derivationNotes: 'fixture month: a seed row with no stored daily rows in review mode',
+        calculatedAt: null,
+        sourceKind: 'seed',
+      }
+      : null;
+
+  const days = override ? syntheticMonthDays(year, month) : [];
+  const statusReasons = override
+    ? override.reasons
+    : stored
+      ? []
+      : ['month_never_derived'];
+
+  return {
+    report: {
+      kind: 'month',
+      period: {
+        from: `${year}-${String(month).padStart(2, '0')}-01`,
+        to: `${year}-${String(month).padStart(2, '0')}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate())}`,
+        year,
+        month,
+        key: `${year}-${String(month).padStart(2, '0')}`,
+      },
+      population: { employees: 1, employeeUid, dayRows: days.length },
+      ruleVersions: body?.ruleVersions ?? [],
+      dateCutoff: days.length > 0 ? days[days.length - 1].date : null,
+      computationStatus,
+      isFinal: computationStatus === 'calculated' && body != null,
+      statusReasons,
+      // The holiday caveat narrows an EXPECTED-DAYS figure, so it is only raised when one was derived.
+      caveats: body?.expectedWorkingDays != null
+        ? [{
+          code: 'HOLIDAY_CALENDAR_EMPTY',
+          detail: 'No approved holiday covers this period, so expected working days count the working week only.',
+        }]
+        : [],
+      generatedFrom: 'stored_daily_attendance',
+    },
+    month: body,
+    days,
+    dayCounts: {
+      rows: days.length,
+      byStatus: days.reduce<Record<string, number>>((counts, row) => {
+        counts[row.status ?? 'unknown'] = (counts[row.status ?? 'unknown'] ?? 0) + 1;
+        return counts;
+      }, {}),
+      byComputationStatus: days.reduce<Record<string, number>>((counts, row) => {
+        counts[row.computationStatus] = (counts[row.computationStatus] ?? 0) + 1;
+        return counts;
+      }, {}),
+    },
+  };
+}
+
+async function handleAttendanceMonthReport(
+  employeeUid: string,
+  year: number,
+  month: number,
+): Promise<AttendanceMonthReport> {
+  const auth = authFromSession();
+  assertCanReadEmployee(auth, employeeUid);
+  if (!findEmployeePublic(employeeUid)) {
+    throw new ApiError(404, 'NOT_FOUND', 'Employee was not found');
+  }
+  if (!Number.isInteger(year) || year < 2000 || year > 2100
+    || !Number.isInteger(month) || month < 1 || month > 12) {
+    throw new ApiError(400, 'REPORT_INVALID_PERIOD', 'year and month must form a real period');
+  }
+  return buildMonthReport(employeeUid, year, month);
+}
+
 async function handleLeaveList(query: string): Promise<LeaveRow[]> {
   const auth = authFromSession();
   const params = new URLSearchParams(query.startsWith('?') ? query.slice(1) : query);
@@ -247,6 +394,15 @@ export async function fixtureApiRequest<T>(
       decodeURIComponent(monthlyMatch[1]),
       Number(monthlyMatch[2]),
       Number(monthlyMatch[3]),
+    )) as T;
+  }
+
+  const monthReportMatch = path.match(/^\/attendance\/report\/month\/([^/]+)\/(\d+)\/(\d+)$/);
+  if (auth && method === 'GET' && monthReportMatch) {
+    return (await handleAttendanceMonthReport(
+      decodeURIComponent(monthReportMatch[1]),
+      Number(monthReportMatch[2]),
+      Number(monthReportMatch[3]),
     )) as T;
   }
 
