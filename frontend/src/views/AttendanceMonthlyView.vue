@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
-import type { AttendanceMonthReport, ReportComputationStatus } from '../api/types';
+import type {
+  AttendanceExportFile,
+  AttendanceExportFormat,
+  AttendanceMonthReport,
+  ReportComputationStatus,
+} from '../api/types';
 import { getStoredEmployee } from '../auth/session';
+import { isReviewFixtureMode } from '../config/reviewMode';
 import AsyncState from '../components/AsyncState.vue';
 
 /**
@@ -62,6 +68,64 @@ async function load() {
     error.value = e instanceof ApiError ? e.message : 'Failed to load the monthly report';
   } finally {
     loading.value = false;
+  }
+}
+
+/** R-03: review mode has no backend, so exports must be refused rather than faked. */
+const exportDisabledInReviewMode = isReviewFixtureMode;
+const exporting = ref<AttendanceExportFormat | null>(null);
+const exportError = ref<string | null>(null);
+
+const canExport = computed(
+  () =>
+    Boolean(report.value)
+    && Boolean(employeeUid.value)
+    && !exportDisabledInReviewMode
+    && exporting.value === null,
+);
+
+/**
+ * Object URL + synthetic <a download> click.
+ *
+ * The object URL is revoked on a later task, NOT synchronously: the browser reads the blob after the click
+ * handler returns, so revoking in the same tick can abort the download in some browsers. The revoke is
+ * still unconditional, so no blob URL is leaked.
+ */
+function triggerDownload(file: AttendanceExportFile): void {
+  const url = URL.createObjectURL(file.blob);
+  try {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = file.fileName;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+}
+
+async function download(format: AttendanceExportFormat): Promise<void> {
+  if (!report.value || !employeeUid.value || exportDisabledInReviewMode) {
+    return;
+  }
+  exporting.value = format;
+  exportError.value = null;
+  try {
+    const file = await api.attendanceReportExport(
+      employeeUid.value,
+      'month',
+      { year: year.value, month: month.value },
+      format,
+    );
+    triggerDownload(file);
+  } catch (e) {
+    // Surface the failure WITHOUT clearing the already-loaded report.
+    exportError.value =
+      e instanceof ApiError ? `${e.code}: ${e.message}` : 'The export could not be downloaded.';
+  } finally {
+    exporting.value = null;
   }
 }
 
@@ -125,5 +189,42 @@ onMounted(load);
         </div>
       </template>
     </AsyncState>
+
+    <div class="export-panel">
+      <h3>Export report</h3>
+      <div class="inline-controls">
+        <button
+          type="button"
+          class="btn btn--primary"
+          :disabled="!canExport"
+          :aria-busy="exporting === 'pdf'"
+          @click="download('pdf')"
+        >
+          {{ exporting === 'pdf' ? 'Preparing PDF…' : 'Download PDF' }}
+        </button>
+        <button
+          type="button"
+          class="btn btn--ghost"
+          :disabled="!canExport"
+          :aria-busy="exporting === 'xlsx'"
+          @click="download('xlsx')"
+        >
+          {{ exporting === 'xlsx' ? 'Preparing XLSX…' : 'Download XLSX' }}
+        </button>
+      </div>
+
+      <p v-if="exportDisabledInReviewMode" class="hint muted" role="status">
+        Exports need the API; review mode has no backend, so downloading is disabled here.
+      </p>
+      <p v-else-if="!report" class="hint muted">Load a month first to enable the downloads.</p>
+      <p v-else-if="header && !header.isFinal" class="review-banner" role="status">
+        <strong>DRAFT export.</strong>
+        This month is not final ({{ statusLabel }}), so the downloaded file will carry a
+        <strong>DRAFT</strong> watermark and the note
+        <span lang="th">ข้อมูลยังไม่สมบูรณ์</span>, because the data is incomplete.
+      </p>
+
+      <p v-if="exportError" class="form-error" role="alert">{{ exportError }}</p>
+    </div>
   </section>
 </template>

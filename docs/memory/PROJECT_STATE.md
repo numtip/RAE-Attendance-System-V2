@@ -71,7 +71,9 @@ flow.
 | **Monthly summary derived from daily rows** | **implemented** | migration `024`, PR #39 |
 | Holiday calendar / per-employee schedule | **implemented, empty** | tables exist, no approved data |
 | Manager/HR dashboards, exports, annual forms | **missing** | not started |
-| Individual attendance reports (R-02) | **implemented 2026-10-16 — read-only, no migration, not committed** | `GET /attendance/report/day`, `/month`, `/academic-year`; `docs/unified/10_SLICE4_ATTENDANCE_REPORTS.md` |
+| Individual attendance reports (R-02) | **implemented 2026-10-16 — read-only, no migration** | `GET /attendance/report/day`, `/month`, `/academic-year`; `docs/unified/10_SLICE4_ATTENDANCE_REPORTS.md` |
+| **Attendance report export (R-03)** | **implemented 2026-10-16 — read-only, no migration** | `GET /attendance/export/…?format=pdf\|xlsx`; `docs/unified/11_SLICE5_ATTENDANCE_EXPORTS.md` |
+| Reconciliation snapshot (R-04) | **missing** | next milestone; fiscal year Oct–Sep |
 | **Agent Core (Jev) decision path** | **WORKING — verified against the live gateway 2026-10-16** | `docs/AGENT_CORE_LIVE_USAGE.md`, PR #40 |
 | MJU SSO live | **blocked external** | `ac` semantics unconfirmed |
 | Production migrations | **NOT APPROVED** | live ledger is pre-`013` (REPORTED) |

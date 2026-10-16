@@ -33,18 +33,19 @@ replaced by it:
 
 ## 1. The immediate next milestone
 
-> ### ✅ Individual attendance reports (R-02) — DELIVERED 2026-10-16
+> ### ✅ Attendance report export (R-03) — DELIVERED 2026-10-16
 
-`GET /api/v1/attendance/report/day|month|academic-year/:employeeUid/...` (read-only, scope-enforced). Every
-report names its `ruleVersions`, `dateCutoff` and `population`, and carries `computationStatus` **plus** an
-`isFinal` flag, so a `partial` / `pending_policy` / `not_derived` month can never be rendered as a final
-figure. Limitations travel with the number in `report.caveats` (`HOLIDAY_CALENDAR_EMPTY`,
-`NIGHT_SHIFT_LATENESS_WITHHELD`, `APPROVER_IS_SESSION_LABEL`). Detail and the review checklist:
-[`docs/unified/10_SLICE4_ATTENDANCE_REPORTS.md`](../unified/10_SLICE4_ATTENDANCE_REPORTS.md). **No
-migration.** Committed as `9fbca5f` on `feat/slice4-attendance-reports` (off the tip) and opened as
-**Draft PR [#41](https://github.com/numtip/RAE-Attendance-System-V2/pull/41)** — Draft, unmerged.
+`GET /api/v1/attendance/export/day|month|academic-year/:employeeUid/...?format=pdf|xlsx` (read-only,
+scope-enforced). The export derives nothing: it renders the R-02 payload, so an exported total is the same
+number the JSON endpoint reports, and `computationStatus` / `isFinal` / `dateCutoff` / rule versions /
+population / caveats all travel into the file. Anything that is not final is a **watermarked draft** — 96 pt
+`DRAFT` on every PDF page plus a red header on every XLSX sheet. Detail:
+[`docs/unified/11_SLICE5_ATTENDANCE_EXPORTS.md`](../unified/11_SLICE5_ATTENDANCE_EXPORTS.md). **No
+migration.** No new branch is required beyond the R-03 stack; see the slice doc §0.
 
-**The next milestone is R-03 (exports), and it inherits the same honesty rules:**
+> ### 🔜 The next milestone is R-04 — reconciliation snapshot
+
+## 2. Pending Slice 2 follow-ups
 
 **No longer blocked on policy.** On **2026-10-16 the owner approved `AR-0001`** (work `08:30–16:30`, late
 after `08:30`, early before `16:30`, Mon–Fri), and **R-01 (monthly summary) is delivered** with provenance
@@ -83,7 +84,10 @@ Remaining before a report is *complete*:
 | ~~R-01~~ | ~~`monthly_summary` derived writer~~ | — | — | **DONE — PR [#39](https://github.com/numtip/RAE-Attendance-System-V2/pull/39)**, migration `024`. Completeness verdict, provenance, idempotent, no phantom months. |
 | R-02 | Report endpoints for one employee: day / month / academic year, scope-enforced | M | R-01 | **DONE 2026-10-16** (no migration; not committed). 401 anonymous, 403 cross-scope; every report names its rule version, date cutoff and population, and surfaces `computationStatus` + `isFinal` instead of hiding a partial month. `docs/unified/10_SLICE4_ATTENDANCE_REPORTS.md` |
 | R-02-FE | Wire `frontend/src/views/AttendanceMonthlyView.vue` to `/attendance/report/month/...` so the UI shows the completeness verdict | S | R-02 | **DONE 2026-10-16** — verdict rendered before the figures; a never-derived month shows no figures instead of zeros. Verified in review/fixture mode. |
-| R-03 | Export layer (XLSX with Thai fonts, PDF, annual form) | L | R-02 | Server-enforced filters and export authorization; cross-scope export returns 403 in tests. **Must carry the same `computationStatus` / caveats contract as R-02.** |
+| R-03 | Export layer (XLSX with Thai fonts, PDF, annual form) | L | R-02 | **DONE 2026-10-16** (no migration). PDF + XLSX, day/month/academic-year, scope-enforced, `format` required with no default, non-final exports watermarked `DRAFT` / `ข้อมูลยังไม่สมบูรณ์` across every page and sheet. Zero-dependency XLSX (`exceljs` rejected); only `pdfkit` added. `docs/unified/11_SLICE5_ATTENDANCE_EXPORTS.md` |
+| R-04 | Read-only reconciliation snapshot: daily / month / **fiscal year (Oct–Sep)** | M | R-02 | Compares canonical facts against verified source records; statuses `matched` / `mismatched` / `incomplete` / `blocked`; records source, cutoff, period, rule version and unresolved exceptions. Must NOT modify source records. **Fiscal year (Oct–Sep) is NOT the R-02 academic year (Jun–May).** |
+| R-04-B | **`G:\ProjectAI\attendance-report-generator` does not exist** (VERIFIED 2026-10-16), so FY2569 real-source reconciliation cannot be validated | S | — | Either resolve the reference or formally record that R-04's historical-evidence half is unverifiable and rely on synthetic fixtures |
+| R-03-FE | Export controls in the day and academic-year views | S | R-02-FE pattern | `AttendanceDailyView.vue` renders raw `AttendanceRecord[]`, so it needs the report endpoint first |
 | R-04 | Reconciliation test: recompute a closed month and match a frozen synthetic snapshot | M | R-02 | Recalculation of a past month reproduces the stored numbers exactly |
 
 ## 4. Slice 1 follow-ups still open
