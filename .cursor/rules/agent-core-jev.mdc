@@ -1,0 +1,53 @@
+---
+description: Consult Agent Core (Jev) once at the start of every session; advisory only, never blocking.
+alwaysApply: true
+---
+
+# Consult Jev (Agent Core) at the start of every session
+
+**Owner instruction (2026-10-16):** Jev must be invoked every session. This rule is how.
+
+## What to do
+
+Once, at the beginning of each session — before planning or editing:
+
+```powershell
+cd G:\ProjectAI\rae-attendance-system-v2
+. .\agent\scripts\use-live-credentials.ps1   # DPAPI store -> this shell only; prints no secret
+node agent\scripts\live-smoke.mjs            # ONE call. Prints the decision, never the token.
+```
+
+Use the returned `disposition` / `decision` / `confidence` as **advisory input only**.
+
+Pick the use case that matches the session: `pr_risk_review`, `architecture_review`,
+`migration_planning`, `api_contract_review`, `sso_readiness_review`, `release_readiness`,
+`db_recovery_decision`.
+
+## If Jev is unreachable — report it and continue
+
+Load-shedding rule. **Never block work, and never claim you consulted Jev if you did not.**
+
+| Symptom | Meaning | Do |
+|---|---|---|
+| `AGENT_CORE_EDGE_FORBIDDEN` | Cloudflare Access pair missing/invalid | report, continue |
+| `AGENT_CORE_PROVIDER_ERROR` 401 | project token rejected/rotated | report, continue |
+| `AGENT_CORE_TIMEOUT` / `UNAVAILABLE` | network or 5xx | report, continue |
+| no credentials (no DPAPI store, e.g. CI or another machine) | not provisioned here | report, continue |
+| `AGENT_CORE_INVALID_QUESTION` | payload would be a 400 | fix the question shape; this is a bug, not an outage |
+
+Say plainly: "Jev consulted: <disposition>" **or** "Jev unavailable (<code>); proceeded on deterministic
+work only." Do not silently skip it, and do not invent a consult.
+
+## Hard limits (unchanged by this rule)
+
+- **Advisory only.** A decision is never a release approval. Never merge, push to a protected branch,
+  migrate, deploy, rotate a secret or change production config because Jev said so.
+- **No PII to Agent Core.** Names, national IDs, employee/facescan identifiers, attendance rows,
+  tokens and raw logs must never be sent. `agent/decisions.js` sanitizes and asserts this; do not work
+  around it.
+- **One call per session is the budget** unless the user asks for more. Each call is a real provider call
+  with real cost.
+- **Scope is `decision` only** → `POST /v1/decision` is the only callable endpoint. `TASK_ROUTE` cannot be
+  called as an endpoint (needs the `route` scope), though it is a valid `decision_type` in the body.
+
+Details, scope table and error guide: `docs/AGENT_CORE_LIVE_USAGE.md`.
