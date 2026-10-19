@@ -78,7 +78,7 @@ function createReportService({ repositories }) {
           checkInLabel: labelOrMissing(bangkokClock(row.checkIn), 'ไม่มีเวลาเข้า'),
           checkOutLabel: labelOrMissing(bangkokClock(row.checkOut), 'ไม่มีเวลาออก'),
           status: row.status,
-          statusLabel: STATUS_TH[row.status] || row.status,
+          statusLabel: !row.checkIn && row.checkOut ? 'กลับก่อน' : (STATUS_TH[row.status] || row.status),
           lateMinutes: row.lateMinutes ?? null,
         }));
       const leaveRows = (await repositories.leave.list(auth.employeeUid))

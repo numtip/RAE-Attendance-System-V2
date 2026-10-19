@@ -13,5 +13,6 @@ coverage/
 !database/rollbacks/*.sql
 *.dump
 logs/
+.local/
 .DS_Store
 *.log

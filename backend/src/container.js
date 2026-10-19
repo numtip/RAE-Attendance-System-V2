@@ -13,9 +13,10 @@ function createContainer(options = {}) {
       'Production access-token revocation requires MariaDB',
     );
   }
-  const repositories = dataSource === 'mariadb'
-    ? createMariaDbRepositories(activeConfig.database)
-    : createFixtureRepositories();
+  const repositories = options.repositories
+    || (dataSource === 'mariadb'
+      ? createMariaDbRepositories(activeConfig.database)
+      : createFixtureRepositories());
   return { config: activeConfig, dataSource, repositories };
 }
 
