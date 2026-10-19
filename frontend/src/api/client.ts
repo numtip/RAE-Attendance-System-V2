@@ -144,6 +144,8 @@ export const api = {
     apiRequest<import('./types').MonthlySummary>(
       `/attendance/monthly/${employeeUid}/${year}/${month}`,
     ),
+  employeeAttendance: (employeeUid: string) =>
+    apiRequest<import('./types').AttendanceRecord[]>(`/employees/${encodeURIComponent(employeeUid)}/attendance`),
   leaveList: (employeeUid?: string) => {
     const query = employeeUid ? `?employeeUid=${encodeURIComponent(employeeUid)}` : '';
     return apiRequest<import('./types').LeaveRow[]>(`/leave${query}`);

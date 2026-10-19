@@ -4,7 +4,7 @@ Disposable database `attendance_fy2569_local` on the WSL2 Ubuntu MariaDB. No pro
 
 The prepared file matches the 2026-10-06 QA totals: 1,600 late, 24 early, 11 half-day leave, 8 withheld. All 12 fiscal months are present. Nothing outside October 2025–September 2026 was imported.
 
-`dataperson.csv` is the identity master, joined by employee code. A code with two different names would be blocked; none were. Events whose code is absent from that file are unmatched and were not loaded. An event whose name differs from the single master row for that code was withheld.
+`dataperson.csv` is the identity master, joined by employee code. On 2026-10-19 the owner resolved the open questions: exclude the 19 non-master codes, keep the 5 name-mismatch events quarantined, and accept 24 person-months from the file. The narrative figure 26 is not used and the missing 2 rows are not created.
 
 | Result | Count |
 |---|---:|

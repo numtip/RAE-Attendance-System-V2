@@ -1,6 +1,12 @@
 # Owner questions
 
-Effective 2026-10-20. Unanswered items only. Release 1 work that does not depend on these continues.
+Effective 2026-10-20. Q1–Q3 were **RESOLVED_BY_OWNER** on 2026-10-19. The original evidence stays below the decision. Counts are unchanged.
+
+| ID | Decision |
+|---|---|
+| Q1 | **EXCLUDE** the 19 codes that are not in the identity master. |
+| Q2 | **KEEP QUARANTINED** the 5 name-mismatch events. No automatic mapping. |
+| Q3 | **ACCEPT 24** person-months evidenced by the source file. Do not fabricate the missing 2. |
 
 ## Q1. Codes absent from the identity master
 
@@ -32,4 +38,4 @@ Effective 2026-10-20. Unanswered items only. Release 1 work that does not depend
 | Recommended | Use 24 as the machine-readable figure and leave 26 unresolved. |
 | Alternatives | A later count-only pass with the owner. Do not invent the two rows. |
 
-No other owner question is open for the current MVP pass.
+No other owner question is open for the current MVP pass. Q1–Q3 are closed and must not be re-decided in code.

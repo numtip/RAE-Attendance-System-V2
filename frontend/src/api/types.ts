@@ -111,6 +111,12 @@ export interface PersonalReport {
   leaveRows: PersonalLeaveRow[];
   remainingLeaveDays: number | null;
   source: string;
+  exclusions: {
+    status: string;
+    nonMasterCodes: number;
+    nameMismatchEvents: number;
+    acceptedPersonMonthGaps: number;
+  };
 }
 
 export interface LeaveBalanceRow {

@@ -273,6 +273,12 @@ async function handlePersonalReport(search: string): Promise<PersonalReport> {
     leaveRows: empty ? [] : leaveRows,
     remainingLeaveDays: balances.length ? balances.reduce((sum, row) => sum + row.remainingDays, 0) : null,
     source: 'stored-monthly-and-leave',
+    exclusions: {
+      status: 'RESOLVED_BY_OWNER',
+      nonMasterCodes: 19,
+      nameMismatchEvents: 5,
+      acceptedPersonMonthGaps: 24,
+    },
   };
 }
 
@@ -327,6 +333,13 @@ export async function fixtureApiRequest<T>(
       Number(monthlyMatch[2]),
       Number(monthlyMatch[3]),
     )) as T;
+  }
+
+  const ownAttendance = path.match(/^\/employees\/([^/]+)\/attendance$/);
+  if (auth && method === 'GET' && ownAttendance) {
+    const target = decodeURIComponent(ownAttendance[1]);
+    assertCanReadEmployee(authFromSession(), target);
+    return fixtureAttendance.filter((row) => row.employeeUid === target) as T;
   }
 
   const leaveListMatch = path.match(/^\/leave(\?.*)?$/);

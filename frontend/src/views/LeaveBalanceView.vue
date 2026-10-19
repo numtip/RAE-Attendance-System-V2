@@ -48,7 +48,7 @@ onMounted(load);
       :loading="loading"
       :error="error"
       :empty="!loading && !error && rows.length === 0"
-      empty-message="No balance rows for this year."
+      empty-message="ไม่มีวันลาคงเหลือที่บันทึกไว้"
     >
       <div v-if="rows.length" class="table-scroll">
         <table class="data-table">

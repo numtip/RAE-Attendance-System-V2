@@ -19,6 +19,7 @@ function renderPersonalPdf(report) {
       doc.text(`${report.employeeName} (${report.employeeId})`, { width: 500 });
       doc.text(`${report.department} · ${report.position}`, { width: 500 });
       doc.text(report.periodLabel, { width: 500 });
+      doc.text('ไม่นำเข้ารหัสนอกมาสเตอร์ 19 รหัส กักกันชื่อไม่ตรง 5 แถว ใช้คน-เดือนที่ยอดไม่ตรง 24 ราย', { width: 500 });
       doc.moveDown(0.6);
       if (report.empty) {
         doc.text('ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้', { width: 500 });

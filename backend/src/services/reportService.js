@@ -122,6 +122,12 @@ function createReportService({ repositories }) {
           ? balances.reduce((sum, row) => sum + Number(row.remainingDays || 0), 0)
           : null,
         source: 'stored-monthly-and-leave',
+        exclusions: {
+          status: 'RESOLVED_BY_OWNER',
+          nonMasterCodes: 19,
+          nameMismatchEvents: 5,
+          acceptedPersonMonthGaps: 24,
+        },
       };
     },
 
@@ -156,6 +162,9 @@ function summaryRows(report) {
     ['ตำแหน่ง', report.position],
     ['ช่วงวันที่', report.periodLabel],
     ['ปี พ.ศ.', report.buddhistYear],
+    ['รหัสนอกมาสเตอร์', 'ไม่นำเข้า 19 รหัส'],
+    ['ชื่อไม่ตรง', 'กักกัน 5 แถว'],
+    ['คน-เดือนที่ยอดไม่ตรง', 24],
   ];
   if (report.empty) {
     rows.push(['สถานะ', 'ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้']);

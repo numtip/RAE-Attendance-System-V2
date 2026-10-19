@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
-import type { MonthlySummary } from '../api/types';
+import type { AttendanceRecord, MonthlySummary } from '../api/types';
 import { getStoredEmployee } from '../auth/session';
 import AsyncState from '../components/AsyncState.vue';
 
@@ -13,6 +13,18 @@ const month = ref(now.getUTCMonth() + 1);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const summary = ref<MonthlySummary | null>(null);
+const events = ref<AttendanceRecord[]>([]);
+
+function inMonth(date: string): boolean {
+  const [rowYear, rowMonth] = date.split('-').map(Number);
+  return rowYear === year.value && rowMonth === month.value;
+}
+
+function label(row: AttendanceRecord): string {
+  if (row.status === 'late') return 'สาย';
+  if (!row.checkIn && row.checkOut) return 'กลับก่อน';
+  return row.status;
+}
 
 async function load() {
   if (!employeeUid.value) {
@@ -22,10 +34,23 @@ async function load() {
   loading.value = true;
   error.value = null;
   summary.value = null;
+  events.value = [];
   try {
     summary.value = await api.attendanceMonthly(employeeUid.value, year.value, month.value);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Failed to load monthly summary';
+    if (!(e instanceof ApiError) || e.status !== 404) {
+      error.value = e instanceof ApiError ? e.message : 'Failed to load monthly summary';
+      loading.value = false;
+      return;
+    }
+  }
+  try {
+    const rows = await api.employeeAttendance(employeeUid.value);
+    events.value = rows.filter((row) => inMonth(row.date));
+  } catch (e) {
+    if (!(e instanceof ApiError) || e.status !== 404) {
+      error.value = e instanceof ApiError ? e.message : 'Failed to load attendance';
+    }
   } finally {
     loading.value = false;
   }
@@ -50,7 +75,8 @@ onMounted(load);
         <button type="button" class="btn btn--primary" :disabled="loading" @click="load">Load</button>
       </div>
     </div>
-    <AsyncState :loading="loading" :error="error" :empty="!summary && !loading && !error">
+    <AsyncState :loading="loading" :error="error" :empty="false">
+      <p v-if="!summary && !loading && !error">ไม่มีสรุปรายเดือนที่บันทึกไว้</p>
       <dl v-if="summary" class="detail-grid">
         <div><dt>Present</dt><dd>{{ summary.totalPresent }} / {{ summary.totalWorkDays }}</dd></div>
         <div><dt>Late</dt><dd>{{ summary.totalLate }} ({{ summary.totalLateMinutes }} min)</dd></div>
@@ -58,6 +84,12 @@ onMounted(load);
         <div><dt>Leave</dt><dd>{{ summary.totalLeave }}</dd></div>
         <div><dt>Work hours</dt><dd>{{ summary.totalWorkHours }}</dd></div>
       </dl>
+      <p v-if="!loading && !error && events.length === 0">ไม่มีรายการที่บันทึกไว้ในเดือนนี้</p>
+      <ul v-else-if="events.length">
+        <li v-for="row in events" :key="row.date">
+          {{ row.date }} {{ label(row) }}
+        </li>
+      </ul>
     </AsyncState>
   </section>
 </template>

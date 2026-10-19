@@ -68,6 +68,7 @@ onMounted(load);
     <AsyncState :loading="loading" :error="error" :empty="false">
       <template v-if="report">
         <p class="muted">{{ report.employeeName }} ({{ report.employeeId }}) · {{ report.periodLabel }}</p>
+        <p class="muted">ไม่นำเข้ารหัสนอกมาสเตอร์ {{ report.exclusions.nonMasterCodes }} รหัส กักกันชื่อไม่ตรง {{ report.exclusions.nameMismatchEvents }} แถว ใช้คน-เดือนที่ยอดไม่ตรง {{ report.exclusions.acceptedPersonMonthGaps }} ราย</p>
         <p v-if="report.empty" class="state state--empty">ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้</p>
         <template v-else>
           <p v-if="!report.hasMonthlySummary" class="state state--empty">ไม่มีสรุปรายเดือนที่บันทึกไว้</p>
