@@ -73,6 +73,52 @@ export interface LeaveRow {
   matchStatus?: string;
 }
 
+export interface PersonalScan {
+  date: string;
+  dateLabel: string;
+  checkInLabel: string;
+  checkOutLabel: string;
+  statusLabel: string;
+  lateMinutes: number | null;
+}
+
+export interface PersonalLeaveRow {
+  typeLabel: string;
+  startLabel: string;
+  endLabel: string;
+  statusLabel: string;
+}
+
+export interface PersonalReport {
+  employeeUid: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  position: string;
+  year: number;
+  month: number;
+  buddhistYear: number;
+  periodLabel: string;
+  empty: boolean;
+  hasMonthlySummary: boolean;
+  present: number | null;
+  late: number | null;
+  absent: number | null;
+  leaveDaysOnSummary: number | null;
+  workDays: number | null;
+  lateMinutes: number | null;
+  scans: PersonalScan[];
+  leaveRows: PersonalLeaveRow[];
+  remainingLeaveDays: number | null;
+  source: string;
+  exclusions: {
+    status: string;
+    nonMasterCodes: number;
+    nameMismatchEvents: number;
+    acceptedPersonMonthGaps: number;
+  };
+}
+
 export interface LeaveBalanceRow {
   employeeUid: string;
   year: number;

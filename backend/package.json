@@ -16,7 +16,8 @@
     "bcryptjs": "^3.0.3",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.3",
-    "mysql2": "^3.14.0"
+    "mysql2": "^3.14.0",
+    "pdfkit": "^0.20.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
