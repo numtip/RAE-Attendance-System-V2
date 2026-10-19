@@ -7,6 +7,7 @@ import type {
   LeaveRow,
   LoginResult,
   MonthlySummary,
+  PersonalReport,
 } from '../types';
 import {
   fixtureBalances,
@@ -197,6 +198,29 @@ async function handleLeaveBalance(employeeUid: string, year: number): Promise<Le
   return fixtureBalances.filter((row) => row.employeeUid === employeeUid && row.year === year);
 }
 
+async function handlePersonalReport(year: number, month: number): Promise<PersonalReport> {
+  const auth = authFromSession();
+  const summary = await handleAttendanceMonthly(auth.employeeUid, year, month);
+  const leave = fixtureLeave.filter((row) => row.employeeUid === auth.employeeUid);
+  const start = `${year}-${String(month).padStart(2, '0')}-01`;
+  const last = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  const leaveInMonth = leave.filter((row) => row.startDate <= last && row.endDate >= start);
+  const balance = fixtureBalances.filter((row) => row.employeeUid === auth.employeeUid && row.year === year);
+  return {
+    employeeUid: auth.employeeUid,
+    year,
+    month,
+    present: summary.totalPresent,
+    late: summary.totalLate,
+    absent: summary.totalAbsent,
+    leaveDaysOnSummary: summary.totalLeave,
+    workDays: summary.totalWorkDays,
+    leaveRowsInMonth: leaveInMonth.length,
+    remainingLeaveDays: balance.reduce((sum, row) => sum + row.remainingDays, 0),
+    source: 'stored-monthly-and-leave',
+  };
+}
+
 async function handleLeaveHistory(employeeUid: string): Promise<LeaveRow[]> {
   const auth = authFromSession();
   assertCanReadEmployee(auth, employeeUid);
@@ -259,6 +283,11 @@ export async function fixtureApiRequest<T>(
   const balanceMatch = path.match(/^\/leave\/balance\/([^/?]+)\?year=(\d+)$/);
   if (auth && method === 'GET' && balanceMatch) {
     return (await handleLeaveBalance(decodeURIComponent(balanceMatch[1]), Number(balanceMatch[2]))) as T;
+  }
+
+  const reportMatch = path.match(/^\/reports\/personal\?year=(\d+)&month=(\d+)$/);
+  if (auth && method === 'GET' && reportMatch) {
+    return (await handlePersonalReport(Number(reportMatch[1]), Number(reportMatch[2]))) as T;
   }
 
   const historyMatch = path.match(/^\/leave\/history\/([^/]+)$/);

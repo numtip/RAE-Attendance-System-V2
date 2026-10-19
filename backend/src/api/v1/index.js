@@ -13,6 +13,8 @@ const { createLeaveService } = require('../../services/leaveService');
 const { createSsoService } = require('../../services/ssoService');
 const { createAttendanceComputeService } = require('../../services/attendanceComputeService');
 const { createAttendanceComputeController } = require('../../controllers/attendanceComputeController');
+const { createReportService } = require('../../services/reportService');
+const { createReportController } = require('../../controllers/reportController');
 
 function createV1Router(container) {
   const authService = createAuthService(container);
@@ -27,6 +29,7 @@ function createV1Router(container) {
   const attendance = createAttendanceController(attendanceService);
   const leave = createLeaveController(leaveService);
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
+  const reports = createReportController(createReportService(attendanceService, leaveService));
   const authenticate = createAuthenticate(container.repositories.accessTokenRevocations);
 
   const router = express.Router();
@@ -55,6 +58,8 @@ function createV1Router(container) {
   router.get('/leave', authenticate, leave.list);
   router.get('/leave/balance/:employeeUid', authenticate, leave.balance);
   router.get('/leave/history/:employeeUid', authenticate, leave.history);
+
+  router.get('/reports/personal', authenticate, reports.personal);
 
   return router;
 }

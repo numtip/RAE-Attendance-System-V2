@@ -154,4 +154,6 @@ export const api = {
     ),
   leaveHistory: (employeeUid: string) =>
     apiRequest<import('./types').LeaveRow[]>(`/leave/history/${employeeUid}`),
+  personalReport: (year: number, month: number) =>
+    apiRequest<import('./types').PersonalReport>(`/reports/personal?year=${year}&month=${month}`),
 };

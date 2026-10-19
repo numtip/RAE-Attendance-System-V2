@@ -46,6 +46,11 @@ const router = createRouter({
           name: 'leave-history',
           component: () => import('../views/LeaveHistoryView.vue'),
         },
+        {
+          path: 'reports',
+          name: 'reports',
+          component: () => import('../views/ReportsView.vue'),
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

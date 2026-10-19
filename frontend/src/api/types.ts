@@ -73,6 +73,20 @@ export interface LeaveRow {
   matchStatus?: string;
 }
 
+export interface PersonalReport {
+  employeeUid: string;
+  year: number;
+  month: number;
+  present: number;
+  late: number;
+  absent: number;
+  leaveDaysOnSummary: number;
+  workDays: number;
+  leaveRowsInMonth: number;
+  remainingLeaveDays: number;
+  source: string;
+}
+
 export interface LeaveBalanceRow {
   employeeUid: string;
   year: number;

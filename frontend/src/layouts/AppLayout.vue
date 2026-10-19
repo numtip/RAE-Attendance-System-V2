@@ -15,6 +15,7 @@ const nav = [
   { name: 'leave-list', label: 'Leave list' },
   { name: 'leave-balance', label: 'Leave balance' },
   { name: 'leave-history', label: 'Leave history' },
+  { name: 'reports', label: 'My report' },
 ];
 
 function isActive(name: string): boolean {
