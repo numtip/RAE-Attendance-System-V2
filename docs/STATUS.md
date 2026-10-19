@@ -23,3 +23,5 @@ Release 1 scope stays SSO, personal attendance, leave, profile, and PDF/Excel re
 Personal report and self-only PDF/Excel export are on PR #50. Fixture QA and CI passed on `cbd7510` and the same checks are green on `d46199c`. FY2569 verified events were loaded into disposable WSL MariaDB `attendance_fy2569_local` for people present in the identity master. Months without a stored summary stay empty. Missing days were not invented.
 
 D-01–D-10 remain unsigned. Live host SHA, SSO gates, and whether migrations `025`/`026` are applied are UNKNOWN.
+
+From 2026-10-20 the working rule is agent-first / human-on-blocker. Open owner questions are in `docs/memory/OWNER_QUESTIONS.md`.

@@ -2,7 +2,7 @@
 
 **Gate:** `DAY_20261019_CLOSED — RELEASE1_IN_PROGRESS`
 
-Tomorrow starts on PR #50, not on the incident checkout.
+Tomorrow starts on PR #50, not on the incident checkout. Owner policy from 2026-10-20: keep building the MVP while `docs/memory/OWNER_QUESTIONS.md` is unanswered. Do not import the excluded codes or the name-conflict events until the owner answers.
 
 ## First task
 
