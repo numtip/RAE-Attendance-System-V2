@@ -2,6 +2,24 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { randomUUID } = require('node:crypto');
 const { HttpError } = require('../utils/httpError');
+const { revokePresentedAccessToken } = require('./accessTokenRevocation');
+const { hashRefreshToken } = require('../security/refreshTokenHash');
+
+function positiveInt(value, fallback) {
+  if (value == null || value === '') return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new HttpError(503, 'CONFIG_ERROR', 'Login lockout configuration is invalid');
+  }
+  return parsed;
+}
+
+function defaultLockout() {
+  return {
+    maxAttempts: positiveInt(process.env.LOGIN_MAX_ATTEMPTS, 5),
+    lockMs: positiveInt(process.env.LOGIN_LOCK_MINUTES, 15) * 60 * 1000,
+  };
+}
 
 function assertSecret(config) {
   if (!config.jwt.secret) {
@@ -11,9 +29,9 @@ function assertSecret(config) {
 
 function signAccessToken(config, employee) {
   return jwt.sign(
-    { role: employee.role, email: employee.email },
+    { role: employee.role, email: employee.email, authMethod: 'password' },
     config.jwt.secret,
-    { subject: employee.employeeUid, expiresIn: config.jwt.expiresIn },
+    { subject: employee.employeeUid, expiresIn: config.jwt.expiresIn, algorithm: 'HS256', jwtid: randomUUID() },
   );
 }
 
@@ -26,7 +44,27 @@ async function logAuthEvent(repositories, entry) {
   }
 }
 
-function createAuthService({ config, repositories }) {
+function createAuthService({ config, repositories, now = () => Date.now(), lockout = null }) {
+  const refreshInflight = new Map();
+  function policy() {
+    const selected = lockout || defaultLockout();
+    if (!Number.isInteger(selected.maxAttempts) || selected.maxAttempts <= 0
+      || !Number.isInteger(selected.lockMs) || selected.lockMs <= 0) {
+      throw new HttpError(503, 'CONFIG_ERROR', 'Login lockout configuration is invalid');
+    }
+    return selected;
+  }
+
+  async function persistFailure(employeeUid) {
+    const selected = policy();
+    try {
+      await repositories.employees.recordFailedLogin(employeeUid, { ...selected, now });
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(503, 'LOCKOUT_STATE_UNAVAILABLE', 'Login lockout state is unavailable');
+    }
+  }
+
   return {
     async login({ email, password, ipAddress, userAgent }) {
       assertSecret(config);
@@ -41,6 +79,7 @@ function createAuthService({ config, repositories }) {
         ? await bcrypt.compare(String(password), employee.passwordHash)
         : false;
       if (!employee || !matches) {
+        if (employee) await persistFailure(employee.employeeUid);
         await logAuthEvent(repositories, {
           employeeUid: employee?.employeeUid,
           email,
@@ -52,7 +91,14 @@ function createAuthService({ config, repositories }) {
         });
         throw new HttpError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
       }
-      if (employee.lockedUntil && new Date(employee.lockedUntil).getTime() > Date.now()) {
+      let cleared;
+      try {
+        cleared = await repositories.employees.clearLoginAttempts(employee.employeeUid, now());
+      } catch (error) {
+        if (error instanceof HttpError) throw error;
+        throw new HttpError(503, 'LOCKOUT_STATE_UNAVAILABLE', 'Login lockout state is unavailable');
+      }
+      if (!cleared) {
         await logAuthEvent(repositories, {
           employeeUid: employee.employeeUid,
           email: employee.email,
@@ -97,29 +143,41 @@ function createAuthService({ config, repositories }) {
       if (!refreshToken) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'refreshToken is required');
       }
-      const current = await repositories.refreshTokens.find(refreshToken);
-      if (!current || current.revokedAt || new Date(current.expiresAt).getTime() <= Date.now()) {
+      const key = hashRefreshToken(refreshToken);
+      const pending = refreshInflight.get(key);
+      if (pending) {
+        await pending.catch(() => {});
         throw new HttpError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is invalid');
       }
-      await repositories.refreshTokens.revoke(refreshToken);
-      const employee = {
-        employeeUid: current.employeeUid,
-        role: current.role,
-        email: current.email,
-      };
-      const nextToken = randomUUID();
-      await repositories.refreshTokens.save({
-        token: nextToken,
-        employeeUid: current.employeeUid,
-        role: current.role,
-        email: current.email,
-        expiresAt: current.expiresAt,
-        revokedAt: null,
-      });
-      return {
-        accessToken: signAccessToken(config, employee),
-        refreshToken: nextToken,
-      };
+      const run = (async () => {
+        if (typeof repositories.refreshTokens.rotate !== 'function') {
+          throw new HttpError(503, 'REFRESH_STORE_UNAVAILABLE', 'Refresh token store is unavailable');
+        }
+        let result;
+        try {
+          result = await repositories.refreshTokens.rotate(refreshToken);
+        } catch (error) {
+          if (error instanceof HttpError) throw error;
+          throw new HttpError(503, 'REFRESH_STORE_UNAVAILABLE', 'Refresh token store is unavailable');
+        }
+        if (!result || result.outcome !== 'rotated') {
+          throw new HttpError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is invalid');
+        }
+        return {
+          accessToken: signAccessToken(config, {
+            employeeUid: result.employeeUid,
+            role: result.role,
+            email: result.email,
+          }),
+          refreshToken: result.refreshToken,
+        };
+      })();
+      refreshInflight.set(key, run);
+      try {
+        return await run;
+      } finally {
+        refreshInflight.delete(key);
+      }
     },
 
     async me(auth) {
@@ -138,6 +196,7 @@ function createAuthService({ config, repositories }) {
       if (!current || current.employeeUid !== auth.employeeUid) {
         throw new HttpError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is invalid');
       }
+      await revokePresentedAccessToken(repositories, auth);
       await repositories.refreshTokens.revoke(refreshToken);
       await logAuthEvent(repositories, {
         employeeUid: auth.employeeUid,
