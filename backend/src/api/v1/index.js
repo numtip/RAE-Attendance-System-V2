@@ -1,6 +1,6 @@
 const express = require('express');
 const healthRoutes = require('./routes/health');
-const { authenticate } = require('../../middleware/authenticate');
+const { createAuthenticate } = require('../../middleware/authenticate');
 const { createAuthController } = require('../../controllers/authController');
 const { createSsoController } = require('../../controllers/ssoController');
 const { createEmployeeController } = require('../../controllers/employeeController');
@@ -27,6 +27,7 @@ function createV1Router(container) {
   const attendance = createAttendanceController(attendanceService);
   const leave = createLeaveController(leaveService);
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
+  const authenticate = createAuthenticate(container.repositories.accessTokenRevocations);
 
   const router = express.Router();
   router.use('/health', healthRoutes);

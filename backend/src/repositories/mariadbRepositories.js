@@ -9,6 +9,7 @@ const { createAuthorizationMariaDbRepository } = require('./mariadb/authorizatio
 const { createIdentityLinkMariaDbRepository } = require('./mariadb/identityLinkMariaDbRepository');
 const { createEmployeeIdentifierMariaDbRepository } = require('./mariadb/employeeIdentifierMariaDbRepository');
 const { createFacescanRawMariaDbRepository } = require('./mariadb/facescanRawMariaDbRepository');
+const { createAccessTokenRevocationMariaDbRepository } = require('./mariadb/accessTokenRevocationMariaDbRepository');
 
 function blockedRepo() {
   const error = getDbUnavailableError();
@@ -30,6 +31,7 @@ function createMariaDbRepositories(database = config.database) {
       identityLinks: blockedRepo(),
       employeeIdentifiers: blockedRepo(),
       facescanRaw: blockedRepo(),
+      accessTokenRevocations: blockedRepo(),
     };
   }
 
@@ -44,6 +46,7 @@ function createMariaDbRepositories(database = config.database) {
     identityLinks: createIdentityLinkMariaDbRepository(pool),
     employeeIdentifiers: createEmployeeIdentifierMariaDbRepository(pool),
     facescanRaw: createFacescanRawMariaDbRepository(pool),
+    accessTokenRevocations: createAccessTokenRevocationMariaDbRepository(pool),
   };
 }
 

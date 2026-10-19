@@ -6,6 +6,7 @@ const { createOAuthProvider } = require('./sso/oauthProvider');
 const { createSsoStateStore } = require('./sso/ssoStateStore');
 const { buildCidUrl } = require('./sso/mjuPortal');
 const { summarizeCallbackFields } = require('./sso/callbackDiagnostic');
+const { revokePresentedAccessToken } = require('./accessTokenRevocation');
 
 function assertJwtSecret(config) {
   if (!config.jwt.secret) {
@@ -17,7 +18,7 @@ function signAccessToken(config, employee, authMethod = 'sso') {
   return jwt.sign(
     { role: employee.role, email: employee.email, authMethod },
     config.jwt.secret,
-    { subject: employee.employeeUid, expiresIn: config.jwt.expiresIn },
+    { subject: employee.employeeUid, expiresIn: config.jwt.expiresIn, algorithm: 'HS256', jwtid: randomUUID() },
   );
 }
 
@@ -175,6 +176,7 @@ function createSsoService(deps) {
       if (!current || current.employeeUid !== auth.employeeUid) {
         throw new HttpError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is invalid');
       }
+      await revokePresentedAccessToken(repositories, auth);
       await repositories.refreshTokens.revoke(refreshToken);
       const result = { revoked: true };
       if (config.sso.signoutUrl && config.sso.clientId) {
