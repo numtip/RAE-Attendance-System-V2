@@ -1,8 +1,7 @@
 const PDFDocument = require('pdfkit');
-const path = require('node:path');
 
-const REGULAR = path.join(__dirname, '../../assets/fonts/Sarabun-Regular.ttf');
-const BOLD = path.join(__dirname, '../../assets/fonts/Sarabun-Bold.ttf');
+const REGULAR = require.resolve('../../assets/fonts/Sarabun-Regular.ttf');
+const BOLD = require.resolve('../../assets/fonts/Sarabun-Bold.ttf');
 
 function renderPersonalPdf(report) {
   return new Promise((resolve, reject) => {
