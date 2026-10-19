@@ -29,7 +29,7 @@ function createV1Router(container) {
   const attendance = createAttendanceController(attendanceService);
   const leave = createLeaveController(leaveService);
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
-  const reports = createReportController(createReportService(attendanceService, leaveService));
+  const reports = createReportController(createReportService(container));
   const authenticate = createAuthenticate(container.repositories.accessTokenRevocations);
 
   const router = express.Router();
@@ -59,6 +59,7 @@ function createV1Router(container) {
   router.get('/leave/balance/:employeeUid', authenticate, leave.balance);
   router.get('/leave/history/:employeeUid', authenticate, leave.history);
 
+  router.get('/reports/personal/export', authenticate, reports.personalExport);
   router.get('/reports/personal', authenticate, reports.personal);
 
   return router;

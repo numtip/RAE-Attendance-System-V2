@@ -10,6 +10,7 @@ import type {
   PersonalReport,
 } from '../types';
 import {
+  fixtureAttendance,
   fixtureBalances,
   fixtureEmployees,
   fixtureLeave,
@@ -198,25 +199,79 @@ async function handleLeaveBalance(employeeUid: string, year: number): Promise<Le
   return fixtureBalances.filter((row) => row.employeeUid === employeeUid && row.year === year);
 }
 
-async function handlePersonalReport(year: number, month: number): Promise<PersonalReport> {
+const THAI_MONTHS = [
+  '',
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
+];
+
+function thaiDate(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  return `${day} ${THAI_MONTHS[month]} ${year + 543}`;
+}
+
+async function handlePersonalReport(search: string): Promise<PersonalReport> {
   const auth = authFromSession();
-  const summary = await handleAttendanceMonthly(auth.employeeUid, year, month);
-  const leave = fixtureLeave.filter((row) => row.employeeUid === auth.employeeUid);
+  const params = new URLSearchParams(search);
+  if (params.get('employeeUid') && params.get('employeeUid') !== auth.employeeUid) {
+    throw new ApiError(403, 'FORBIDDEN', 'This report is limited to your own record');
+  }
+  if (params.get('employeeId')) {
+    throw new ApiError(403, 'FORBIDDEN', 'This report is limited to your own record');
+  }
+  const year = Number(params.get('year'));
+  const month = Number(params.get('month'));
+  const employee = findEmployeePublic(auth.employeeUid);
+  if (!employee) {
+    throw new ApiError(404, 'NOT_FOUND', 'Employee was not found');
+  }
   const start = `${year}-${String(month).padStart(2, '0')}-01`;
-  const last = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
-  const leaveInMonth = leave.filter((row) => row.startDate <= last && row.endDate >= start);
-  const balance = fixtureBalances.filter((row) => row.employeeUid === auth.employeeUid && row.year === year);
+  const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  const scans = fixtureAttendance
+    .filter((row) => row.employeeUid === auth.employeeUid && row.date >= start && row.date <= end)
+    .map((row) => ({
+      date: row.date,
+      dateLabel: thaiDate(row.date),
+      // shortcut: this fixture has one scan at 08:35/16:30, upgrade if another row is added
+      checkInLabel: row.checkIn ? '08:35' : 'ไม่มีเวลาเข้า',
+      checkOutLabel: row.checkOut ? '16:30' : 'ไม่มีเวลาออก',
+      statusLabel: row.status === 'late' ? 'สาย' : row.status,
+      lateMinutes: row.lateMinutes ?? null,
+    }));
+  const summary = fixtureMonthly.find(
+    (row) => row.employeeUid === auth.employeeUid && row.year === year && row.month === month,
+  ) ?? null;
+  const leaveRows = fixtureLeave
+    .filter((row) => row.employeeUid === auth.employeeUid && row.startDate <= end && row.endDate >= start)
+    .map((row) => ({
+      typeLabel: row.leaveType === 'personal' ? 'ลากิจ' : row.leaveType,
+      startLabel: thaiDate(row.startDate),
+      endLabel: thaiDate(row.endDate),
+      statusLabel: row.status === 'approved' ? 'อนุมัติ' : row.status,
+    }));
+  const balances = fixtureBalances.filter((row) => row.employeeUid === auth.employeeUid && row.year === year);
+  const empty = !summary && scans.length === 0 && leaveRows.length === 0;
   return {
     employeeUid: auth.employeeUid,
+    employeeId: employee.employeeId,
+    employeeName: `${employee.firstNameTh} ${employee.lastNameTh}`,
+    department: employee.department,
+    position: employee.position,
     year,
     month,
-    present: summary.totalPresent,
-    late: summary.totalLate,
-    absent: summary.totalAbsent,
-    leaveDaysOnSummary: summary.totalLeave,
-    workDays: summary.totalWorkDays,
-    leaveRowsInMonth: leaveInMonth.length,
-    remainingLeaveDays: balance.reduce((sum, row) => sum + row.remainingDays, 0),
+    buddhistYear: year + 543,
+    periodLabel: `${thaiDate(start)} – ${thaiDate(end)}`,
+    empty,
+    hasMonthlySummary: Boolean(summary),
+    present: summary ? summary.totalPresent : null,
+    late: summary ? summary.totalLate : null,
+    absent: summary ? summary.totalAbsent : null,
+    leaveDaysOnSummary: summary ? summary.totalLeave : null,
+    workDays: summary ? summary.totalWorkDays : null,
+    lateMinutes: summary ? summary.totalLateMinutes : null,
+    scans: empty ? [] : scans,
+    leaveRows: empty ? [] : leaveRows,
+    remainingLeaveDays: balances.length ? balances.reduce((sum, row) => sum + row.remainingDays, 0) : null,
     source: 'stored-monthly-and-leave',
   };
 }
@@ -285,9 +340,9 @@ export async function fixtureApiRequest<T>(
     return (await handleLeaveBalance(decodeURIComponent(balanceMatch[1]), Number(balanceMatch[2]))) as T;
   }
 
-  const reportMatch = path.match(/^\/reports\/personal\?year=(\d+)&month=(\d+)$/);
+  const reportMatch = path.match(/^\/reports\/personal\?(.+)$/);
   if (auth && method === 'GET' && reportMatch) {
-    return (await handlePersonalReport(Number(reportMatch[1]), Number(reportMatch[2]))) as T;
+    return (await handlePersonalReport(reportMatch[1])) as T;
   }
 
   const historyMatch = path.match(/^\/leave\/history\/([^/]+)$/);

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { ApiError, api } from '../api/client';
+import { ApiError, api, downloadPersonalReport } from '../api/client';
 import type { PersonalReport } from '../api/types';
 import { getStoredEmployee } from '../auth/session';
 import AsyncState from '../components/AsyncState.vue';
@@ -13,6 +13,7 @@ const month = ref(isReviewFixtureMode ? 3 : now.getUTCMonth() + 1);
 
 const loading = ref(false);
 const error = ref<string | null>(null);
+const exportError = ref<string | null>(null);
 const report = ref<PersonalReport | null>(null);
 
 async function load() {
@@ -22,6 +23,7 @@ async function load() {
   }
   loading.value = true;
   error.value = null;
+  exportError.value = null;
   report.value = null;
   try {
     report.value = await api.personalReport(year.value, month.value);
@@ -32,13 +34,22 @@ async function load() {
   }
 }
 
+async function download(format: 'pdf' | 'xlsx') {
+  exportError.value = null;
+  try {
+    await downloadPersonalReport(year.value, month.value, format);
+  } catch (e) {
+    exportError.value = e instanceof ApiError ? e.message : 'Export failed';
+  }
+}
+
 onMounted(load);
 </script>
 
 <template>
   <section class="card">
     <div class="card-head">
-      <h2>My report</h2>
+      <h2>รายงานของฉัน</h2>
       <div class="inline-controls">
         <label class="field field--inline">
           <span>Year</span>
@@ -49,17 +60,40 @@ onMounted(load);
           <input v-model.number="month" type="number" min="1" max="12" />
         </label>
         <button type="button" class="btn btn--primary" :disabled="loading" @click="load">Load</button>
+        <button type="button" class="btn" :disabled="loading || !report" @click="download('pdf')">PDF</button>
+        <button type="button" class="btn" :disabled="loading || !report" @click="download('xlsx')">Excel</button>
       </div>
     </div>
-    <AsyncState :loading="loading" :error="error" :empty="!report && !loading && !error">
-      <dl v-if="report" class="detail-grid">
-        <div><dt>Present</dt><dd>{{ report.present }} / {{ report.workDays }}</dd></div>
-        <div><dt>Late</dt><dd>{{ report.late }}</dd></div>
-        <div><dt>Absent</dt><dd>{{ report.absent }}</dd></div>
-        <div><dt>Leave on summary</dt><dd>{{ report.leaveDaysOnSummary }}</dd></div>
-        <div><dt>Leave rows this month</dt><dd>{{ report.leaveRowsInMonth }}</dd></div>
-        <div><dt>Leave remaining</dt><dd>{{ report.remainingLeaveDays }}</dd></div>
-      </dl>
+    <p v-if="exportError" class="form-error" role="alert">{{ exportError }}</p>
+    <AsyncState :loading="loading" :error="error" :empty="false">
+      <template v-if="report">
+        <p class="muted">{{ report.employeeName }} ({{ report.employeeId }}) · {{ report.periodLabel }}</p>
+        <p v-if="report.empty" class="state state--empty">ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้</p>
+        <template v-else>
+          <p v-if="!report.hasMonthlySummary" class="state state--empty">ไม่มีสรุปรายเดือนที่บันทึกไว้</p>
+          <dl v-else class="detail-grid">
+            <div><dt>มาทำงาน</dt><dd>{{ report.present }} / {{ report.workDays }}</dd></div>
+            <div><dt>สาย</dt><dd>{{ report.late }} ({{ report.lateMinutes }} นาที)</dd></div>
+            <div><dt>ขาด</dt><dd>{{ report.absent }}</dd></div>
+            <div><dt>ลาตามสรุป</dt><dd>{{ report.leaveDaysOnSummary }}</dd></div>
+            <div><dt>วันลาคงเหลือ</dt><dd>{{ report.remainingLeaveDays ?? '—' }}</dd></div>
+          </dl>
+          <h3>รายการสแกน</h3>
+          <p v-if="report.scans.length === 0">ไม่มีรายการสแกนที่บันทึกไว้</p>
+          <ul v-else>
+            <li v-for="scan in report.scans" :key="scan.date">
+              {{ scan.dateLabel }} เข้า {{ scan.checkInLabel }} ออก {{ scan.checkOutLabel }} {{ scan.statusLabel }}
+            </li>
+          </ul>
+          <h3>รายการลา</h3>
+          <p v-if="report.leaveRows.length === 0">ไม่มีรายการลาที่บันทึกไว้</p>
+          <ul v-else>
+            <li v-for="row in report.leaveRows" :key="`${row.startLabel}-${row.typeLabel}`">
+              {{ row.typeLabel }} {{ row.startLabel }} – {{ row.endLabel }} {{ row.statusLabel }}
+            </li>
+          </ul>
+        </template>
+      </template>
     </AsyncState>
   </section>
 </template>

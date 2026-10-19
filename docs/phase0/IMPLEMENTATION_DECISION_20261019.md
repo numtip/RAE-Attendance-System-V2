@@ -16,7 +16,15 @@ Owner selected consolidated delivery. This record is the working choice for loca
 | D-09 | No host selected | — |
 | D-10 | Report is the signed-in employee only | HR approver |
 
-Shipped here: `GET /api/v1/reports/personal` and a My report screen. Numbers come from the stored monthly summary and leave rows. A query `employeeUid` is ignored.
+Shipped here: a self-only personal report and PDF/Excel export. A different `employeeUid`, or any `employeeId`, is rejected. A month with no stored summary and no stored rows is an empty state. Totals are omitted instead of being written as zero. Scan days that were never stored are not invented.
+
+Review gate: `MVP_RELEASE1_READY_FOR_REVIEW`. This is not production approval.
+
+## QA 2026-10-19
+
+- Backend `reports`, `release1`, and `authorization` tests: 13 passed.
+- Browser against the local fixture API: October 2569 shows the empty Thai message. March 2569 shows ผู้ใช้ ตัวอย่าง (E-USER), one late scan at 08:35–16:30, and ลากิจ on 10 มีนาคม 2569.
+- The same session downloaded `attendance-2569-03.pdf` and `.xlsx`. A request for another employee returned 403.
 
 ## Release checklist
 

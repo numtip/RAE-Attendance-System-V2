@@ -157,3 +157,21 @@ export const api = {
   personalReport: (year: number, month: number) =>
     apiRequest<import('./types').PersonalReport>(`/reports/personal?year=${year}&month=${month}`),
 };
+
+export async function downloadPersonalReport(year: number, month: number, format: 'pdf' | 'xlsx'): Promise<void> {
+  const token = getAccessToken();
+  const response = await fetch(
+    `${API_BASE}/reports/personal/export?year=${year}&month=${month}&format=${format}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!response.ok) {
+    throw new ApiError(response.status, 'EXPORT_FAILED', 'Export failed');
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `attendance-${year + 543}-${String(month).padStart(2, '0')}.${format}`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
