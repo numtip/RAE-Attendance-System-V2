@@ -1,7 +1,8 @@
 # Release 1 staging readiness
 
 **Status:** STAGING_READY (GitHub-first — disposable MariaDB + compose + Pages review)  
-**Production:** not deployed · VPS frozen · no live MJU SSO
+**Production:** not deployed · VPS frozen · no live MJU SSO  
+**Verified against:** `main` `b6b6e3d` (2026-10-19). `docs/RELEASE1_FINAL_SIGNOFF.md` cites the older baseline `1c2c1bc`; treat its test counts as historical.
 
 Attendance V2 consumes **shared Agent Core** for optional agent decisions; it does **not** host Jev/OpenRouter.
 
@@ -15,8 +16,9 @@ Attendance V2 consumes **shared Agent Core** for optional agent decisions; it do
 | Attendance daily (admin/manager) | **COMPLETE** | User role gets 403 by contract |
 | Attendance monthly summary | **COMPLETE** | Own + elevated roles |
 | Leave list/balance/history | **COMPLETE** | Fixture + MariaDB seed |
-| SSO routes | **PARTIAL** | Mock provider + gates; live MJU **BLOCKED_EXTERNAL** |
-| Dashboard / reports / CSV / facescan import | **NOT_IN_RELEASE_1** | Legacy bundle scope |
+| SSO routes | **PARTIAL** | Registration confirmed; the portal-mode callback returns `SSO_NOT_READY`. The merged callback also resolves identity by e-mail and does not deliver a session. Live MJU **BLOCKED_EXTERNAL** (`ac` semantics) |
+| Personal attendance/leave report (`/reports/personal`, `/export`) | **COMPLETE** | PR #50; JSON report plus PDF/XLSX download |
+| Dashboard / CSV / facescan import | **NOT_IN_RELEASE_1** | Legacy bundle scope |
 | Legacy DB recovery execution | **BLOCKED_EXTERNAL** | Runbook only; VPS-last |
 | Production nginx/PM2 cutover | **BLOCKED_EXTERNAL** | Post-approval phase |
 
@@ -29,6 +31,7 @@ Attendance V2 consumes **shared Agent Core** for optional agent decisions; it do
 | Employees | list, detail, attendance | **COMPLETE** |
 | Attendance | daily, monthly | **COMPLETE** |
 | Leave | list, balance, history | **COMPLETE** |
+| Reports | `/reports/personal`, `/reports/personal/export` | **COMPLETE** (personal report only, PR #50) |
 | SSO | login, callback, me, logout | **PARTIAL** (closed until checklist) |
 
 Contract enforcement: `npm run contract:smoke` in CI (fixture + MariaDB job).
@@ -37,7 +40,7 @@ Contract enforcement: `npm run contract:smoke` in CI (fixture + MariaDB job).
 
 | Item | Status |
 |------|--------|
-| Migrations `database/migrations/001–010` | **COMPLETE** |
+| Migrations `database/migrations/` (16 files: `001–014`, `025`, `026`) | **COMPLETE** |
 | Dev seed `database/seeds/dev-fixtures.sql` | **COMPLETE** |
 | CI migrate from empty DB | **COMPLETE** |
 | Legacy import path | **PARTIAL** (documented hooks; no production import) |
@@ -86,24 +89,27 @@ Pages review uses `VITE_REVIEW_MODE=fixture` (no backend). Local staging uses re
 
 ```bash
 cp .env.example .env
-# set JWT_SECRET for non-default lab use
+# REQUIRED: set JWT_SECRET. Never deploy with the compose default `dev-only-change-me`.
 npm run staging:up
 npm run compose:smoke
 npm run staging:down   # optional teardown
 ```
+
+On a shared host, bind MariaDB to loopback instead of publishing `3307` on all interfaces.
 
 Single command brings up MariaDB → migrate+seed → backend → frontend with healthchecks.
 
 ## Rollback
 
 - Compose: `npm run staging:down` (removes volumes with `-v`).
+- Schema: `025` and `026` have down scripts in `database/rollbacks/`; all other migrations are forward-only, so restore a database/volume snapshot or recreate and re-migrate. Never run a destructive rollback against a real database.
 - Database: re-run migrations on empty volume; no production rollback from this repo.
 
 ## External blockers (do not downgrade Release 1 dev)
 
 | Blocker | Type |
 |---------|------|
-| Live MJU SSO callback registration | **BLOCKED_EXTERNAL** |
+| Live MJU SSO `ac` contract (registration itself is confirmed) | **BLOCKED_EXTERNAL** |
 | Legacy production DB recovery on VPS | **BLOCKED_EXTERNAL** |
 | Production host nginx/PM2/cutover | **BLOCKED_EXTERNAL** |
 

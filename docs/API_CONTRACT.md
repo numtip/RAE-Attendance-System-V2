@@ -51,6 +51,17 @@ Failures use `{ success: false, error: { code, message } }`.
 | GET | `/api/v1/leave/balance/:employeeUid` | `GET /api/leave/balance/:id` | |
 | GET | `/api/v1/leave/history/:employeeUid` | `GET /api/leave/history/:id` | |
 
+## Personal report (Release 1)
+
+Added by PR #50. Both routes are authenticated, read-only, and scoped to the caller's own record: a different `employeeUid`, or any `employeeId`, query parameter returns `403 FORBIDDEN`.
+
+| Method | Path | Status | Contract |
+|---|---|---|---|
+| GET | `/api/v1/reports/personal` | 200 / 400 / 401 / 403 / 404 | Query `year` (2000–2100) and `month` (1–12), both required. Returns `data` with `employeeUid`, `employeeId`, `employeeName`, `department`, `position`, `year`, `month`, `buddhistYear`, `periodStart`, `periodEnd`, `periodLabel`, `empty`, `hasMonthlySummary`, `present`, `late`, `absent`, `leaveDaysOnSummary`, `workDays`, `lateMinutes`, `scans[]`, `leaveRows[]`, `remainingLeaveDays`, `source`, `exclusions`. An invalid or missing period returns `400 VALIDATION_ERROR`. |
+| GET | `/api/v1/reports/personal/export` | 200 / 400 / 401 / 403 | Query `year`, `month`, and `format` (`pdf` or `xlsx`; anything else returns `400 EXPORT_INVALID_FORMAT`). Returns a binary download with `Content-Type` `application/pdf` or the XLSX media type and `Cache-Control: no-store` — **not** the JSON envelope. |
+
+These two paths are deliberately absent from the `## Implemented` table above, because `scripts/contract-smoke.mjs` materializes table paths without query parameters and asserts a JSON envelope: the personal report requires `year`/`month`, and the export returns binary. Covering them needs a matching change to that script (follow-up, not done here).
+
 ## Explicitly out of Release 1
 
-Dashboard summary, `/reports/*`, admin leave remap/sync, files, CSV import, and facescan-daily import routes. They were called by the production bundle and are recorded in `LEGACY_COMPONENT_ASSESSMENT.md`. They are not registered in this bootstrap, so they return `404`.
+Dashboard summary, admin leave remap/sync, files, CSV import, and facescan-daily import routes. They were called by the production bundle and are recorded in `LEGACY_COMPONENT_ASSESSMENT.md`. They are not registered in this bootstrap, so they return `404`.
