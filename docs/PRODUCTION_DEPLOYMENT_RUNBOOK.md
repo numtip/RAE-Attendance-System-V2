@@ -132,13 +132,14 @@ Template: `deploy/nginx/rae-attendance-v2.conf.template`.
 
 | Endpoint | Expect |
 |----------|--------|
-| `GET /api/v1/health` | HTTP 200, `{ "status": "ok" }` (or contract envelope) |
-| `GET /api/v1/health/db` | HTTP 200 when `DATA_SOURCE=mariadb` and DB reachable |
+| `GET /api/v1/ready` | **Primary readiness gate.** HTTP 200 with `checks.config=ok` and `checks.database=connected`; `503 CONFIG_INVALID` (error codes only) or `503 DB_UNAVAILABLE` otherwise. This is the container healthcheck. |
+| `GET /api/v1/health` | HTTP 200, liveness only — it asserts nothing about configuration or the database |
+| `GET /api/v1/health/db` | HTTP 200 `status=connected` when `DATA_SOURCE=mariadb` and DB reachable; no host or database name is returned |
 
 Check from localhost before opening public traffic:
 
 ```bash
-curl -sf "http://127.0.0.1:3210/api/v1/health"
+curl -sf "http://127.0.0.1:3210/api/v1/ready"
 curl -sf "http://127.0.0.1:3210/api/v1/health/db"
 ```
 
@@ -159,7 +160,7 @@ Compose healthchecks mirror these paths (see `deploy/docker-compose.yml`).
 - [ ] Secrets injected (JWT, DB); `.env` not committed
 - [ ] `DATA_SOURCE=mariadb`, SSO disabled unless checklist complete
 - [ ] Migrations applied; version logged
-- [ ] Backend health + health/db pass locally
+- [ ] Backend `/health` and `/ready` pass locally
 - [ ] Frontend built **without** `VITE_REVIEW_MODE=fixture`
 - [ ] Nginx `nginx -t` pass; TLS valid
 - [ ] CORS_ORIGIN matches public SPA URL
@@ -171,7 +172,7 @@ Compose healthchecks mirror these paths (see `deploy/docker-compose.yml`).
 
 Run against **production URL** (or staging host with production config):
 
-- [ ] `GET /api/v1/health` and `/health/db`
+- [ ] `GET /api/v1/ready` returns `ready` and `/api/v1/health` returns 200
 - [ ] Login → profile (`POST /api/v1/auth/login`, `GET /api/v1/auth/me`)
 - [ ] Refresh token flow (`POST /api/v1/auth/refresh`)
 - [ ] Logout (`POST /api/v1/auth/logout`)

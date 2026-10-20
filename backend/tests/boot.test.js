@@ -3,6 +3,9 @@ const test = require('node:test');
 
 process.env.JWT_SECRET = 'test-only-secret';
 process.env.DATA_SOURCE = 'fixture';
+// Explicit: the suite must not inherit NODE_ENV=production from an outer shell,
+// because start() would then correctly reject a fixture data source.
+process.env.NODE_ENV = 'test';
 
 const { start } = require('../src/server');
 
