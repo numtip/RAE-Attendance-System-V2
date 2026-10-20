@@ -64,7 +64,7 @@ Classification: **COMPLETE** · **BLOCKED_EXTERNAL** · **DEFERRED_RELEASE_2** �
 | Employees list / detail / attendance history | **COMPLETE** |
 | Attendance daily (admin/manager) + monthly | **COMPLETE** |
 | Leave list / balance / history | **COMPLETE** |
-| Health + readiness (`/health`, `/health/db`) | **COMPLETE** |
+| Health + readiness (`/health`, `/health/db`) | **COMPLETE** (readiness gate is now `/ready`; see `RELEASE1_STAGING_READINESS.md`) |
 | Migrations 001–010 + dev seed | **COMPLETE** |
 | MariaDB repositories + fixture mode | **COMPLETE** |
 | Release 1 SPA (login, profile, attendance, leave) | **COMPLETE** |
@@ -94,7 +94,7 @@ Prepared in repository (not executed):
 - Host nginx: `deploy/nginx/rae-attendance-v2.conf.template`
 - Environment contract: `.env.example`
 - Migration procedure: `npm run db:migrate` / `db:migrate:seed`; `scripts/migrate.mjs`
-- Health / readiness: `GET /api/v1/health`, `GET /api/v1/health/db`
+- Health / readiness: `GET /api/v1/ready` (gate), `GET /api/v1/health`, `GET /api/v1/health/db`
 - Backup / rollback / checklists: `docs/PRODUCTION_DEPLOYMENT_RUNBOOK.md`
 
 **No deploy, SSH, or production DB changes** were performed for this sign-off.

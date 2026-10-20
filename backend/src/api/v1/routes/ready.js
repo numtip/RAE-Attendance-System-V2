@@ -16,8 +16,7 @@ const router = express.Router();
  * - 200 with checked subsystems only.
  */
 router.get('/', asyncRoute(async (_req, res) => {
-  const dataSource = process.env.DATA_SOURCE || 'fixture';
-  const validation = validateRuntimeConfig(config, { env: process.env, dataSource });
+  const validation = validateRuntimeConfig(config);
   if (!validation.ok) {
     const codes = validation.errors.map((error) => error.code).join(', ');
     failure(res, 503, 'CONFIG_INVALID', `Runtime configuration is invalid: ${codes}`);

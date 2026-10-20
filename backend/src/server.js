@@ -22,7 +22,14 @@ if (require.main === module) {
     start();
   } catch (error) {
     // Codes only: never echo configuration values.
-    console.error(`startup failed: ${error.code || 'STARTUP_ERROR'} ${error.message || ''}`.trim());
+    const message = `${error.code || 'STARTUP_ERROR'} ${error.message || ''}`.trim();
+    console.error(`startup failed: ${message}`);
+    if (/JWT_SECRET_(MISSING|PLACEHOLDER|TOO_SHORT)/.test(message)) {
+      console.error(
+        'startup hint: set JWT_SECRET to a random value of at least 16 characters '
+        + '(for example: openssl rand -base64 32). Do not use a repository placeholder.',
+      );
+    }
     process.exit(1);
   }
 }

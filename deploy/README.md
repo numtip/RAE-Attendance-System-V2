@@ -24,11 +24,14 @@ cp .env.example .env
 docker compose -f deploy/docker-compose.yml up -d --build --wait
 
 # Disposable demo/CI only: adds synthetic fixtures via the opt-in seed service.
-docker compose -f deploy/docker-compose.yml run --rm seed
+# Requires ALLOW_FIXTURE_SEED=true and DEPLOY_ENV on the fixture allowlist.
+docker compose -f deploy/docker-compose.yml run --rm \
+  -e ALLOW_FIXTURE_SEED=true seed
 ```
 
 - MariaDB: `127.0.0.1:${COMPOSE_MARIADB_PORT:-3307}` (bound to `${COMPOSE_MARIADB_BIND:-127.0.0.1}`)
 - API direct: `127.0.0.1:${COMPOSE_BACKEND_PORT:-3210}` — `GET /api/v1/ready` is the readiness gate
 - SPA + proxied API: `http://127.0.0.1:${COMPOSE_FRONTEND_PORT:-8080}`
+- `JWT_SECRET` has **no** default. `up` fails fast without a real value.
 
 Local API default outside containers is `127.0.0.1:3210`. Set `HOST=0.0.0.0` only inside containers. That avoids legacy port `3000` and port `3100` on the VPS.

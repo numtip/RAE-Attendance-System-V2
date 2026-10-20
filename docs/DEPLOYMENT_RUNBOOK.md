@@ -36,11 +36,11 @@ docker compose -f deploy/docker-compose.yml run --rm seed
 | Guard | Required |
 |---|---|
 | `ALLOW_FIXTURE_SEED` | exactly `true` |
-| `DEPLOY_ENV` | not `staging` and not `production` |
-| `NODE_ENV` | not `production` |
+| `DEPLOY_ENV` | one of `fixture`, `development`, `test` — anything else, including unset, is refused |
+| `NODE_ENV` | one of `development`, `test`, `fixture` |
 | target host | `127.0.0.1`, `localhost`, `::1` or `mariadb` — otherwise `ALLOW_REMOTE_FIXTURE_SEED=true` |
 
-The refusal happens before a connection is opened, so a mistyped target is never touched.
+The refusal happens before a connection is opened, so a mistyped target is never touched. The compose `seed` service inherits `DEPLOY_ENV` from the environment and defaults it to `staging`, so it fails closed unless a disposable environment is stated explicitly.
 
 Verify Release 1 paths through the SPA proxy:
 
@@ -52,8 +52,8 @@ Use `MYSQL_*` env vars (defaults in `.env.example` target host port `3307` when 
 
 Verify:
 
-- `GET http://127.0.0.1:8080/api/v1/ready` — configuration and database readiness through the proxy
-- `GET http://127.0.0.1:3210/api/v1/health/db` — database connectivity when `DB_*` is set on the backend
+- `GET http://127.0.0.1:8080/api/v1/ready` — configuration and database readiness through the proxy (the compose healthcheck uses this)
+- `GET http://127.0.0.1:3210/api/v1/health/db` — database connectivity only, when `DB_*` is set on the backend
 
 Neither route returns a host, port, credential or database name.
 

@@ -59,5 +59,21 @@ test('startup fails closed in production when required DB settings are missing',
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DB_HOST_MISSING/);
-  assert.match(result.stderr, /DB_PASSWORD_MISSING/);
+  assert.match(result.stderr, /DB_USER_MISSING/);
+});
+
+test('F9: the startup error names the fix without echoing the secret', () => {
+  const result = startServer({
+    NODE_ENV: 'production',
+    DATA_SOURCE: 'mariadb',
+    DB_HOST: '127.0.0.1',
+    DB_NAME: 'attendance_v2',
+    DB_USER: 'app',
+    DB_PASSWORD: 'pw',
+    JWT_SECRET: '',
+    PORT: '0',
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /JWT_SECRET_MISSING/);
+  assert.match(result.stderr, /startup hint: set JWT_SECRET/);
 });

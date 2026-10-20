@@ -39,14 +39,16 @@ test('seed is refused without ALLOW_FIXTURE_SEED', () => {
 test('seed is refused when DEPLOY_ENV is staging', () => {
   const result = run(['--seed'], baseEnv({ DEPLOY_ENV: 'staging', ALLOW_FIXTURE_SEED: 'true' }));
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /DEPLOY_ENV=staging/);
+  assert.match(result.stderr, /DEPLOY_ENV must be one of/);
+  assert.match(result.stderr, /"staging"/);
   assert.match(result.stderr, /no connection was opened/);
 });
 
 test('seed is refused when DEPLOY_ENV is production', () => {
   const result = run(['--seed-only'], baseEnv({ DEPLOY_ENV: 'production', ALLOW_FIXTURE_SEED: 'true' }));
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /DEPLOY_ENV=production/);
+  assert.match(result.stderr, /DEPLOY_ENV must be one of/);
+  assert.match(result.stderr, /"production"/);
 });
 
 test('seed is refused when NODE_ENV is production', () => {
@@ -54,7 +56,38 @@ test('seed is refused when NODE_ENV is production', () => {
     '--seed',
   ], baseEnv({ NODE_ENV: 'production', DEPLOY_ENV: 'fixture', ALLOW_FIXTURE_SEED: 'true' }));
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /NODE_ENV=production/);
+  assert.match(result.stderr, /NODE_ENV must be one of/);
+});
+
+test('seed is refused for every unrecognised DEPLOY_ENV (allowlist, not denylist)', () => {
+  for (const deployEnv of ['stage', 'prod', 'uat', 'preprod', 'Staging ', 'live', '']) {
+    const result = run(['--seed'], baseEnv({
+      DEPLOY_ENV: deployEnv,
+      ALLOW_FIXTURE_SEED: 'true',
+    }));
+    assert.equal(result.status, 1, `DEPLOY_ENV="${deployEnv}" must be refused`);
+    assert.match(result.stderr, /DEPLOY_ENV must be one of/, `DEPLOY_ENV="${deployEnv}"`);
+    assert.match(result.stderr, /no connection was opened/);
+  }
+});
+
+test('seed is refused when DEPLOY_ENV is entirely unset', () => {
+  const env = baseEnv({ ALLOW_FIXTURE_SEED: 'true' });
+  delete env.DEPLOY_ENV;
+  const result = run(['--seed'], env);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /an unset value/);
+});
+
+test('seed is permitted for each allowlisted environment', () => {
+  for (const deployEnv of ['fixture', 'development', 'test']) {
+    const result = run(['--seed'], baseEnv({
+      DEPLOY_ENV: deployEnv,
+      ALLOW_FIXTURE_SEED: 'true',
+    }));
+    // The guard passes; the run only fails later because it cannot connect.
+    assert.doesNotMatch(result.stderr, /seed refused/, `DEPLOY_ENV=${deployEnv} should be allowed`);
+  }
 });
 
 test('seed is refused for a non-disposable database host', () => {
@@ -75,8 +108,7 @@ test('the compose service host is treated as disposable', () => {
     MYSQL_HOST: 'mariadb',
     DEPLOY_ENV: 'fixture',
     ALLOW_FIXTURE_SEED: 'true',
-  }));
-  // The guard passes, so the run only fails later when it cannot connect.
+  })); // The guard passes, so the run only fails later when it cannot connect.
   assert.doesNotMatch(result.stderr, /seed refused/);
 });
 

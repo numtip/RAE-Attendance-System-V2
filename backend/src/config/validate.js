@@ -16,7 +16,7 @@ function isProduction(config) {
 }
 
 function resolveDataSources(config, env) {
-  const dataSource = env.DATA_SOURCE || 'fixture';
+  const dataSource = env?.DATA_SOURCE || 'fixture';
   return { dataSource, appEnv: config?.app?.env || 'development' };
 }
 
@@ -60,12 +60,15 @@ function validateRuntimeConfig(config, options = {}) {
     ['DB_HOST_MISSING', 'host', 'DB_HOST'],
     ['DB_NAME_MISSING', 'name', 'DB_NAME'],
     ['DB_USER_MISSING', 'user', 'DB_USER'],
-    ['DB_PASSWORD_MISSING', 'password', 'DB_PASSWORD'],
   ]) {
     if (!database[field]) {
       errors.push({ code, message: `${label} must be set` });
     }
   }
+  // DB_PASSWORD stays optional: it matches the connection contract in
+  // db/pool.js, which documents it as required only when the server asks for
+  // one (trust/socket auth needs no password). A missing password fails at
+  // connect time with DB_UNAVAILABLE rather than at boot.
 
   return { ok: errors.length === 0, errors };
 }

@@ -79,7 +79,17 @@ test('every required database setting is reported when absent', () => {
   assert.deepEqual(codes(result).sort(), [
     'DB_HOST_MISSING',
     'DB_NAME_MISSING',
-    'DB_PASSWORD_MISSING',
     'DB_USER_MISSING',
   ]);
+});
+
+test('F10: a passwordless database is accepted, matching the pool contract', () => {
+  const result = validateRuntimeConfig(
+    productionConfig({
+      database: { host: 'db', port: 3306, name: 'attendance_v2', user: 'app', password: '' },
+    }),
+    { env: { DATA_SOURCE: 'mariadb' } },
+  );
+  assert.equal(result.ok, true, 'DB_PASSWORD is optional (trust/socket auth)');
+  assert.deepEqual(codes(result), []);
 });

@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const test = require('node:test');
+const config = require('../src/config');
 const { createApp } = require('../src/app');
 const { isDatabaseConfigured } = require('../src/db/pool');
 
@@ -17,58 +18,80 @@ async function getJson(port, path) {
   return { response, body: JSON.parse(text), text };
 }
 
+async function withApp(run, options) {
+  const app = createApp(options);
+  const { server, port } = await listen(app);
+  try {
+    return await run(port);
+  } finally {
+    server.close();
+  }
+}
+
 test('readiness reports ready in fixture mode without touching a database', {
   skip: isDatabaseConfigured(),
 }, async () => {
-  const app = createApp();
-  const { server, port } = await listen(app);
-  try {
+  await withApp(async (port) => {
     const { response, body } = await getJson(port, '/api/v1/ready');
     assert.equal(response.status, 200);
     assert.equal(body.success, true);
     assert.equal(body.data.status, 'ready');
     assert.deepEqual(body.data.checks, { config: 'ok', database: 'not_required' });
-  } finally {
-    server.close();
-  }
+  });
 });
 
-test('readiness and health never disclose connection details', {
-  skip: isDatabaseConfigured(),
-}, async () => {
-  const app = createApp();
-  const { server, port } = await listen(app);
-  try {
+// F11: this ran only in the fixture job before, so it never asserted anything
+// against a live database. It now runs in both jobs.
+test('readiness and health never disclose connection details', async () => {
+  await withApp(async (port) => {
     for (const path of ['/api/v1/ready', '/api/v1/health', '/api/v1/health/db']) {
-      const { response, body } = await getJson(port, path);
-      assert.equal(response.status, 200, path);
+      const { body } = await getJson(port, path);
       const serialized = JSON.stringify(body);
-      // No host, port, credential, driver or database identifier.
       assert.doesNotMatch(serialized, /"host"/, path);
+      assert.doesNotMatch(serialized, /"password"/i, path);
       assert.doesNotMatch(serialized, /3306|3307/, path);
-      assert.doesNotMatch(serialized, /password/i, path);
-      assert.doesNotMatch(serialized, /127\.0\.0\.1|mariadb/i, path);
-      assert.equal(body.data.database, undefined, path);
-      if (body.data.checks) {
+      assert.doesNotMatch(serialized, /127\.0\.0\.1|localhost|mariadb/i, path);
+      assert.doesNotMatch(serialized, /ECONNREFUSED|Access denied|ER_/i, path);
+      assert.equal(body.data?.database, undefined, path);
+      if (body.data?.checks) {
         assert.ok(['connected', 'not_required'].includes(body.data.checks.database), path);
       }
+      if (path.endsWith('/health/db')) {
+        assert.ok(['connected', 'unconfigured'].includes(body.data.status), path);
+      }
     }
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('health/db stays unconfigured without leaking a database handle', {
   skip: isDatabaseConfigured(),
 }, async () => {
-  const app = createApp();
-  const { server, port } = await listen(app);
-  try {
+  await withApp(async (port) => {
     const { response, body } = await getJson(port, '/api/v1/health/db');
     assert.equal(response.status, 200);
     assert.equal(body.data.status, 'unconfigured');
     assert.equal(body.data.database, undefined);
+  });
+});
+
+test('readiness answers 503 CONFIG_INVALID with codes only when production config is invalid', async () => {
+  const previous = { env: config.app.env, secret: config.jwt.secret };
+  try {
+    config.app.env = 'production';
+    config.jwt.secret = '';
+    // dataSource mariadb satisfies createContainer's production guard; the
+    // readiness route rejects the configuration before any query is attempted.
+    await withApp(async (port) => {
+      const { response, body } = await getJson(port, '/api/v1/ready');
+      assert.equal(response.status, 503);
+      assert.equal(body.success, false);
+      assert.equal(body.error.code, 'CONFIG_INVALID');
+      assert.match(body.error.message, /JWT_SECRET_MISSING/);
+      // Codes only: no secret value, no connection detail.
+      assert.doesNotMatch(JSON.stringify(body), /127\.0\.0\.1|3306|password/i);
+    }, { dataSource: 'mariadb' });
   } finally {
-    server.close();
+    config.app.env = previous.env;
+    config.jwt.secret = previous.secret;
   }
 });

@@ -33,6 +33,8 @@ jobs:
         run: node --test scripts/data-onboarding/onboarding.test.mjs
       - name: Staging seed guard tests
         run: node --test scripts/stagingGuard.test.mjs
+      - name: Compose config regression tests
+        run: node --test scripts/composeConfig.test.mjs
 
   backend-mariadb:
     runs-on: ubuntu-latest
@@ -117,10 +119,23 @@ jobs:
           JWT_SECRET: ci-compose-smoke-secret
         run: |
           docker compose -f deploy/docker-compose.yml up -d --build --wait
+      - name: Seed service refuses without explicit authorisation
+        env:
+          JWT_SECRET: ci-compose-smoke-secret
+        run: |
+          set -o pipefail
+          status=0
+          docker compose -f deploy/docker-compose.yml run --rm seed > /tmp/seed-default.log 2>&1 || status=$?
+          cat /tmp/seed-default.log
+          if [ "$status" -eq 0 ]; then
+            echo "::error::the seed service ran without explicit authorisation"
+            exit 1
+          fi
+          grep -q 'seed refused' /tmp/seed-default.log
       - name: Load disposable fixture seed
         env:
           JWT_SECRET: ci-compose-smoke-secret
-        run: docker compose -f deploy/docker-compose.yml run --rm seed
+        run: docker compose -f deploy/docker-compose.yml run --rm -e DEPLOY_ENV=fixture -e ALLOW_FIXTURE_SEED=true seed
       - uses: actions/setup-node@v4
         with:
           node-version: 20

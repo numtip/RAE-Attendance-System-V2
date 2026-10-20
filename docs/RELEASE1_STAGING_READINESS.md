@@ -110,15 +110,15 @@ Compose is invoked with `-f deploy/docker-compose.yml`. Pass `--env-file .env` e
 
 | # | Item | Evidence | Impact |
 |---|---|---|---|
-| 1 | `staging:up` wiped data every start (compose `migrate` always ran `db:migrate:seed`) | **FIXED** — `migrate` runs `db:migrate` only; the destructive seed is a separate opt-in `seed` service (`profiles: [fixture-seed]`) invoked by `npm run staging:fixture:up` or `docker compose … run --rm seed` |
-| 2 | `JWT_SECRET` was **not** validated at boot | **FIXED** — `assertRuntimeConfig()` runs in `start()` before `listen()`; production refuses an empty, placeholder or `<16`-character secret and exits non-zero |
+| 1 | `staging:up` wiped data every start (compose `migrate` always ran `db:migrate:seed`) | **FIXED** — `migrate` runs `db:migrate` only; the destructive seed is a separate opt-in `seed` service (`profiles: [fixture-seed]`) |
+| 2 | `JWT_SECRET` was **not** validated at boot | **FIXED** — `assertRuntimeConfig()` runs in `start()` before `listen()`; production refuses an empty, placeholder or `<16`-character secret and exits non-zero with a readable hint |
 | 3 | `/api/v1/health` checks nothing and was the compose healthcheck | **FIXED** — `/api/v1/ready` is the healthcheck and reports configuration plus database reachability |
 | 4 | No preflight SQL on `main` | **OPEN** — `database/preflight/` still does not exist; `001`–`014` stay forward-only |
 | 5 | Schema gap `015`–`024` | **OPEN / REPORTED, not invented** — 16 migration files: `001`–`014`, `025`, `026`. No migration was created to fill the gap |
-| 6 | `migrate` bind-mounts the repo root and runs `npm ci` as root | **OPEN** — unchanged; pass an explicit `--env-file` and keep credentials out of a root `.env` the mount would expose |
+| 6 | `migrate`/`seed` bind-mount the repo root and run `npm ci` as root | **OPEN** — unchanged; pass an explicit `--env-file` and keep credentials out of a root `.env` the mount would expose |
 | 7 | `CORS_ORIGIN` is dead configuration | **OPEN** — no CORS middleware; the SPA must be same-origin behind nginx |
 | 8 | Compose hardcodes `SSO_ENABLED: 'false'` | **OPEN by design** — SSO stays off; enabling it needs the SSO activation gate, not this change |
-| 9 | Compose defaults unsafe on a shared host | **FIXED** — MariaDB binds to `${COMPOSE_MARIADB_BIND:-127.0.0.1}`; a placeholder `JWT_SECRET` now stops the backend at boot instead of serving traffic |
+| 9 | Compose defaults unsafe on a shared host | **FIXED** — MariaDB binds to `${COMPOSE_MARIADB_BIND:-127.0.0.1}`; the backend has no placeholder `JWT_SECRET` fallback and stops after 3 failed starts |
 | 10 | Images ran as root | **FIXED** — backend `USER node`; frontend uses `nginxinc/nginx-unprivileged` (UID 101) |
 | 11 | `GET /api/v1/health/db` disclosed the database name and host | **FIXED** — both removed; driver errors are no longer echoed |
 | 12 | `--dry-run` is not a ledger check | **OPEN** — it still lists every file; use the real runner to see `skip`/`apply` |
@@ -144,16 +144,21 @@ curl -fsS http://127.0.0.1:8080/api/v1/ready
 
 A disposable fixture stack remains available for demos and the CI smoke: `npm run staging:fixture:up`.
 
-**Do not run `db:seed` against persistent staging.** The guard refuses it before opening a connection:
+**Do not run `db:seed` against persistent staging.** Two independent rails stop it:
+
+1. `DEPLOY_ENV` is an **allowlist** (`fixture`, `development`, `test`). Any other value — including `staging`, `production`, `stage`, `prod`, `uat` or unset — is refused.
+2. The compose `seed` service defaults to `DEPLOY_ENV=staging` and `ALLOW_FIXTURE_SEED=false`, so a plain `docker compose … run --rm seed` fails closed. `staging:fixture:up` only supplies `ALLOW_FIXTURE_SEED=true`; it inherits `DEPLOY_ENV` from `.env`, so a persistent staging `.env` (`DEPLOY_ENV=staging`) cannot be seeded even through it.
 
 | Condition | Result |
 |---|---|
-| `DEPLOY_ENV=staging` or `production` | refused |
-| `NODE_ENV=production` | refused |
+| `DEPLOY_ENV` not in `fixture`/`development`/`test`, or unset | refused |
+| `NODE_ENV` not in `development`/`test`/`fixture` | refused |
 | `ALLOW_FIXTURE_SEED` is not exactly `true` | refused |
 | host is not `127.0.0.1`, `localhost`, `::1` or `mariadb`, and `ALLOW_REMOTE_FIXTURE_SEED` is not `true` | refused |
 
 A refused seed exits `1` and states that no connection was opened and no data changed. A permitted run prints the exact tables it will clear.
+
+The host check is a safety rail, not a security boundary: a `127.0.0.1` tunnel to a real database is indistinguishable from a local one.
 
 ## Go/no-go gate for staging
 
@@ -168,7 +173,8 @@ All of these must pass before the stack is handed to reviewers. Container `healt
 | Contract | `npm run compose:smoke` passes through the nginx proxy, before **and** after a restart |
 | SSO | `SSO_ENABLED=false`; `/api/v1/auth/sso/login` returns `403 SSO_DISABLED` |
 | Schema | `SELECT version FROM schema_migrations ORDER BY version` matches the 16 filenames, and the `015`–`024` gap is recorded and accepted |
-| Seed guard | `db:seed` refuses with `DEPLOY_ENV=staging` (exit 1, no connection opened) |
+| Seed guard | `db:seed` refuses with `DEPLOY_ENV=staging` and with any unrecognised `DEPLOY_ENV` (exit 1, no connection opened) |
+| Seed bypass | `docker compose … run --rm seed` without explicit flags exits non-zero with `seed refused` |
 | Data | Synthetic fixtures only; no production data and no production database credentials |
 | Secrets | `node scripts/secret-scan.mjs` passes; no `.env` in git |
 

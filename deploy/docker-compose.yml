@@ -48,10 +48,12 @@ services:
     command: sh -c "npm ci && npm run db:migrate"
     restart: 'no'
 
-  # Disposable fixture data only. Opt in explicitly:
-  #   docker compose -f deploy/docker-compose.yml run --rm seed
-  # Never part of the default stack, so a persistent staging stack cannot be
-  # wiped by a routine `up`.
+  # Disposable fixture data only. Fails closed by default:
+  #   DEPLOY_ENV defaults to staging, which the seed guard always refuses, and
+  #   ALLOW_FIXTURE_SEED defaults to false. Both must be set deliberately, and
+  #   a persistent staging .env (DEPLOY_ENV=staging) can never seed even then.
+  # The only supported path is `npm run staging:fixture:up`, which passes
+  # ALLOW_FIXTURE_SEED=true and relies on DEPLOY_ENV=fixture from .env.
   seed:
     image: node:20-alpine
     profiles: ['fixture-seed']
@@ -69,8 +71,9 @@ services:
       MYSQL_USER: ${MARIADB_USER:-attendance}
       MYSQL_PASSWORD: ${MARIADB_PASSWORD:-attendance}
       MYSQL_DATABASE: ${MARIADB_DATABASE:-attendance_v2}
-      DEPLOY_ENV: fixture
-      ALLOW_FIXTURE_SEED: 'true'
+      # Never hardcode the guard's own acknowledgement flags here.
+      DEPLOY_ENV: ${DEPLOY_ENV:-staging}
+      ALLOW_FIXTURE_SEED: ${ALLOW_FIXTURE_SEED:-false}
     command: sh -c "npm ci && npm run db:seed"
     restart: 'no'
 
@@ -79,7 +82,9 @@ services:
       context: ..
       dockerfile: deploy/docker/backend/Dockerfile
     container_name: rae-v2-backend
-    restart: unless-stopped
+    # Bounded: a configuration error stops after three attempts with the reason
+    # in the logs, instead of flapping forever under `unless-stopped`.
+    restart: on-failure:3
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -93,7 +98,11 @@ services:
       DB_NAME: ${MARIADB_DATABASE:-attendance_v2}
       DB_USER: ${MARIADB_USER:-attendance}
       DB_PASSWORD: ${MARIADB_PASSWORD:-attendance}
-      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      # No placeholder fallback. An unset or empty value is rejected by the
+      # startup validator with a readable CONFIG_INVALID/JWT_SECRET_MISSING error,
+      # and restart: on-failure:3 below stops the loop instead of flapping.
+      # Generate one, e.g.: openssl rand -base64 32
+      JWT_SECRET: ${JWT_SECRET:-}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-14}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:8080}

@@ -9,8 +9,9 @@
  * (the ledger keys on the full filename).
  *
  * The dev fixture seed is destructive and opt-in only. `--seed` / `--seed-only`
- * are refused unless ALLOW_FIXTURE_SEED=true, DEPLOY_ENV is not staging or
- * production, NODE_ENV is not production, and the target host is disposable.
+ * are refused unless DEPLOY_ENV is on a small allowlist, NODE_ENV is not
+ * production, ALLOW_FIXTURE_SEED=true, and the target host is disposable.
+ * Any unknown DEPLOY_ENV fails closed.
  */
 
 import fs from 'node:fs/promises';
@@ -39,6 +40,12 @@ function parseArgs(argv) {
 // Hosts that are known to be a disposable local/compose target.
 const SEED_ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', 'mariadb']);
 
+// Allowlist, not a denylist: an unrecognised environment is treated as unsafe.
+// NOTE: this guards a host name only. A 127.0.0.1 SSH tunnel to a real database
+// is indistinguishable here, so this is a safety rail, never a security boundary.
+const SEED_ALLOWED_DEPLOY_ENVS = new Set(['fixture', 'development', 'test']);
+const SEED_ALLOWED_NODE_ENVS = new Set(['development', 'test', 'fixture']);
+
 const SEED_DESTRUCTIVE_TABLES = [
   'daily_attendance',
   'monthly_summary',
@@ -54,12 +61,16 @@ const SEED_DESTRUCTIVE_TABLES = [
  */
 function seedGuardErrors(env, target) {
   const errors = [];
-  const deployEnv = String(env.DEPLOY_ENV || 'fixture').toLowerCase();
-  if (deployEnv === 'staging' || deployEnv === 'production') {
-    errors.push(`DEPLOY_ENV=${deployEnv} never loads the dev fixture seed`);
+  const deployEnv = String(env.DEPLOY_ENV || '').trim().toLowerCase();
+  if (!SEED_ALLOWED_DEPLOY_ENVS.has(deployEnv)) {
+    errors.push(
+      `DEPLOY_ENV must be one of ${[...SEED_ALLOWED_DEPLOY_ENVS].join(', ')}; `
+      + `got ${deployEnv ? `"${deployEnv}"` : 'an unset value'}`,
+    );
   }
-  if (String(env.NODE_ENV || '').toLowerCase() === 'production') {
-    errors.push('NODE_ENV=production never loads the dev fixture seed');
+  const nodeEnv = String(env.NODE_ENV || 'development').trim().toLowerCase();
+  if (!SEED_ALLOWED_NODE_ENVS.has(nodeEnv)) {
+    errors.push(`NODE_ENV must be one of ${[...SEED_ALLOWED_NODE_ENVS].join(', ')}; got "${nodeEnv}"`);
   }
   if (String(env.ALLOW_FIXTURE_SEED || '').toLowerCase() !== 'true') {
     errors.push('ALLOW_FIXTURE_SEED=true is required to acknowledge the destructive seed');
