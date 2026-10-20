@@ -25,8 +25,11 @@ Isolated InnoDB recovery procedures remain under `database/recovery-lab/` (lab c
    ```bash
    npm install
    npm run db:migrate
-   npm run db:migrate:seed
    ```
+
+   The dev fixture seed is destructive and opt-in: `npm run db:seed` requires
+   `ALLOW_FIXTURE_SEED=true` and a `DEPLOY_ENV` on the fixture allowlist
+   (`fixture`, `development`, `test`). Never on staging or production.
 
 Environment variables (defaults match compose):
 

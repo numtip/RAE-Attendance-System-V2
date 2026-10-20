@@ -11,6 +11,7 @@ Default `DATA_SOURCE=fixture`. The MariaDB adapter does not connect while ERROR 
 | Method | Path | Status | Contract |
 |---|---|---|---|
 | GET | `/api/v1/health` | 200 | `{ success: true, data: { status: "healthy", service: "rae-attendance-v2", version }, message }` |
+| GET | `/api/v1/ready` | 200 / 503 | Readiness gate. `data` is `{ status: "ready", checks: { config, database } }`. `503 CONFIG_INVALID` lists error codes only; `503 DB_UNAVAILABLE` when configured but unreachable. Never returns a host, port, credential or database name. |
 | POST | `/api/v1/auth/login` | 200 / 400 / 401 / 403 | Body `email`, `password`. Success `data` has `accessToken`, `refreshToken`, `employee`. |
 | POST | `/api/v1/auth/refresh` | 200 / 401 | Body `refreshToken`. The presented token is revoked on success. |
 | GET | `/api/v1/auth/me` | 200 / 401 | Bearer access token. Password hash is omitted. |

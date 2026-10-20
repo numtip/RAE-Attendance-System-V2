@@ -1,5 +1,6 @@
 const express = require('express');
 const healthRoutes = require('./routes/health');
+const readyRoutes = require('./routes/ready');
 const { createAuthenticate } = require('../../middleware/authenticate');
 const { createAuthController } = require('../../controllers/authController');
 const { createSsoController } = require('../../controllers/ssoController');
@@ -34,6 +35,7 @@ function createV1Router(container) {
 
   const router = express.Router();
   router.use('/health', healthRoutes);
+  router.use('/ready', readyRoutes);
 
   router.post('/auth/login', auth.login);
   router.post('/auth/refresh', auth.refresh);

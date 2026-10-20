@@ -14,14 +14,33 @@ From the repository root:
 
 ```bash
 cp .env.example .env
-# Set JWT_SECRET to a long random value for anything beyond fixture smoke tests.
+# REQUIRED: set JWT_SECRET to a long random value. The backend refuses to start
+# in production with an empty, placeholder, or <16-character secret.
 
-npm run staging:up
+npm run staging:up            # persistent: migrations only, never seeds
+curl -fsS http://127.0.0.1:8080/api/v1/ready
 ```
 
-This starts MariaDB, runs migrations + dev seed (`migrate` service), then backend and frontend with healthchecks.
+This starts MariaDB, applies pending migrations (`migrate` service), then backend and frontend with readiness healthchecks.
 
-Manual equivalent: `docker compose -f deploy/docker-compose.yml up -d --build --wait`
+Synthetic fixtures are **opt-in** and destructive:
+
+```bash
+npm run staging:fixture:up    # up + one-shot `seed` service
+# or, against an already-running stack:
+docker compose -f deploy/docker-compose.yml run --rm seed
+```
+
+`npm run db:seed` (`scripts/migrate.mjs --seed-only`) refuses to run unless all of the following hold:
+
+| Guard | Required |
+|---|---|
+| `ALLOW_FIXTURE_SEED` | exactly `true` |
+| `DEPLOY_ENV` | one of `fixture`, `development`, `test` — anything else, including unset, is refused |
+| `NODE_ENV` | one of `development`, `test`, `fixture` |
+| target host | `127.0.0.1`, `localhost`, `::1` or `mariadb` — otherwise `ALLOW_REMOTE_FIXTURE_SEED=true` |
+
+The refusal happens before a connection is opened, so a mistyped target is never touched. The compose `seed` service inherits `DEPLOY_ENV` from the environment and defaults it to `staging`, so it fails closed unless a disposable environment is stated explicitly.
 
 Verify Release 1 paths through the SPA proxy:
 
@@ -33,15 +52,18 @@ Use `MYSQL_*` env vars (defaults in `.env.example` target host port `3307` when 
 
 Verify:
 
-- `GET http://127.0.0.1:8080/api/v1/health` — API via frontend proxy
-- `GET http://127.0.0.1:3210/api/v1/health/db` — database connectivity when `DB_*` is set on the backend
+- `GET http://127.0.0.1:8080/api/v1/ready` — configuration and database readiness through the proxy (the compose healthcheck uses this)
+- `GET http://127.0.0.1:3210/api/v1/health/db` — database connectivity only, when `DB_*` is set on the backend
+
+Neither route returns a host, port, credential or database name.
 
 ## Migration command (CI and operators)
 
 | Command | Purpose |
 |--------|---------|
-| `npm run db:migrate` | Apply pending SQL from `database/migrations/` |
-| `npm run db:migrate:seed` | Migrate then load `database/seeds/dev-fixtures.sql` (lab/dev only) |
+| `npm run db:migrate` | Apply pending SQL from `database/migrations/`. Idempotent; safe on a persistent database |
+| `npm run db:seed` | Load `database/seeds/dev-fixtures.sql` only. Destructive, guarded, opt-in |
+| `npm run db:migrate:seed` | Migrate then seed in one run. Also guarded; dev/lab only |
 
 Environment for the migrate runner:
 
