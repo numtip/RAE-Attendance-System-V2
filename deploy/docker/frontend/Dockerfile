@@ -9,7 +9,8 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM nginx:1.27-alpine
+# Unprivileged image: runs as UID 101 and listens on 8080 by default.
+FROM nginxinc/nginx-unprivileged:1.27-alpine
 
 COPY deploy/docker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html

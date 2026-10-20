@@ -1,7 +1,11 @@
 const { createApp } = require('./app');
 const config = require('./config');
+const { assertRuntimeConfig } = require('./config/validate');
 
 function start(port = config.app.port) {
+  // Fail closed before listening: a container must never report healthy while
+  // its configuration is unusable in production.
+  assertRuntimeConfig(config);
   const host = process.env.HOST || '127.0.0.1';
   const app = createApp();
   const server = app.listen(port, host);
@@ -14,7 +18,13 @@ function start(port = config.app.port) {
 }
 
 if (require.main === module) {
-  start();
+  try {
+    start();
+  } catch (error) {
+    // Codes only: never echo configuration values.
+    console.error(`startup failed: ${error.code || 'STARTUP_ERROR'} ${error.message || ''}`.trim());
+    process.exit(1);
+  }
 }
 
 module.exports = { start };

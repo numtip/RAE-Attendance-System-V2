@@ -31,6 +31,8 @@ jobs:
         run: npm run contract:smoke
       - name: Data onboarding dry-run tests
         run: node --test scripts/data-onboarding/onboarding.test.mjs
+      - name: Staging seed guard tests
+        run: node --test scripts/stagingGuard.test.mjs
 
   backend-mariadb:
     runs-on: ubuntu-latest
@@ -73,8 +75,22 @@ jobs:
             backend/package-lock.json
       - name: Install migration tooling
         run: npm ci
-      - name: Apply migrations and dev seed
-        run: npm run db:migrate:seed
+      - name: Apply migrations
+        run: npm run db:migrate
+      - name: Migration idempotency (second run applies nothing)
+        run: |
+          npm run db:migrate > /tmp/migrate-second.log 2>&1
+          cat /tmp/migrate-second.log
+          if grep -q '^apply ' /tmp/migrate-second.log; then
+            echo "::error::a second migrate applied files; the ledger is not idempotent"
+            exit 1
+          fi
+          grep -q '^skip ' /tmp/migrate-second.log
+      - name: Load disposable fixture seed
+        env:
+          ALLOW_FIXTURE_SEED: 'true'
+          DEPLOY_ENV: fixture
+        run: npm run db:seed
       - name: Backend lint and MariaDB integration tests
         working-directory: backend
         run: |
@@ -96,15 +112,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Start staging stack
+      - name: Start staging stack (migrate only, no seed)
         env:
           JWT_SECRET: ci-compose-smoke-secret
         run: |
           docker compose -f deploy/docker-compose.yml up -d --build --wait
+      - name: Load disposable fixture seed
+        env:
+          JWT_SECRET: ci-compose-smoke-secret
+        run: docker compose -f deploy/docker-compose.yml run --rm seed
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - name: Full-stack Release 1 smoke
+        env:
+          COMPOSE_FRONTEND_URL: http://127.0.0.1:8080
+          COMPOSE_BACKEND_URL: http://127.0.0.1:3210
+        run: node scripts/compose-smoke.mjs
+      - name: Restart database and API to prove persistence
+        env:
+          JWT_SECRET: ci-compose-smoke-secret
+        run: docker compose -f deploy/docker-compose.yml restart mariadb backend frontend
+      - name: Smoke again after restart (data survived, no reseed)
         env:
           COMPOSE_FRONTEND_URL: http://127.0.0.1:8080
           COMPOSE_BACKEND_URL: http://127.0.0.1:3210

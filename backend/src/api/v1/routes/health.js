@@ -1,5 +1,4 @@
 const express = require('express');
-const config = require('../../../config');
 const { getPool, isDatabaseConfigured } = require('../../../db/pool');
 const { asyncRoute } = require('../../../utils/asyncRoute');
 const { failure, success } = require('../../../utils/response');
@@ -18,7 +17,6 @@ router.get('/db', asyncRoute(async (_req, res) => {
   if (!isDatabaseConfigured()) {
     success(res, {
       status: 'unconfigured',
-      database: null,
     }, 'Database env vars are not set');
     return;
   }
@@ -26,13 +24,13 @@ router.get('/db', asyncRoute(async (_req, res) => {
   try {
     const pool = getPool();
     await pool.query('SELECT 1 AS ok');
+    // No host or database name: this route is unauthenticated.
     success(res, {
       status: 'connected',
-      database: config.database.name,
-      host: config.database.host,
     }, 'Database is reachable');
-  } catch (error) {
-    failure(res, 503, 'DB_UNAVAILABLE', error.message);
+  } catch {
+    // Never echo the driver error: it carries host/port/user detail.
+    failure(res, 503, 'DB_UNAVAILABLE', 'Database is not reachable');
   }
 }));
 
