@@ -6,7 +6,7 @@
 **Related:** F4 gate in [`../memory/SESSION_2026-10-20.md`](../memory/SESSION_2026-10-20.md) §7,
 [`../IDENTITY_MAPPING_CONTRACT.md`](../IDENTITY_MAPPING_CONTRACT.md), migration `002_employees.sql`,
 `013_employee_identifier_foundation.sql`. The durable schema fix is proposed in
-`database/proposals/027_employee_uid_uuid_v4.up.sql` (not applied).
+`docs/proposals/027_employee_uid_uuid_v4.md` (not applied).
 
 > **Ledger note (verified 2026-10-21).** The applied ledger on `main` is `001`–`014` plus `025`–`026`.
 > Migrations `015`–`024` — the namespace triggers, `attendance_events`, and `employee_assignment` — exist only
@@ -107,9 +107,9 @@ digest, `national_id` is not a key type either — only `national_id_lookup` is.
 * The UID is opaque, so an operator cannot eyeball a UID and know who it is. That is the point, and it is why
   name/email lookups must go through the identifier layer rather than through the UID.
 * **The database still does not enforce the UUID shape.** Rule 1 is enforced in one code path, not in the
-  schema. The durable fix is `database/proposals/027_employee_uid_uuid_v4.up.sql` — an additive `CHECK`
-  (`CHAR_LENGTH = 36` plus a v4 regex, MariaDB ≥ 10.2.3, consistent with migrations `015`/`020`), with a
-  read-only `database/preflight/027_preflight.sql` that must report **0** non-conforming rows first. It is
+  schema. The durable fix is `docs/proposals/027_employee_uid_uuid_v4.md` — an additive `CHECK`
+  (`CHAR_LENGTH = 36` plus a v4 regex, MariaDB ≥ 10.2.3, consistent with migrations `015`/`020`), together
+  with a read-only preflight that must report **0** non-conforming rows first. It is
   **proposed, not applied, and not engine-verified**, because migrations are frozen. Residual risk **R-F4a**
   stays open until it is approved and run against a real MariaDB.
 
@@ -134,8 +134,8 @@ digest, `national_id` is not a key type either — only `national_id_lookup` is.
 
 ## 7. Follow-ups
 
-1. **R-F4a** — `database/proposals/027_employee_uid_uuid_v4.{up,down}.sql` plus
-   `database/preflight/027_preflight.sql`. Numbered **027** because the applied `main` ledger already ends at
+1. **R-F4a** — `docs/proposals/027_employee_uid_uuid_v4.md` (the up/down SQL plus a read-only preflight, kept
+   out of `database/migrations/` on purpose). Numbered **027** because the applied `main` ledger already ends at
    `026`. Needs: a preflight run showing 0 non-conforming rows, a real-MariaDB application test, and the
    migration gate (`ADR-011`-style approval). Not requested by this change.
 2. Import-time wiring: the plan must run inside the same transaction that inserts `employees` +

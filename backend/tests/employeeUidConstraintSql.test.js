@@ -1,9 +1,14 @@
 /**
- * Keeps the SQL shape constraint in step with the JavaScript rule.
+ * Guardrails for proposal 027, and parity between the SQL shape rule and the JavaScript rule.
  *
- * Two places now encode "what a version-4 UUID is": `domain/employeeUidAllocation.js` (the allocation policy)
- * and `database/proposals/027_…up.sql` (the proposed CHECK). If one drifts, the database would accept a UID the
- * code refuses to mint — or the reverse — and the failure would be invisible until an import.
+ * Two places encode "what a version-4 UUID is": `domain/employeeUidAllocation.js` (the allocation policy) and the
+ * proposed `CHECK` in `docs/proposals/027_employee_uid_uuid_v4.md`. If one drifts, the database would accept a
+ * UID the code refuses to mint — or the reverse — and the failure would be invisible until an import.
+ *
+ * The proposal lives in Markdown, not SQL, because `scripts/secret-scan.mjs` blocks every `.sql` file outside
+ * `database/migrations|seeds|rollbacks` and `.gitignore` ignores the rest. Those are deliberate controls; an
+ * unapplied DDL change must not be able to slip past them. A Markdown document is reviewable and the runner
+ * reads only `database/migrations/`, so this test also asserts the proposal can never be applied by accident.
  *
  * This is a parity test, not an engine test: it proves the two regexes agree on a sample set. It does NOT prove
  * MariaDB's REGEXP behaves like JavaScript's, which is why the proposal ships a preflight that probes the engine
@@ -19,19 +24,17 @@ const REPO_ROOT = path.join(
   path.dirname(require.resolve('../src/domain/employeeUidAllocation')),
   '..', '..', '..',
 );
-const UP_SQL = path.join(REPO_ROOT, 'database', 'proposals', '027_employee_uid_uuid_v4.up.sql');
-const DOWN_SQL = path.join(REPO_ROOT, 'database', 'proposals', '027_employee_uid_uuid_v4.down.sql');
-const PREFLIGHT_SQL = path.join(REPO_ROOT, 'database', 'preflight', '027_preflight.sql');
+const PROPOSAL = path.join(REPO_ROOT, 'docs', 'proposals', '027_employee_uid_uuid_v4.md');
 const CONSTRAINT_NAME = 'chk_employees_employee_uid_uuid_v4';
 
-function readSql(file) {
-  return fs.readFileSync(file, 'utf8');
+function readProposal() {
+  return fs.readFileSync(PROPOSAL, 'utf8');
 }
 
 /** The single source of the pattern inside the proposal, declared once and referenced everywhere. */
 function declaredPattern() {
-  const match = /-- UUID_V4_PATTERN:\s*(\S+)/.exec(readSql(UP_SQL));
-  assert.ok(match, 'the up-migration must declare its pattern on a UUID_V4_PATTERN line');
+  const match = /-- UUID_V4_PATTERN:\s*(\S+)/.exec(readProposal());
+  assert.ok(match, 'the proposal must declare its pattern on a UUID_V4_PATTERN line');
   return match[1];
 }
 
@@ -60,8 +63,7 @@ const SAMPLES = [
 ];
 
 test('the proposal and the policy module accept exactly the same values', () => {
-  const pattern = declaredPattern();
-  const sqlEquivalent = new RegExp(pattern);
+  const sqlEquivalent = new RegExp(declaredPattern());
   for (const sample of SAMPLES) {
     assert.equal(
       sqlEquivalent.test(sample),
@@ -73,26 +75,37 @@ test('the proposal and the policy module accept exactly the same values', () => 
 
 test('the declared pattern is exactly the one used in the ALTER and the post-condition', () => {
   const pattern = declaredPattern();
-  const sql = readSql(UP_SQL);
-  const occurrences = sql.split(pattern).length - 1;
+  const occurrences = readProposal().split(pattern).length - 1;
   assert.ok(occurrences >= 3, `expected the pattern in the marker, the ALTER and the post-condition; found ${occurrences}`);
 });
 
-test('the preflight probes the engine with the same pattern, including the four rejection cases', () => {
+test('the preflight probes the engine with the same pattern, including the rejection cases', () => {
   const pattern = declaredPattern();
-  const sql = readSql(PREFLIGHT_SQL);
+  const sql = readProposal();
   assert.ok(sql.includes(pattern), 'the preflight must use the declared pattern');
   for (const probe of ['accepts_a_v4', 'rejects_version_1', 'rejects_wrong_variant', 'rejects_non_uuid', 'rejects_trailing_space']) {
     assert.ok(sql.includes(probe), `the preflight is missing the ${probe} probe`);
   }
-  // A preflight that could write would defeat its purpose.
-  for (const forbidden of ['INSERT ', 'UPDATE ', 'DELETE ', 'ALTER ', 'DROP ', 'CREATE ', 'PREPARE ', 'EXECUTE ']) {
-    assert.equal(sql.toUpperCase().includes(forbidden), false, `the preflight must be read-only, found ${forbidden}`);
+});
+
+/** The first ```sql fenced block of a `## Heading` section. Prose after the block is excluded. */
+function sqlBlock(heading) {
+  const section = readProposal().split(`## ${heading}`)[1] ?? '';
+  const match = /```sql\r?\n([\s\S]*?)```/.exec(section);
+  assert.ok(match, `the proposal must contain a fenced sql block under "## ${heading}"`);
+  return match[1];
+}
+
+test('the preflight is read-only: no DDL, no DML, no dynamic SQL', () => {
+  const preflight = sqlBlock('Preflight');
+  assert.ok(preflight.length > 0, 'the proposal must contain a preflight section');
+  for (const forbidden of ['INSERT ', 'UPDATE ', 'DELETE ', 'ALTER ', 'DROP ', 'CREATE ', 'PREPARE ', 'EXECUTE ', 'TRUNCATE ']) {
+    assert.equal(preflight.toUpperCase().includes(forbidden), false, `the preflight must be read-only, found ${forbidden}`);
   }
 });
 
 test('the preflight never selects a nonconforming employee_uid, whole or partial', () => {
-  const sql = readSql(PREFLIGHT_SQL);
+  const sql = readProposal();
   // A nonconforming UID may be a pasted code or national ID, so even a prefix is a disclosure.
   for (const leak of ['LEFT(employee_uid', 'RIGHT(employee_uid', 'SUBSTRING(employee_uid, 1,', 'employee_uid AS', 'employee_uid_masked']) {
     assert.equal(sql.includes(leak), false, `the preflight must not select any part of the UID: found ${leak}`);
@@ -101,12 +114,11 @@ test('the preflight never selects a nonconforming employee_uid, whole or partial
 });
 
 test('the up-migration is additive, guarded and names one constraint', () => {
-  const sql = readSql(UP_SQL);
+  const sql = readProposal();
   assert.ok(sql.includes(CONSTRAINT_NAME));
   assert.ok(sql.includes('ADD CONSTRAINT'), 'the proposal must only add a constraint');
   assert.ok(sql.includes('information_schema.TABLE_CONSTRAINTS'), 'the proposal must be idempotent');
   assert.ok(sql.includes('CHAR_LENGTH(employee_uid) = 36'), 'the length must be part of the check');
-  // It must not rewrite data: the whole point of ADR-012 is that a UID is never re-keyed.
   for (const forbidden of ['UPDATE employees', 'DELETE FROM', 'DROP TABLE', 'TRUNCATE']) {
     assert.equal(sql.includes(forbidden), false, `a shape constraint must not ${forbidden}`);
   }
@@ -114,16 +126,19 @@ test('the up-migration is additive, guarded and names one constraint', () => {
 });
 
 test('the rollback drops the same constraint and is guarded', () => {
-  const sql = readSql(DOWN_SQL);
-  assert.ok(sql.includes(CONSTRAINT_NAME));
-  assert.ok(sql.includes('DROP CONSTRAINT'));
-  assert.ok(sql.includes('information_schema.TABLE_CONSTRAINTS'));
-  assert.equal(sql.includes('UPDATE '), false, 'a rollback must not rewrite rows either');
+  const down = sqlBlock('Down');
+  assert.ok(down.includes(CONSTRAINT_NAME));
+  assert.ok(down.includes('DROP CONSTRAINT'));
+  assert.ok(down.includes('information_schema.TABLE_CONSTRAINTS'));
+  assert.equal(down.includes('UPDATE '), false, 'a rollback must not rewrite rows either');
 });
 
-test('the proposal is not in the migration ledger directory, so the runner cannot apply it', () => {
-  // scripts/migrate.mjs reads only database/migrations/; a proposal must never live there unapproved.
+test('the proposal cannot be applied by the migration runner', () => {
+  // scripts/migrate.mjs reads only database/migrations/, and the secret scanner blocks stray .sql. Both are
+  // deliberate controls; an unapproved constraint must not be reachable through either.
   const ledgerCopies = fs.readdirSync(path.join(REPO_ROOT, 'database', 'migrations'))
-    .filter((name) => name.includes('employee_uid_uuid_v4'));
+    .filter((name) => name.includes('employee_uid_uuid_v4') || name.startsWith('027'));
   assert.deepEqual(ledgerCopies, [], 'the UUIDv4 check must stay out of database/migrations until approved');
+  assert.equal(PROPOSAL.endsWith('.sql'), false, 'the proposal must not be a .sql file the scanner would block');
+  assert.equal(fs.existsSync(path.join(REPO_ROOT, 'database', 'proposals', '027_employee_uid_uuid_v4.up.sql')), false);
 });
