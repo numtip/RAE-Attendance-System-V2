@@ -230,6 +230,16 @@ function createEmployeeIdentityService({ repositories, nationalIdProtector = nul
         if (error.code === 'UNKNOWN_EMPLOYEE') {
           throw new HttpError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found');
         }
+        // A national ID needs `employee_identifier.lookup_key_version`, which only migration
+        // 015_employee_identifier_secure_lookup adds. Without it the write is impossible, and a raw
+        // "Unknown column" error would look like a bug rather than a missing migration.
+        if (idType === 'national_id' && error.code === 'ER_BAD_FIELD_ERROR') {
+          throw new HttpError(
+            503,
+            'NATIONAL_ID_STORAGE_NOT_READY',
+            'national-ID storage requires migration 015_employee_identifier_secure_lookup',
+          );
+        }
         throw error;
       }
     },
