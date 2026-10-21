@@ -75,28 +75,30 @@ function createEmployeeIdentifierMariaDbRepository(pool) {
 
       const now = new Date();
       try {
-        const [result] = await pool.query(
-          `INSERT INTO employee_identifier (
-             employee_uid, id_type, id_value, lookup_key_version, source_system, is_primary, status, verified_at, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
-          [
-            input.employeeUid,
-            input.idType,
-            idValue,
-            lookupKeyVersion,
-            input.sourceSystem ?? null,
-            input.isPrimary ? 1 : 0,
-            input.verifiedAt ?? null,
-            now,
-            now,
-          ],
-        );
+        // `lookup_key_version` is referenced ONLY for national IDs, because only that identifier kind is stored
+        // as a versioned HMAC digest. Coupling every identifier write to the column would make facescan_id and
+        // employee_id depend on migration 015 as well, which is a wider dependency than the domain requires.
+        const isNationalId = input.idType === 'national_id';
+        const sql = isNationalId
+          ? `INSERT INTO employee_identifier (
+               employee_uid, id_type, id_value, lookup_key_version, source_system, is_primary, status, verified_at, created_at, updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`
+          : `INSERT INTO employee_identifier (
+               employee_uid, id_type, id_value, source_system, is_primary, status, verified_at, created_at, updated_at
+             ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`;
+        const params = isNationalId
+          ? [input.employeeUid, input.idType, idValue, lookupKeyVersion, input.sourceSystem ?? null, input.isPrimary ? 1 : 0, input.verifiedAt ?? null, now, now]
+          : [input.employeeUid, input.idType, idValue, input.sourceSystem ?? null, input.isPrimary ? 1 : 0, input.verifiedAt ?? null, now, now];
+
+        const [result] = await pool.query(sql, params);
         const [rows] = await pool.query(
-          `SELECT id, employee_uid, id_type, id_value, lookup_key_version, source_system, is_primary, status, verified_at, created_at, updated_at
+          `SELECT id, employee_uid, id_type, id_value, source_system, is_primary, status, verified_at, created_at, updated_at
            FROM employee_identifier WHERE id = ? LIMIT 1`,
           [result.insertId],
         );
-        return mapIdentifier(rows[0]);
+        const mapped = mapIdentifier(rows[0]);
+        // The version is known from the input; selecting it back would re-introduce the schema dependency.
+        return mapped ? { ...mapped, lookupKeyVersion: isNationalId ? lookupKeyVersion : null } : mapped;
       } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
           const existing = await this.findActiveByTypeAndValue(input.idType, idValue);
