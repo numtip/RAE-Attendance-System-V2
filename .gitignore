@@ -16,3 +16,13 @@ logs/
 .local/
 .DS_Store
 *.log
+
+# --- Owner-supplied personnel sources (never commit) ---
+database/roster*.csv
+
+# --- A migration proposal is reviewed BEFORE it is applied: keep it versioned ---
+!database/proposals/*.sql
+
+# --- Python bytecode from the local data-recovery scripts ---
+__pycache__/
+*.pyc

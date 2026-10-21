@@ -94,3 +94,31 @@ non-master HIP codes. The 2026-10-20 owner workbook covers **all 54** HIP codes 
 `dataperson.csv` is **no longer on disk**, so the two cannot be reconciled mechanically.
 **Grade:** `UNVERIFIABLE` (mapping), `VERIFIED` (both code sets).
 **Status:** open — the 19-code exclusion is neither confirmed nor revoked. Owner decision required.
+
+---
+
+## 2026-10-21
+
+### D-2026-10-21-01 — F4 employee identity policy is approved
+
+**Decision:** `employee_uid` is a **UUIDv4** allocated **once** for a verified new person, **reused verbatim** on
+re-import, **never derived** from a HIP/facescan code, national ID, RAE employee code, email or name. Identity is
+decided by `employee_identifier` **ownership only**; a name or an email may corroborate or warn but can never
+match. Ambiguous ownership, cross-identifier disagreement and duplicate candidates are `CONFLICT`; a candidate
+with no identifier is `QUARANTINE`. Nothing is merged automatically. Absence from a personnel export removes
+nobody and no history.
+**Grade:** `OWNER_CONFIRMED` (2026-10-21).
+**Implementation:** `backend/src/domain/employeeUidAllocation.js`, `docs/adr/ADR-012-employee-uid-allocation-policy.md`.
+**Not approved by this entry:** any import, migration, deploy, SSO activation or production change. No
+`employee_uid` has been allocated for any real person.
+**Supersedes:** nothing.
+**Open:**
+* **R-F4a** — the schema does not constrain `employee_uid` to a UUID. A `CHECK` is proposed in
+  `database/proposals/027_employee_uid_uuid_v4.up.sql` with a read-only preflight; **not applied and not
+  engine-verified**.
+* **N1** — 5 master codes (`1013`, `1015`, `1032`, `2019`, `3009`) are absent from the owner-approved 49-person
+  roster while all 5 hold FY2569 attendance evidence and 3 are `active`. Evidence indicates the roster is a
+  **subset** of the population, not a replacement; the population scope needs an owner decision. No record was
+  removed or merged. See `docs/EMPLOYEE_MASTER_F4_IDENTITY_POLICY.md` §4.
+* **N2/F2** — the roster's `name`/`c_name` columns behave as given/family name 48/49 with zero counter-examples,
+  but the source documents nothing and one family name differs at code `2017`. Needs owner confirmation.
