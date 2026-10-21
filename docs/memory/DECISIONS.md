@@ -94,3 +94,57 @@ non-master HIP codes. The 2026-10-20 owner workbook covers **all 54** HIP codes 
 `dataperson.csv` is **no longer on disk**, so the two cannot be reconciled mechanically.
 **Grade:** `UNVERIFIABLE` (mapping), `VERIFIED` (both code sets).
 **Status:** open — the 19-code exclusion is neither confirmed nor revoked. Owner decision required.
+
+---
+
+## 2026-10-21
+
+### D-2026-10-21-01 — F4 employee identity policy is approved
+
+**Decision:** `employee_uid` is a **UUIDv4** allocated **once** for a verified new person, **reused verbatim** on
+re-import, **never derived** from a HIP/facescan code, national ID, RAE employee code, email or name. Identity is
+decided by `employee_identifier` **ownership only**; a name or an email may corroborate or warn but can never
+match. Ambiguous ownership, cross-identifier disagreement and duplicate candidates are `CONFLICT`; a candidate
+with no identifier is `QUARANTINE`. Nothing is merged automatically. Absence from a personnel export removes
+nobody and no history.
+**Grade:** `OWNER_CONFIRMED` (2026-10-21).
+**Implementation:** `backend/src/domain/employeeUidAllocation.js`, `docs/adr/ADR-012-employee-uid-allocation-policy.md`.
+**Not approved by this entry:** any import, migration, deploy, SSO activation or production change. No
+`employee_uid` has been allocated for any real person.
+**Supersedes:** nothing.
+**Open:**
+* **R-F4a** — the schema does not constrain `employee_uid` to a UUID. A `CHECK` is proposed in
+  `docs/proposals/027_employee_uid_uuid_v4.md` (up, down and a read-only preflight, deliberately not `.sql`) with
+  a read-only preflight; **not applied and not engine-verified**.
+* **N1** — 5 master codes (`1013`, `1015`, `1032`, `2019`, `3009`) are absent from the owner-approved 49-person
+  roster while all 5 hold FY2569 attendance evidence and 3 are `active`. Evidence indicates the roster is a
+  **subset** of the population, not a replacement; the population scope needs an owner decision. No record was
+  removed or merged. See `docs/EMPLOYEE_MASTER_F4_IDENTITY_POLICY.md` §4.
+* **N2/F2** — the roster's `name`/`c_name` columns behave as given/family name 48/49 with zero counter-examples,
+  but the source documents nothing and one family name differs at code `2017`. Needs owner confirmation.
+
+### D-2026-10-21-02 — The roster is authoritative for its 49 records; the import is additive over all 54
+
+**Decision (owner direction, recorded 2026-10-21):** `database/roster_rae2027.csv` (49 people) is the
+**authoritative source for the records it contains**. The import is **additive**: it must preserve all **54**
+historical identities and their FY2569 attendance. **Absence from the roster is not evidence of resignation** and
+must never remove, merge or re-point a person. This is O-1/O-2 and it supersedes the open framing in
+`D-2026-10-20-09` for the *shape* of the import only (the 19-code `dataperson.csv` exclusion remains unresolved).
+**Grade:** `OWNER_CONFIRMED` (direction), implementation still gated by O-6…O-9 and F5/F6/F9/F10.
+**Settles:** the import shape and the disposition of the 5 non-roster identities (preserve, never delete).
+**Does not settle:** any per-row gate — 0 of 54 rows are import-ready.
+
+### D-2026-10-21-03 — O-3 is answered: the "code-less" workbook row IS HIP code 1015
+
+**Finding:** the premise that workbook row 11 has no code was an artefact of the `normalized_employee_master.csv`
+projection, which omits the `report_code` column. The integration source
+(`employee_master_integration.csv`) reports `report_code = 1015` for that row at index 9, all 54 rows carry
+`report_code`, and the row has no *employee* code (a different column).
+**Grade:** `VERIFIED` (primary source + 54/54 coverage + 28 February-only attendance rows on a device no other
+employee uses).
+**Corrects:** the N1/F10 note that treated this row as unreachable. **Does not close F10** — `1015` still has no
+`employee_code`; the open question is whether the HIP code may serve as `employee_id` or a code must be supplied.
+* **O-4** (name semantics) stays `CORROBORATED-ONLY`: three artefacts, zero counter-examples, nothing documented.
+  Not encoded.
+* **O-5** (spelling for code `2017`) is a single-character substitution between **non-homophone** consonants; not
+  determinable from local artefacts, and no automatic choice is permitted.

@@ -30,7 +30,7 @@ jobs:
           JWT_SECRET: ci-fixture-only-secret
         run: npm run contract:smoke
       - name: Data onboarding dry-run tests
-        run: node --test scripts/data-onboarding/onboarding.test.mjs
+        run: node --test scripts/data-onboarding/onboarding.test.mjs scripts/data-onboarding/rosterReconciliation.test.mjs
       - name: Staging seed guard tests
         run: node --test scripts/stagingGuard.test.mjs
       - name: Compose config regression tests

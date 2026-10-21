@@ -16,3 +16,13 @@ logs/
 .local/
 .DS_Store
 *.log
+
+# --- Local, gitignored data: reconciliation detail, normalized datasets, scratch analysis ---
+database/local/
+
+# --- Owner-supplied personnel sources (never commit) ---
+database/roster*.csv
+
+# --- Python bytecode from the local data-recovery scripts ---
+__pycache__/
+*.pyc
