@@ -21,7 +21,7 @@ Do not import old sessions, refresh tokens, or auth secrets. Those columns are d
 
 | Source field | Target field | Transform | Required | Validation | Duplicate policy | Null / default |
 |---|---|---|---|---|---|---|
-| `employee_uid` | `employee_uid` | Keep when present. Otherwise `stableEmployeeUid(employee_id)`. | Optional in source | UUID text when supplied | One row per `employee_id` | Generated when absent |
+| `employee_uid` | `employee_uid` | **Copied from the source; never derived.** It must already be a version-4 UUID produced by the identity allocator (`backend/src/domain/employeeUidAllocation.js`). The importer fails with `EMPLOYEE_UID_REQUIRED` when it is absent. | **Required** | Version-4 UUID | One row per `employee_id` | **No default — import is refused** |
 | `employee_id` | `employee_id` | Trim not applied; exact string | Required | Non-empty, unique | Reject file | No default |
 | `first_name_th` / `last_name_th` | same | Copy | Required | Non-empty | n/a | No default |
 | `first_name_en` / `last_name_en` | same | Copy | Optional | None | n/a | `NULL` |
