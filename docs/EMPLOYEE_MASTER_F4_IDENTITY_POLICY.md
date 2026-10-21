@@ -93,14 +93,41 @@ of all monthly exports per D-2026-10-20-06), the 2027 ID-card reference and the 
 national-ID reference**. It is reachable only by its `person_key` column, which is not the HIP code. It is the
 only row in the 54 with no usable code at all.
 
-This exposed a **defect in the reconciliation tool** shipped in the previous phase: given a master source
-without a `report_code` column, the tool silently skipped that row and reported **53 codes / 4 missing** instead
-of 54 / 5 — a denominator that quietly shrinks, which is the precise failure this project has already been
-bitten by. Fixed in this change: the row is now reported as `MASTER_ROW_WITHOUT_CODE`, the counts add up
-(`master_codes + master_rows_unkeyable = master_rows`), and the CLI exits non-zero. Evidence for the linkage
-between that row and code `1015` is corroborative only — index alignment (same position in both 54-row files),
-`source_workbook_row` 11, `resigned` status, and the fact that `1015` is the only reconciliation code with no
-master key. **It is not proof, and it is not acted on** (owner question **O-3**).
+### 4.2a Approved design direction (O-1 / O-2)
+
+Recorded per owner direction 2026-10-21, and appended to `docs/memory/DECISIONS.md` as
+**D-2026-10-21-02**:
+
+* the 49-person roster is **authoritative for the records it contains**;
+* the import is **additive** — it preserves all **54** historical identities and their FY2569 attendance;
+* **absence from the roster is not evidence of resignation**, and never removes, merges or re-points a person.
+
+This settles the *shape* of the import and the disposition of the 5 non-roster identities (preserve, never
+delete). It clears **no** per-row gate: 0 of 54 rows are import-ready.
+
+### 4.3 `1015` — resolved: the "code-less" row **is** code `1015`
+
+An earlier reading of this row was wrong, and the correction matters for F10. `normalized_employee_master.csv`
+**omits the `report_code` column entirely**, so in that one projection the row looked unreachable. The
+integration source (`employee_master_integration.csv`) carries `report_code = 1015` for that row, at index 9, and
+all 54 rows carry a `report_code`.
+
+| Evidence | Result |
+|---|---|
+| `report_code` in the integration source | `1015`, exactly one row, index 9 — **54 / 54 rows have a report code** |
+| Which column is missing | the **employee** code (a different column), not the code that identifies the person |
+| Positional alignment of the two 54-row projections | 53 / 53 coded rows identical; the only divergence is this row |
+| `person_key` | generated from the workbook code, not inferred |
+| Attendance dataset | code `1015`: 28 rows, February 2026 only, on a device **no other employee** uses |
+| Identity register | `1015` is the only record with `source_row = 11`; `MASTER_ONLY_NO_SCAN`, `match_method = NONE` |
+
+**O-3 is therefore `PROVEN`, not merely corroborated** — and the `MASTER_ROW_WITHOUT_CODE` reporting added to the
+tool is still correct, because a source that genuinely lacks a code column must never silently shrink the
+denominator. What it changes is the **consequence**: `1015` is no longer an unreachable ghost, it is a known person
+whose *employee* code is missing.
+
+**F10 stays open**, now with a precise question: may the HIP code serve as `employee_id` for `1015`, or must a
+separate employee code be supplied? That is an owner decision, not an inference.
 
 ### 4.4 What was *not* done
 
@@ -120,11 +147,17 @@ inferred. The reconciliation states in its own output that absence from a person
 | Roster `c_name` values that also occur as anyone's **given** name | **0** |
 | Workbook rows with exactly two name tokens | 52 of 54 (the other 2 are `1013`/`1015`, no name at all) |
 | Duplicated values across the roster | only in `c_name`: 2 values shared by exactly 2 rows each — the signature of siblings sharing a family name; `name` is 49/49 unique |
+| **Independent replication in the 2027 ID-card artefact** | token order given-then-family **47 / 48**, reverse **0 / 48**; `name` column 48 distinct, family column 46 distinct with exactly 2 pairs |
+| **Independent replication in the workbook** | `name` 52 distinct, family 50 distinct with exactly 2 pairs; mean lengths 7.29 / 7.75 |
+| Any `c_name` appearing inside a department/description string | **0** |
 
 So `name` = given name and `c_name` = family name is supported 48/49 with **zero counter-examples** in either
-direction. It is still a **statistical** conclusion: the roster does not document its columns, and `c_name`
-could plausibly have meant something else. F2 therefore stays `CONDITIONAL` and the assumption is **not**
-encoded — the tooling keeps `nameTh` and `cNameTh` separate and never concatenates them into a name it writes.
+direction, and **three artefacts independently reproduce the same shape** (one column always unique, the other
+always carrying exactly two 2-person collisions and longer on average, with no reversed order). That is a strong
+`CORROBORATED-ONLY` result, not proof: the source documents nothing, and the family-name/clustering test is only
+1 of 2. F2 therefore stays `CONDITIONAL` and the assumption is **not** encoded — the tooling keeps `nameTh` and
+`cNameTh` separate and never concatenates them into a name it writes.
+**What would settle it:** the roster's column contract, or an HR export with separate first/last fields.
 
 ### 5.2 The one changed name
 
@@ -136,12 +169,15 @@ encoded — the tooling keeps `nameTh` and `cNameTh` separate and never concaten
 | Shared prefix / suffix | 7 / 1 |
 | Same first character | yes |
 | Same character multiset | **no** |
-| Effect | a **single-character substitution** mid-string — not a truncation, not a reordering, not a transliteration, not an extra space |
-| Both sources current-looking | workbook status `active`; the roster carries a 2027 ID card for this person |
+| Effect | a **single-character substitution** at one position — not a truncation, not a reordering, not a transliteration, not an extra space |
+| Sound relation | the two characters are **different consonant classes**, so this is **not** a same-sound variant or a romanisation artefact |
+| Corroboration | the 2027 ID-card artefact matches the **workbook** spelling here, while its given name matches the roster — so the two artefacts genuinely disagree on this one character |
+| Independence caveat | the workbook's name column equals its own "reference from CSV" column for 52/52 rows, so the workbook and the ID-card CSV are **one lineage**, not two independent witnesses |
 | Action taken | **none** — no overwrite, no name-based merge, no new identity |
 
 Both spellings are plausible; choosing one is an owner decision (**O-5**), not an inference this change may make.
-Identity remains anchored on the HIP code, which matches exactly.
+Identity remains anchored on the HIP code, which matches exactly. **What would settle it:** the printed/scanned
+2027 ID card, or the owner naming the current spelling. File timestamps are not evidence.
 
 ## 6. Gate status
 
@@ -181,19 +217,28 @@ blocked by code : {"EFFECTIVE_FROM_UNVERIFIED": 54, "EMAIL_MISSING_OR_INVALID": 
 | `027` migration proposal + preflight | R-F4a in ADR-012 §4/§7 |
 | nothing else | F1/F2/F3/F5/F6/F9/F10 values, dates, names and codes were **not** invented |
 
-### 6.4 Independent security review — four defects found and fixed
+### 6.4 Independent reviews — two rounds, six defects found and fixed
 
-The branch was reviewed independently. The reviewer worked against the **dirty working tree** rather than the
-branch, so several of its findings describe files that are not in this PR (the 337-file diff it reports is the
-incident checkout, not this 17-file branch). Those are recorded in §6.5. Four findings **were** genuine defects
-in this branch's own files, and all four are fixed with regression tests:
+The branch was reviewed independently twice. Round one ran against the dirty working tree (so several of its
+findings described other people's WIP); round two reviewed the branch itself and found two **blockers**, which
+were reproduced by execution before being accepted:
 
 | # | Defect | Why it mattered | Fix |
 |---|---|---|---|
-| 1 | **National-ID ownership could never match.** Existing rows store an HMAC digest (migration `015`), but the plan keyed candidates on raw 13 digits. | A returning person whose only match was their national ID would be classified `CREATE` and receive a **second UID** — the exact failure "one person one UID" exists to prevent. | Ownership keys are `national_id_lookup` (digest) only. A candidate's raw ID is converted with the injected `nationalIdLookup`; if that is unavailable the row is **`QUARANTINE`**, never `CREATE`. An existing row carrying a raw ID now fails closed (`EXISTING_NATIONAL_ID_UNVERIFIABLE`) instead of being silently ignored. |
-| 2 | **The explicit-UID path could share a UID.** Two candidates could claim the same explicit UID, and an explicit UID belonging to someone else could attach a stranger's identifier. | UID sharing = identity merge = attendance misattribution. | Batch-wide `claimedUids` (seeded from existing), duplicate explicit UIDs → `DUPLICATE_EMPLOYEE_UID`, an explicit UID that exists but has **no** matching identifier → `EXPLICIT_UID_WITHOUT_IDENTIFIER_MATCH`, and a generated UID colliding with anything already claimed → `EMPLOYEE_UID_COLLISION`. |
-| 3 | **`--json` could leak PII through dictionary keys.** `by_employment_status` used the raw CSV value as a key, and the guard only inspected string values. | A malformed source could put a national ID or email into a summary key and out to stdout; the detail file had the same free-text exposure. | Employment status and employee type are allowlisted (unknown → `UNKNOWN`), row references must be digits, the guard now inspects keys **and** numbers, and the **whole detail artefact** is asserted — not just the summary. |
-| 4 | **The detail path was cwd-relative**, so running the CLI from `backend/` wrote outside the gitignored tree; and the preflight printed an 8-character prefix of a nonconforming UID. | Per-code data outside `database/local/` can be committed; a UID that is nonconforming may be a pasted national ID, so even a prefix discloses it. | New `resolveLocalOutputPath(repoRoot, …)` resolves against the repository root and proves containment. The preflight now emits length, a reason bucket and `SHA2(uid,256)` only. |
+| **B1** | **One person could receive two UIDs.** Batch-duplicate detection ran *before* a raw national ID was converted to its lookup digest, so one row carrying `national_id` and another carrying the same person's `national_id_lookup` were both classified `CREATE`. Reproduced: `create 2`, distinct UUIDs. | This is the exact invariant F4 exists to hold: one person, one UID. A duplicate UID splits a person's attendance history across two primary keys. | Two-pass planning: resolve every candidate's national ID to its digest first, then build the duplicate index from the **resolved** key namespace. Now `create 0`, both rows `CONFLICT`. Regression test added. |
+| **B2** | **`database/local/` was not actually gitignored on the branch.** The rule existed only in a dirty working-tree copy of `.gitignore`; the branch had `.local/` (literal dot) and nothing else. The CLI's per-code detail was therefore committable. The only test checked the *path string*, not git's answer. | The entire PII containment story rested on an assumption. | `database/local/` added to the branch `.gitignore`, plus a test that asks `git check-ignore` directly — with a control path that must **not** be ignored, so a broken `.gitignore` cannot pass. |
+| 1 | National-ID ownership could never match a stored digest | a returning person whose only match was their national ID would get a **second UID** | digest-only matching; unverifiable → `QUARANTINE`; a raw ID on an existing row fails closed |
+| 2 | Explicit-UID path could share one UID, or attach a stranger's identifier | identity merge / misattribution | batch-wide claims, `DUPLICATE_EMPLOYEE_UID`, `EXPLICIT_UID_WITHOUT_IDENTIFIER_MATCH`, collision detection |
+| 3 | `--json` could leak PII via dictionary keys; detail carried free text | PII to stdout / to disk | status+type allowlists, digit-only row refs, guard checks keys and numbers, whole detail asserted |
+| 4 | Detail path cwd-relative; preflight printed a UID prefix | data outside `database/local/`; digest disclosure | resolved against repo root with containment proof; length + reason + `SHA2` only |
+
+Three further issues were found and fixed in round two:
+
+| Issue | Fix |
+|---|---|
+| The PII guard **rejected its own input**: a random sha256 contains a 13-digit run ~4.7% of the time, so the CLI failed ~9% of runs with a misleading "13-digit value" error | whole-string hex digests are exempted (a real national ID can never be a 32+ char hex digest); verified 0/2000 false positives while all real leak cases still throw |
+| The ADR stated in the present tense that the database **stores** an HMAC national-ID lookup — it does not on `main` (F9 unapproved; the contract is slice-stack only) | reworded as a requirement the importer must satisfy, with the honest status stated; a future implementer can no longer build the wrong thing from this doc |
+| A tautological test (`existing.includes(person)` on the same array), an unused `STATUS` export with a self-asserting test, and an unused map | the test now compares UID snapshots before/after; dead code and its tautological test removed |
 
 | Also tightened |
 |---|
@@ -258,19 +303,35 @@ this workstation. A JS test proves the SQL regex and the JavaScript rule accept 
 (parity), but parity is not engine behaviour. Approval requires running the preflight and then the ALTER against
 a disposable MariaDB, exactly as F7 already requires for the import rehearsal.
 
+### 7a. Two preconditions that must be fixed before `027` can be applied
+
+Both were found by inspection and both are **correct behaviour of the constraint**, not defects in it. They are
+separate approved changes, not something this PR may quietly relax:
+
+| # | Finding | Consequence | Required separate change |
+|---|---|---|---|
+| 1 | `database/seeds/dev-fixtures.sql` seeds three employees whose `employee_uid` values have version nibbles **1, 2 and 3** (and variants 1, 2, 3). | Applying `027` to a seeded database **must fail** — a `CHECK` validates existing rows. That is the control working. | Update the dev seed to v4 values. Do **not** weaken the constraint to accommodate a fixture. |
+| 2 | `scripts/data-recovery/rehearse_fy2569_import.py` generates **uuid5** rehearsal UIDs. | An F7 rehearsal import run **after** `027` would be rejected for all 54 rows. F7 and R-F4a cannot both be exercised with the current generator. | Either run F7 first, or move the rehearsal key to v4 under its own approval. |
+
+This is exactly the class of finding the project keeps paying for: a control that looks additive in isolation, and
+is blocked by fixtures written before it existed.
+
 ## 8. Owner decisions needed
+
+**Settled by owner direction (2026-10-21, D-2026-10-21-02):** O-1 and O-2, and **O-3 is answered by evidence**
+(§4.3 — the row *is* code `1015`). What remains:
 
 | ID | Question | Why it blocks |
 |---|---|---|
-| **O-1** | Is the 49-person roster the **complete** current population, or is it a subset (e.g. MJU-account holders only)? | Evidence says subset: 3 `active` people are absent, 2 with 2027 ID cards. Determines whether the import is roster-shaped or population-shaped. |
-| **O-2** | If it is a subset: approve an **additive** import that preserves all 54 identities and takes the roster as authoritative only for the 49 fields it supplies. | The safe default, but it is an owner call, not an agent one. |
-| **O-3** | Is the workbook row with **no HIP code** (`source_workbook_row` 11, `resigned`) the same person as code **`1015`**? | Would let F10 be fixed by carrying the attendance code; until confirmed, `1015` has no identifier but its attendance rows. |
-| **O-4** | Confirm `name` = given name and `c_name` = family name. | Closes F2. Evidence is 48/49 with 0 counter-examples but the source documents nothing. |
-| **O-5** | Which spelling is current for code **`2017`**? | One-character family-name difference; no automatic overwrite is permitted. |
-| **O-6** | Supply a verified `effective_from` per person, or approve a documented placeholder policy. | Blocks F5 for all 54 rows. |
-| **O-7** | Supply owner-confirmed names for **`1013`** and **`1015`**. | Blocks F6 for 2 rows. |
-| **O-8** | Approve or reject the national-ID HMAC-lookup-only import path. | Blocks F9; 49 national IDs are waiting. |
-| **O-9** | Approve `027` and run its preflight against a disposable MariaDB. | Closes R-F4a; currently policy-only enforcement. |
+| **O-1 / O-2** | **`APPROVED DIRECTION`** — roster authoritative for its 49 records; import additive over all 54; absence is not resignation. | Settles the import's *shape*. Clears no per-row gate. |
+| **O-3** | **`PROVEN`** — the "code-less" row is code `1015`; only its *employee* code is missing. Needs a one-line acknowledgement to close the paperwork. | Only F10 remains open from this question. |
+| **O-4** | Confirm `name` = given name and `c_name` = family name. | Closes F2. Three artefacts agree with 0 counter-examples, but the source documents nothing. |
+| **O-5** | Which spelling is current for code **`2017`**? | A single-character, non-homophone family-name difference; one artefact favours each spelling; no automatic overwrite is permitted. |
+| **O-6 / F5** | Supply a verified `effective_from` per person, or approve a documented placeholder policy. | Blocks **all 54** rows. No employment-date source exists on this machine. |
+| **O-7 / F6** | Supply owner-confirmed names for **`1013`** and **`1015`**. | Blocks 2 rows (`NOT NULL` name columns). Absent from every local source. |
+| **O-8 / F9** | Approve or reject the national-ID HMAC-lookup-only import path. | Global gate; 49 national IDs waiting. The guard is tested; the contract is not implemented on `main`. |
+| **O-9 / R-F4a** | Approve `027`, **after** disposable-MariaDB evidence, and decide the two preconditions in §7a. | Policy-only enforcement today; the dev seed uses non-v4 UIDs and the F7 harness uses uuid5. |
+| **F10** | May the HIP code serve as `employee_id` for `1015`, or must a separate employee code be supplied? | 1 row. O-3 proves *who* the person is; the identifier *type* is the open question. |
 
 Carried forward and untouched: the 19-code `dataperson.csv` exclusion (D-2026-10-20-09) and the 24/25/26
 discrepancy counts (D-2026-10-20-08). Neither is resolvable from this roster.
@@ -292,12 +353,12 @@ discrepancy counts (D-2026-10-20-08). Neither is resolvable from this roster.
 
 | Suite | Result |
 |---|---|
-| Backend suite (`npm test`, `TZ=UTC`, fixture `JWT_SECRET`) | **583 pass, 12 skipped, 0 fail** (595 tests; was 550/12/0 at the start of this phase) |
-| F4 identity policy (`employeeUidAllocation`) | **36 / 36** — incl. 54-identity preservation, 49-row re-import = 0 `CREATE`, idempotent replay, HMAC-only national-ID matching, duplicate explicit UIDs, explicit-UID-without-identifier, UID collision |
+| Backend suite (`npm test`, `TZ=UTC`, fixture `JWT_SECRET`) | **585 pass, 12 skipped, 0 fail** (597 tests) |
+| F4 identity policy (`employeeUidAllocation`) | **37 / 37** — incl. 54-identity preservation, 49-row re-import = 0 `CREATE`, idempotent replay, HMAC-only national-ID matching, raw-vs-digest batch conflict, duplicate explicit UIDs, explicit-UID-without-identifier, UID collision |
 | Import guards (`employeeMasterImportGuards`) | **14 / 14** |
-| SQL ↔ JS parity (`employeeUidConstraintSql`) | **7 / 7** — incl. "the proposal is not in `database/migrations/`" and "the preflight selects no part of a UID" |
-| Roster reconciliation (`rosterReconciliation`) | **24 / 24** — incl. unkeyable row reported, UNKNOWN ≠ 0, cwd-independent detail path, PII in keys/numbers refused |
-| Data-onboarding suites together | **53 / 53** |
+| SQL ↔ JS parity (`employeeUidConstraintSql`) | **8 / 8** — incl. "the proposal is not in `database/migrations/`" and "the preflight selects no part of a UID" |
+| Roster reconciliation (`rosterReconciliation`) | **25 / 25** — incl. unkeyable row reported, UNKNOWN ≠ 0, cwd-independent detail path, **git-verified ignore rule**, digest-vs-national-ID, PII in keys/numbers refused |
+| Data-onboarding suites together | **54 / 54** |
 | Lint (`eslint src tests`) | clean |
 | Fixture PII hygiene (`nationalIdFixtureHygiene`) | **pass** — no checksum-valid literal added, no exemption requested |
 | Real-data run (both master sources) | exit 0 for the full source; non-zero for the unkeyable source (by design); both write inside `database/local/` even when invoked from `backend/` |
@@ -363,6 +424,45 @@ node scripts/data-onboarding/reconcile-roster-2027.mjs `
 1. **Owner answers O-1 … O-5** (population scope, the `1015` linkage, name semantics, the `2017` spelling).
    These unblock the *shape* of the import.
 2. **Owner supplies O-6 … O-8** (verified dates, two names, the national-ID path). These unblock the *rows*.
-3. **`MARIA_DB_REHEARSAL`** — re-run the import rehearsal against a disposable MariaDB (F7), and run
-   `027_preflight.sql` there in the same session to close R-F4a's evidence gap.
+3. **`MARIA_DB_REHEARSAL`** — see §14. Re-run the import rehearsal against a disposable MariaDB (F7) **and**
+   run the `027` preflight in the same session to close R-F4a's evidence gap.
 4. Only then a separate, explicitly approved import.
+
+## 14. Disposable MariaDB rehearsal plan (plan only — nothing executed)
+
+There is no MariaDB and no Docker on this workstation, so this is a plan, not evidence. It closes **F7** and
+produces the engine evidence **R-F4a** needs, in one disposable session.
+
+**Prerequisites**
+* Portable MariaDB 11.4.x winx64 from `archive.mariadb.org`, unpacked **outside** the repo.
+* `--bind-address=127.0.0.1`, a non-default port, a throwaway root password, `--auth-root-authentication-method=normal`.
+* `TZ=UTC` for every process; **one test file per process** (`node --test --test-force-exit tests/<file>.test.js`)
+  — the aggregate glob is not a valid signal on Windows; **a fresh database per run**.
+* Three databases: baseline, seeded, and test.
+* Extracted SQL and all evidence output stay under `database/local/` (gitignored). Never copy `027` into
+  `database/migrations/`.
+
+**Ordered procedure**
+
+1. Provision and start the instance; create the three databases.
+2. Baseline: apply `database/migrations/*.sql` **twice**; assert the second run is all `skip` (ledger idempotency).
+   Record the ledger count and note that this checkout carries 24 migration files versus `main`'s 001–014 + 025–026.
+3. `027` preflight: assert 5/5 probes `PASS`, `employees_nonconforming = 0`, `constraint_present = 0`.
+4. Control: run the same preflight on the **seeded** database; expect a non-zero nonconforming count and a
+   **refused** ALTER (§7a precondition 1). Log it; change nothing.
+5. Apply the up block via a client (not the runner, so the ledger is untouched). Assert `constraint_present = 1`.
+6. Re-run the up block → still exactly one constraint (DDL idempotency).
+7. Enforcement: v1 UUID rejected, non-UUID rejected, valid v4 accepted.
+8. Rollback: `constraint_present = 0`; re-run → still 0; row counts and checksum fingerprint **unchanged**; a
+   non-v4 insert now succeeds. Re-apply while that probe row exists → **must fail** (fail-closed); remove the
+   probe (disposable only) → re-apply succeeds.
+9. Orphan proof: with `027` applied, insert a `daily_attendance` row whose `employee_uid` does not exist and
+   assert it is **accepted** — `004_daily_attendance.sql` declares no FK. Do not add one to make a test pass.
+10. F7: re-run the import-harness assertions against real DDL (first import, wipe + re-import with an identical
+    fingerprint, forced-constraint rollback, `1015` vs `1032` distinct UIDs with disjoint dates, FK on
+    `employee_identifier` enforced, orphan insert allowed). **Ordering caveat:** the harness generates uuid5, so
+    run F7 **before** `027` or fix the generator first (§7a precondition 2).
+11. Backend MariaDB suites: `RUN_MARIADB_TESTS=1`, `CI=true`, fresh database per file, one file per process;
+    record per-file results.
+12. Teardown: shut down, delete the datadir, confirm no listener, confirm `git status` unchanged, and keep a
+    counts-only JSON under `database/local/`.

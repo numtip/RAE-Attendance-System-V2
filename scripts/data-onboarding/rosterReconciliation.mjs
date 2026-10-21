@@ -14,14 +14,6 @@
  * Everything is pure. The CLI supplies parsed rows.
  */
 
-export const STATUS = Object.freeze({
-  MATCHED: 'MATCHED',
-  MATCHED_WITH_CHANGES: 'MATCHED_WITH_CHANGES',
-  MISSING_FROM_ROSTER: 'MISSING_FROM_ROSTER',
-  EXTRA_IN_ROSTER: 'EXTRA_IN_ROSTER',
-  CONFLICT: 'CONFLICT',
-});
-
 export const CONFLICT_KIND = Object.freeze({
   DUPLICATE_HIP_CODE: 'DUPLICATE_HIP_CODE',
   HIP_CODE_OWNED_TWICE: 'HIP_CODE_OWNED_TWICE',
@@ -138,12 +130,10 @@ export function reconcileRoster({ rosterRows = [], masterRows = [] } = {}) {
   const duplicateCodes = [...rosterByCode.entries()].filter(([, rows]) => rows.length > 1).map(([code]) => code);
   for (const code of duplicateCodes) conflicts.push({ kind: CONFLICT_KIND.DUPLICATE_HIP_CODE, code });
 
-  const nationalIdOwners = new Map();
   for (const [nationalId, rows] of rosterByNationalId.entries()) {
     if (!nationalId) continue;
     const codes = [...new Set(rows.map((r) => r.code))];
     if (codes.length > 1) {
-      nationalIdOwners.set(nationalId, codes);
       conflicts.push({ kind: CONFLICT_KIND.NATIONAL_ID_UNDER_TWO_CODES, codes });
     }
   }
@@ -274,6 +264,16 @@ export function summarize(reconciliation) {
   };
 }
 
+/** A 13-digit Thai national ID. A content digest can never match it: a digest is 32+ hex characters. */
+const NATIONAL_ID_RUN = /\d{13}/;
+/**
+ * A hex content digest (sha256 of a file, an HMAC lookup, a fingerprint). These are checked first: a random
+ * 64-character digest contains a 13-digit run about 5% of the time, so a naive guard rejected its own input
+ * roughly 9% of runs with a misleading "13-digit value" error. A real national ID is exactly 13 digits and can
+ * never be 32+ hex characters, so exempting whole digests cannot hide a leak.
+ */
+const HEX_DIGEST = /^[0-9a-f]{32,128}$/i;
+
 /**
  * Refuses to hand out anything that looks like stored personal data: a 13-digit run (Thai national ID) or an
  * email address. Object **keys** and numeric values are checked too — a malformed CSV that lands a national ID
@@ -286,19 +286,22 @@ export function assertNoPersonalData(value, path = 'summary') {
     return value;
   }
   if (typeof value === 'number') {
-    if (/\d{13}/.test(String(value))) throw new Error(`refusing to emit a 13-digit numeric value at ${path}`);
+    if (NATIONAL_ID_RUN.test(String(value))) throw new Error(`refusing to emit a 13-digit numeric value at ${path}`);
     return value;
   }
   if (typeof value === 'object') {
     for (const [key, entry] of Object.entries(value)) {
-      if (/\d{13}/.test(key)) throw new Error(`refusing to emit an object key containing a 13-digit value at ${path}`);
-      if (EMAIL_SHAPE.test(key)) throw new Error(`refusing to emit an object key shaped like an email at ${path}`);
+      if (!HEX_DIGEST.test(key)) {
+        if (NATIONAL_ID_RUN.test(key)) throw new Error(`refusing to emit an object key containing a 13-digit value at ${path}`);
+        if (EMAIL_SHAPE.test(key)) throw new Error(`refusing to emit an object key shaped like an email at ${path}`);
+      }
       assertNoPersonalData(entry, `${path}.${key}`);
     }
     return value;
   }
   if (typeof value !== 'string') return value;
-  if (/\d{13}/.test(value)) throw new Error(`refusing to emit a 13-digit value at ${path}`);
+  if (HEX_DIGEST.test(value)) return value;
+  if (NATIONAL_ID_RUN.test(value)) throw new Error(`refusing to emit a 13-digit value at ${path}`);
   if (EMAIL_SHAPE.test(value)) throw new Error(`refusing to emit an email address at ${path}`);
   return value;
 }

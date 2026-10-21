@@ -24,19 +24,22 @@
  *
  * ## National IDs are lookup keys, never raw keys
  *
- * The database never stores a raw national ID: `employee_identifier.id_value` holds an HMAC-SHA-256 lookup for
- * `national_id` (migration 015), and the repository returns `null` for the id value. A raw 13-digit value can
- * therefore never match a stored row, so using one as an ownership key would silently classify a returning
- * person as new and give them a **second UID**.
+ * **Status of the HMAC contract: required by this policy, NOT implemented on this base branch.** F9 is
+ * unapproved, and on `main` there is no national-ID HMAC path at all — `employee_identifier.id_value` holds the
+ * raw 13 digits and no `national_id_lookup` column exists (the HMAC lookup and its migration exist only on the
+ * unmerged slice stack). This module therefore does not *find* digests; it requires the caller to supply them,
+ * and refuses to guess when it cannot:
  *
- * The rule here is therefore explicit:
  *   * existing rows are matched on `national_id_lookup` (the stored digest), and a raw `national_id` supplied
- *     for an existing row is **ignored** as a match key;
- *   * a candidate's raw `national_id` is converted with the injected `nationalIdLookup` function, which is the
- *     same contract the importer must use;
+ *     for an existing row is converted with `nationalIdLookup` or rejected outright;
+ *   * a candidate's raw `national_id` is converted with the injected `nationalIdLookup` function — the same
+ *     contract the importer must use once F9 is approved;
  *   * if a candidate carries a national ID and no lookup function is available, ownership cannot be proven, so
- *     the candidate is **QUARANTINE** (`NATIONAL_ID_LOOKUP_UNAVAILABLE`) rather than CREATE. Failing closed is
- *     the only safe answer: the alternative is a duplicate identity for a person who already exists.
+ *     the candidate is **QUARANTINE** (`NATIONAL_ID_LOOKUP_UNAVAILABLE`) rather than CREATE.
+ *
+ * Failing closed is the only safe answer: the alternative is a duplicate identity for a person who already
+ * exists. Treating "no HMAC yet" as "match on raw digits" would be worse than useless, because a raw value can
+ * never match stored data — it would look like a match check while never matching anything.
  *
  * This module is pure: no I/O, no clock, no database, no environment, no crypto key access. It returns a
  * *plan*; it never writes. The caller owns transactions and idempotency.
@@ -268,35 +271,17 @@ function planIdentityAllocation({
   const claimedUids = new Set(identities.keys());
   const seenExplicitUids = new Set();
 
-  // 1. Two candidate rows claiming the same identifier value => one of them is wrong. Neither is imported.
-  const batchOwners = new Map();
+  // 1. Pass one: resolve every candidate's raw national ID to its lookup digest, so a raw value and a stored
+  //    digest live in ONE namespace before any duplicate or ownership decision is taken. Building the
+  //    duplicate index first let the same new person appear twice — once as `national_id`, once as
+  //    `national_id_lookup` — and receive two UIDs.
   const normalized = candidates.map((candidate, index) => {
     const { matchKeys, nationalId } = normalizeIdentifiers(candidate?.identifiers);
-    for (const [type, value] of Object.entries(matchKeys)) {
-      const key = `${type}:${value}`;
-      if (!batchOwners.has(key)) batchOwners.set(key, new Set());
-      batchOwners.get(key).add(index);
-    }
-    return { index, candidate: candidate ?? {}, matchKeys, nationalId };
-  });
-
-  const decisions = normalized.map(({ index, candidate, matchKeys, nationalId }) => {
-    const candidateRef = candidate.candidateRef ?? `candidate-${index + 1}`;
-    const reasons = [];
-    const warnings = [];
-    const keys = { ...matchKeys };
-
-    // 1a. The same identifier value twice in one batch is a conflict, not a merge.
-    const duplicatedKeys = Object.keys(keys).filter((type) => batchOwners.get(`${type}:${keys[type]}`)?.size > 1);
-    const duplicateNationalId = nationalId != null
-      && normalized.some((other) => other.index !== index && other.nationalId === nationalId);
-    if (duplicatedKeys.length > 0 || duplicateNationalId) reasons.push(REASONS.DUPLICATE_WITHIN_BATCH);
-
-    // 1b. Turn the raw national ID into the only form that can match stored data.
-    let nationalIdUnverifiable = false;
+    let lookupDigest = null;
+    let nationalIdUnresolved = false;
     if (nationalId != null) {
       if (nationalIdLookup == null) {
-        nationalIdUnverifiable = true;
+        nationalIdUnresolved = true;
       } else {
         let digest = null;
         try {
@@ -305,13 +290,36 @@ function planIdentityAllocation({
           digest = null;
         }
         if (typeof digest === 'string' && LOOKUP_DIGEST.test(digest)) {
-          keys.national_id_lookup = digest.toLowerCase();
-          warnings.push(WARNINGS.NATIONAL_ID_LOOKED_UP);
+          lookupDigest = digest.toLowerCase();
         } else {
-          nationalIdUnverifiable = true;
+          nationalIdUnresolved = true;
         }
       }
     }
+    const keys = { ...matchKeys };
+    if (lookupDigest) keys.national_id_lookup = lookupDigest;
+    return { index, candidate: candidate ?? {}, keys, lookupDigest, nationalIdUnresolved };
+  });
+
+  // 2. Pass two: batch-duplicate detection over the RESOLVED key namespace.
+  const batchOwners = new Map();
+  for (const row of normalized) {
+    for (const [type, value] of Object.entries(row.keys)) {
+      const key = `${type}:${value}`;
+      if (!batchOwners.has(key)) batchOwners.set(key, new Set());
+      batchOwners.get(key).add(row.index);
+    }
+  }
+
+  const decisions = normalized.map(({ index, candidate, keys, lookupDigest, nationalIdUnresolved }) => {
+    const candidateRef = candidate.candidateRef ?? `candidate-${index + 1}`;
+    const reasons = [];
+    const warnings = [];
+    if (lookupDigest) warnings.push(WARNINGS.NATIONAL_ID_LOOKED_UP);
+
+    // 2a. The same identifier value twice in one batch is a conflict, not a merge.
+    const duplicatedKeys = Object.keys(keys).filter((type) => batchOwners.get(`${type}:${keys[type]}`)?.size > 1);
+    if (duplicatedKeys.length > 0) reasons.push(REASONS.DUPLICATE_WITHIN_BATCH);
 
     // 2. Ownership comes only from identifiers.
     const owners = new Set();
@@ -366,7 +374,7 @@ function planIdentityAllocation({
 
     // 5. Nothing to match on: a name or email alone is never identity.
     if (Object.keys(keys).length === 0) {
-      if (nationalIdUnverifiable) {
+      if (nationalIdUnresolved) {
         return freezeDecision({
           candidateRef,
           action: ACTIONS.QUARANTINE,
@@ -411,7 +419,7 @@ function planIdentityAllocation({
     }
 
     // 7. A national ID that could not be verified means ownership is unknown: never mint a UID on top of that.
-    if (nationalIdUnverifiable) {
+    if (nationalIdUnresolved) {
       return freezeDecision({
         candidateRef,
         action: ACTIONS.QUARANTINE,

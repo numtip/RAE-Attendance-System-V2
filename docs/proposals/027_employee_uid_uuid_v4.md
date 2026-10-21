@@ -197,3 +197,26 @@ WHERE e.employee_uid IS NULL;
 3. `constraint_present = 1` and `nonconforming_after = 0` afterwards.
 
 Until then, R-F4a stays open: the UUIDv4 rule is enforced by one code path, not by the schema.
+
+## Known preconditions (found by inspection — do not relax the constraint to satisfy them)
+
+| # | Finding | Consequence |
+|---|---|---|
+| 1 | `database/seeds/dev-fixtures.sql` seeds three employees whose `employee_uid` values have version nibbles **1, 2 and 3** (variants 1, 2, 3). | Applying this `CHECK` to a seeded database **must fail**, because a `CHECK` validates existing rows. That is the control working. Fix the seed in a separate change; never weaken the constraint for a fixture. |
+| 2 | `scripts/data-recovery/rehearse_fy2569_import.py` generates **uuid5** rehearsal UIDs (`uuid.uuid5(...)`). | An F7 rehearsal import run *after* `027` would be rejected for all 54 rows. Run F7 first, or move the rehearsal key to v4 under its own approval. |
+
+## Rehearsal sequence this proposal expects
+
+1. Provision a **disposable** MariaDB (`--bind-address=127.0.0.1`, non-default port, throwaway root password), outside the repo.
+2. `TZ=UTC`; **one test file per process**; a **fresh database per run**.
+3. Baseline: apply `database/migrations/*.sql` twice and assert the second run is all `skip` (ledger idempotency).
+4. Run this preflight. Gate: 5/5 probes `PASS`, `employees_nonconforming = 0`.
+5. Apply the up block via a client (not the runner, so the ledger is untouched). Assert `constraint_present = 1`.
+6. Re-run the up block → still exactly one constraint (idempotency).
+7. Enforcement: a v1 UUID and a non-UUID string must be rejected; a valid v4 must be accepted.
+8. Rollback → `constraint_present = 0`; re-run → still 0; row counts and a checksum fingerprint **unchanged**;
+   a non-v4 insert now **succeeds** (proves removal). Re-apply → must **fail** while that probe row exists
+   (fail-closed on existing data); delete the probe (disposable only) and re-apply → 1.
+9. With `027` applied, insert a `daily_attendance` row whose `employee_uid` does not exist in `employees` and
+   assert it is **accepted** — `004_daily_attendance.sql` declares no FK. Do not add one to make a test pass.
+10. Teardown: shut down, delete the datadir, confirm no listener, and confirm `git status` is unchanged.

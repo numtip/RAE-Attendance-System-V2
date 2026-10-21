@@ -17,6 +17,9 @@ logs/
 .DS_Store
 *.log
 
+# --- Local, gitignored data: reconciliation detail, normalized datasets, scratch analysis ---
+database/local/
+
 # --- Owner-supplied personnel sources (never commit) ---
 database/roster*.csv
 

@@ -351,6 +351,24 @@ test('two candidate rows sharing only a national ID are also a batch conflict', 
   assert.equal(plan.summary.create, 0);
 });
 
+test('a raw national ID and the same person\'s stored digest in one batch are a conflict, not two UIDs', () => {
+  // Regression: batch-duplicate detection used to run BEFORE the raw national ID was hashed, so these two rows
+  // were both classified CREATE and one person received two UIDs.
+  const plan = planIdentityAllocation({
+    candidates: [
+      { candidateRef: 'row-raw', identifiers: { facescan_id: '9151', national_id: NATIONAL_ID_1 } },
+      { candidateRef: 'row-digest', identifiers: { national_id_lookup: DIGEST_A } },
+    ],
+    nationalIdLookup: LOOKUP,
+  });
+  assert.equal(plan.summary.create, 0, 'the same person must never be created twice');
+  assert.equal(plan.summary.conflict, 2);
+  for (const decision of plan.decisions) {
+    assert.deepEqual(decision.reasons, [REASONS.DUPLICATE_WITHIN_BATCH]);
+    assert.equal(decision.employeeUid, null);
+  }
+});
+
 test('a name-only candidate is quarantined and no UID is allocated', () => {
   let generated = 0;
   const plan = planIdentityAllocation({
@@ -496,6 +514,7 @@ test('the 5 people outside the roster keep their identities and are never mentio
   const existing = historicalRegistry();
   const outside = existing.slice(ROSTER_COUNT);
   assert.equal(outside.length, HISTORICAL_COUNT - ROSTER_COUNT);
+  const uidsBefore = existing.map((row) => row.employeeUid);
 
   const candidates = existing.slice(0, ROSTER_COUNT).map((row, index) => ({
     candidateRef: `roster-${index + 1}`,
@@ -506,8 +525,10 @@ test('the 5 people outside the roster keep their identities and are never mentio
   const plannedUids = new Set(plan.decisions.map((d) => d.employeeUid));
   for (const person of outside) {
     assert.equal(plannedUids.has(person.employeeUid), false, 'an out-of-roster identity must not appear in the plan');
-    assert.equal(existing.includes(person), true, 'the existing identity must survive untouched');
   }
+  // The registry itself must be byte-identical afterwards: nothing is re-pointed, removed or rewritten.
+  assert.deepEqual(existing.map((row) => row.employeeUid), uidsBefore);
+  assert.equal(existing.length, HISTORICAL_COUNT);
   assert.equal(JSON.stringify(plan.decisions).includes('delete'), false);
   assert.equal(JSON.stringify(plan.decisions).includes('resign'), false);
 });

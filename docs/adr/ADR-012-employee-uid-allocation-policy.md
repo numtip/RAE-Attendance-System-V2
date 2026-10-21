@@ -53,13 +53,17 @@ Made concrete:
    `employee_identifier` (`facescan_id`, `national_id`, `employee_id`, `personnel_id`). An email or a name
    match never creates, merges or re-points an identity. It can corroborate a match an identifier already
    proved, and it produces a warning when it disagrees (a legitimate name or email change).
-5. **A national ID is a lookup digest, never a raw key.** The database stores an HMAC lookahead for
-   `national_id`, so a raw 13-digit value can never match a stored row. Matching therefore happens on
-   `national_id_lookup` only: a candidate's raw value is converted with the injected `nationalIdLookup`, and if
-   that is unavailable the row is **`QUARANTINE`** (`NATIONAL_ID_LOOKUP_UNAVAILABLE`) rather than `CREATE`.
-   `POLICY.national_id_key = 'lookup_digest_only'` records the rule. Without this, a returning person whose only
-   match is their national ID would be classified new and receive a **second UID** — the precise failure rule 3
-   exists to prevent.
+5. **A national ID is a lookup digest, never a raw key.** Ownership for that identifier kind is keyed on
+   `national_id_lookup` (the digest), never on the raw 13 digits, because a digest is the only form that can be
+   compared against stored identifier rows once F9's HMAC contract is approved. A candidate's raw value is
+   converted with the injected `nationalIdLookup`; if that is unavailable the row is **`QUARANTINE`**
+   (`NATIONAL_ID_LOOKUP_UNAVAILABLE`) rather than `CREATE`. `POLICY.national_id_key = 'lookup_digest_only'`
+   records the rule. Without this, a returning person whose only match is their national ID would be classified
+   new and receive a **second UID** — the precise failure rule 3 exists to prevent.
+   **Honest status:** the HMAC lookup is **not implemented on `main`** — F9 is unapproved and `id_value` holds
+   raw digits today (the contract lives only on the unmerged slice stack). So no *existing* row can be matched
+   by national ID yet; this rule defines what the importer must supply once F9 lands, and fails closed until
+   then.
 6. **No automatic merge.** Three situations are `CONFLICT` and are handed to a human; nothing is merged,
    deleted or re-pointed:
    * one identifier value owned by two different UIDs;

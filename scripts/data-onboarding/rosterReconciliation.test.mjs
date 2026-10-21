@@ -5,8 +5,11 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import {
-  STATUS,
   CONFLICT_KIND,
   CHANGE_KIND,
   normalizeRosterRow,
@@ -38,8 +41,8 @@ test('the CSV reader keeps a Thai header intact and drops blank rows', () => {
 let counter = 0;
 /**
  * A 13-digit value that deliberately FAILS the Thai checksum, so it is structurally incapable of being a real
- * citizen ID. Built at runtime: `backend/tests/nationalIdFixtureHygiene.test.js` bans committed literals that
- * pass the checksum, and this suite must satisfy that guard rather than be exempted from it.
+ * citizen ID. Built at runtime so no checksum-valid literal is ever committed: the repo's fixture-hygiene guard
+ * (present on the slice stack, not on the base branch this file was written against) bans exactly that.
  */
 function syntheticNationalId() {
   counter += 1;
@@ -280,6 +283,48 @@ test('the detail path is resolved against the repository root, not the current d
   assert.throws(() => resolveLocalOutputPath('/repo', 'database/local/../../x.json'), /database\/local/);
 });
 
+test('the repository actually ignores database/local/ (the guard above is not enough on its own)', () => {
+  // Regression: the detail artefact was "gitignored" by assumption. `database/local/` was present only in a
+  // dirty working-tree copy of .gitignore, so on a clean clone the per-code detail was committable. This test
+  // asks git for its real answer; from an extracted tree (no .git) it falls back to the committed file content.
+  const repoRoot = path.join(
+    path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')),
+    '..', '..',
+  );
+  const inGitWorkTree = (() => {
+    try {
+      execFileSync('git.exe', ['rev-parse', '--is-inside-work-tree'], { cwd: repoRoot, stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  if (!inGitWorkTree) {
+    // No git here (e.g. a source archive). Fall back to the committed rule, which is the part that ships.
+    const ignoreText = readFileSync(path.join(repoRoot, '.gitignore'), 'utf8');
+    assert.match(ignoreText, /^database\/local\/$/m, 'the committed .gitignore must ignore database/local/');
+    assert.match(ignoreText, /^database\/roster\*\.csv$/m, 'the committed .gitignore must ignore the roster CSV');
+    return;
+  }
+
+  const ignored = (relPath) => {
+    try {
+      // `git check-ignore` exits 0 when the path IS ignored, 1 when it is not.
+      execFileSync('git.exe', ['check-ignore', '-q', relPath], { cwd: repoRoot, stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  assert.equal(ignored('database/local/f4-20261021/reconciliation.json'), true,
+    'database/local/ must be ignored by the committed .gitignore, not by a local-only edit');
+  assert.equal(ignored('database/roster_rae2027.csv'), true, 'the owner-supplied roster must be ignored');
+  // A control: a path that must NOT be ignored, so a broken/empty .gitignore cannot pass this test.
+  assert.equal(ignored('backend/src/domain/employeeUidAllocation.js'), false,
+    'a source file must never be ignored');
+});
+
 test('an unknown employment_status is reported as UNKNOWN instead of being echoed', () => {
   // A malformed or hostile source could put anything in this column; it must not become a summary key.
   const result = reconcileRoster({
@@ -309,14 +354,15 @@ test('the personal-data guard also inspects object keys and numeric values', () 
   assert.doesNotThrow(() => assertNoPersonalData({ counts: { matched: 49, conflicts: 0 } }));
 });
 
-// --- status vocabulary -------------------------------------------------------------------------------
-
-test('the status vocabulary the report uses is stable', () => {
-  assert.deepEqual(Object.values(STATUS), [
-    'MATCHED',
-    'MATCHED_WITH_CHANGES',
-    'MISSING_FROM_ROSTER',
-    'EXTRA_IN_ROSTER',
-    'CONFLICT',
-  ]);
+test('a hex content digest is not mistaken for a national ID', () => {
+  // Regression: a random sha256 contains a 13-digit run ~5% of the time, so the guard rejected its own input
+  // roughly 9% of runs with a misleading PII error. A real national ID is 13 digits and can never be a
+  // 32+ character hex digest, so digest values must pass while genuine leaks are still caught.
+  for (let i = 0; i < 500; i += 1) {
+    const digest = createHash('sha256').update(`fixture-${i}`).digest('hex');
+    assert.doesNotThrow(() => assertNoPersonalData({ inputs: { roster: { sha256: digest } } }));
+  }
+  // A digest-shaped key is fine too; a national-ID-shaped key is still refused.
+  assert.doesNotThrow(() => assertNoPersonalData({ by_digest: { [createHash('sha256').update('k').digest('hex')]: 1 } }));
+  assert.throws(() => assertNoPersonalData({ by_status: { 9900000000002: 1 } }), /object key/);
 });
