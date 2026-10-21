@@ -29,14 +29,39 @@ export const SCOPE_TYPES = new Set(['self', 'org_unit', 'organization']);
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * A version-4 UUID, spelled out for both cases so the check is independent of any collation. This is the same
+ * shape the identity policy requires (`backend/src/domain/employeeUidAllocation.js`) and the same shape proposal
+ * `027` would enforce in the database. It is duplicated here rather than imported because this module is ESM
+ * under `scripts/` and the policy module is CommonJS under `backend/`; a test asserts the two agree.
+ */
+const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export function sha256Text(text) {
   return createHash('sha256').update(text).digest('hex');
 }
 
-export function stableEmployeeUid(employeeId) {
-  const hash = createHash('sha256').update(`rae-attendance-v2:employee:${employeeId}`).digest('hex');
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+/** True when the value is a version-4 UUID. Used by the import guards below. */
+export function isEmployeeUidV4(value) {
+  return typeof value === 'string' && UUID_V4_RE.test(value);
 }
+
+/**
+ * Why there is no `stableEmployeeUid` any more (ADR-012 rule 3).
+ *
+ * This module used to expose `stableEmployeeUid(employeeId)`, which hashed the RAE employee code into a
+ * v4-*shaped* UUID. Two things were wrong with it:
+ *
+ *   1. It **derived** the primary key from a public business identifier. Anyone holding an employee code could
+ *      compute that person's `employee_uid`, which makes "one person one UID" collapse back into "one code one
+ *      UID" — the exact failure the identifier-namespace triggers exist to prevent.
+ *   2. It was forged to look compliant: it hard-coded the version nibble `4` and the variant nibble `a`, and
+ *      dropped two hash characters, so the result passed both the policy's v4 regex and proposal `027`'s CHECK
+ *      pattern while being fully reproducible. A database constraint could never have caught it.
+ *
+ * The UID is therefore now an INPUT, not an output: a caller must supply one that the identity allocator
+ * produced. Import fails closed when it is absent, rather than inventing an identity.
+ */
 
 export function isIsoDate(value) {
   if (typeof value !== 'string' || !DATE_RE.test(value)) return false;
@@ -136,6 +161,15 @@ export function validateSource(bundle) {
     }
     if (SECRET_FIELDS.has('password_hash') && row?.password_hash) {
       issue(errors, 'employees', index, 'SECRET_PRESENT', 'password_hash must not be imported');
+    }
+    // ADR-012 rule 3: the UID is an input from the identity allocator, never something this tool invents.
+    // Reported as a validation issue so a dry run lists every offending row instead of throwing on the first.
+    if (!row?.employee_uid) {
+      issue(errors, 'employees', index, 'EMPLOYEE_UID_REQUIRED',
+        'employee_uid must be supplied by the identity allocator (ADR-012); it is never derived');
+    } else if (!isEmployeeUidV4(row.employee_uid)) {
+      issue(errors, 'employees', index, 'INVALID_UUID',
+        'employee_uid must be a version-4 UUID');
     }
   });
 
@@ -289,8 +323,16 @@ function uidFor(row, employeesById) {
 
 export function transformSource(bundle) {
   const now = '1970-01-01 00:00:00';
-  const employees = asArray(bundle, 'employees').map((row) => {
-    const employeeUid = row.employee_uid || stableEmployeeUid(row.employee_id);
+  const employees = asArray(bundle, 'employees').map((row, index) => {
+    // Fail closed (ADR-012 rule 3): a UID is never derived here. See the block comment above for why the old
+    // `stableEmployeeUid` fallback was removed rather than merely deprecated.
+    const employeeUid = row.employee_uid;
+    if (!isEmployeeUidV4(employeeUid)) {
+      throw new Error(
+        `employees[${index}]: employee_uid must be a version-4 UUID supplied by the identity allocator `
+        + '(ADR-012 rule 3). This importer does not derive identifiers.',
+      );
+    }
     return {
       employee_uid: employeeUid,
       employee_id: row.employee_id,

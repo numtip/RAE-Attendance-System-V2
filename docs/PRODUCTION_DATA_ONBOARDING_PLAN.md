@@ -30,7 +30,7 @@ The scripts in `scripts/data-onboarding/` implement the steps through dry-run an
 
 | Property | How |
 |---|---|
-| Idempotent | Natural keys and `stableEmployeeUid(employee_id)` make a repeated dry-run identical. |
+| Idempotent | Natural keys make a repeated dry-run identical, and a stored `employee_uid` is reused verbatim rather than regenerated (ADR-012 rule 2). The UID is an input from the identity allocator, never derived from `employee_id`. |
 | Resumable | Pass a list of already applied `table:key` values. Those keys are reported as `skip`. |
 | Dry-run | `import-dry-run.mjs` prints a plan and sets `writesDatabase: false`. |
 | Rollback | The report lists `rollbackKeys` for rows the plan would insert. Deleting by those keys is a later approved step, not executed here. |

@@ -28,7 +28,7 @@ Three properties of the existing schema made an ad-hoc answer dangerous:
 | Fact | Evidence |
 |---|---|
 | The database does **not** enforce the UID's shape. | `VARCHAR(36) NOT NULL`, no default, no CHECK, no generated column, no trigger (`002_employees.sql:2` — on `main`, verified). Any 36-character string is a valid primary key today. |
-| Nothing in production code creates an `employees` row. | No `INSERT INTO employees` in `backend/src`; allocation existed only as a synthetic dry-run helper and an explicitly unapproved `uuid5` in the SQLite rehearsal harness. |
+| Nothing in production code creates an `employees` row. | No `INSERT INTO employees` in `backend/src`. Allocation existed only in non-production tooling, and **two of those sites derived the UID from a public code**: `scripts/data-onboarding/lib.mjs` (`stableEmployeeUid`, removed by D-2026-10-21-04) and `backend/scripts/fy2569-local-import.mjs` (`uidFor`, removed by the same change), plus an explicitly unapproved `uuid5` in the SQLite rehearsal harness. All three produced v4-*shaped* values that pass this ADR's regex and proposal `027`'s CHECK, which is why a schema constraint alone could not have caught them. |
 | Renaming a UID would not be blocked by referential integrity for most history. | `daily_attendance` (`004`) and `monthly_summary` (`005`) declare **no FK at all** (verified on `main`), so a re-key would silently orphan the normalized attendance rows rather than fail. `attendance_events` does hold a `RESTRICT` FK, but that table is `016` — **(slice stack)**, not on `main`. |
 
 ## 2. Decision

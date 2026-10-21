@@ -5,7 +5,6 @@ import {
   dryRun,
   inspectSource,
   reconcile,
-  stableEmployeeUid,
   transformSource,
   validateSource,
 } from './lib.mjs';
@@ -19,9 +18,61 @@ test('mapping: synthetic sample passes validation and drops secrets', () => {
   assert.equal(validation.ok, true);
   const transformed = transformSource(sample);
   assert.equal(transformed.employees[0].password_hash, null);
-  assert.equal(transformed.employees[0].employee_uid, stableEmployeeUid('SYN-001'));
+  // The UID is copied from the source, never derived from the employee code (ADR-012 rule 3).
+  assert.equal(transformed.employees[0].employee_uid, sample.employees[0].employee_uid);
   assert.equal(transformed.employee_leave[0].leave_id, 'SYN-LV-1');
   assert.equal(transformed.omitted.refresh_tokens.includes('do not copy'), true);
+});
+
+test('mapping: a missing employee_uid is a validation failure, not a derived identity', () => {
+  const noUid = structuredClone(sample);
+  delete noUid.employees[0].employee_uid;
+  const validation = validateSource(noUid);
+  assert.equal(validation.ok, false);
+  const codes = validation.errors.map((e) => e.code);
+  assert.ok(codes.includes('EMPLOYEE_UID_REQUIRED'), `expected EMPLOYEE_UID_REQUIRED, got ${codes.join(',')}`);
+  // And the transform must refuse rather than invent one.
+  assert.throws(() => transformSource(noUid), /employee_uid must be a version-4 UUID/);
+});
+
+test('mapping: a non-v4 employee_uid is rejected', () => {
+  const wrongShape = structuredClone(sample);
+  wrongShape.employees[0].employee_uid = 'SYN-001';
+  const validation = validateSource(wrongShape);
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some((e) => e.code === 'INVALID_UUID'));
+  assert.throws(() => transformSource(wrongShape), /version-4 UUID/);
+});
+
+test('mapping: the employee UID is identical whatever the employee code is', () => {
+  // Regression for the removed `stableEmployeeUid`: changing only the code must not change the UID, and
+  // changing only the UID must be honoured. If a derivation is ever reintroduced, this fails.
+  const renamed = structuredClone(sample);
+  const original = renamed.employees[0].employee_uid;
+  renamed.employees[0].employee_id = 'SYN-RENAMED';
+  // The identifier rows reference the old code, so validate the employee row in isolation.
+  const transformed = transformSource({ employees: [renamed.employees[0]] });
+  assert.equal(transformed.employees[0].employee_uid, original);
+});
+
+test('guard: the module cannot derive an employee UID anywhere', async () => {
+  // ADR-012 rule 3. The removed `stableEmployeeUid` was a sha256 of the employee code, reshaped to pass a v4
+  // check. A behavioural test alone cannot prove no derivation exists on another path, so this asserts the
+  // source: no such export, and no sha256 over an identity field.
+  const source = await readFile(new URL('./lib.mjs', import.meta.url), 'utf8');
+  assert.equal(/export\s+function\s+stableEmployeeUid/.test(source), false,
+    'stableEmployeeUid must not be exported (ADR-012 rule 3)');
+  assert.equal(/export\s+(function|const)\s+\w*[Dd]erive\w*Uid/.test(source), false,
+    'no UID-derivation helper may be exported');
+  // A sha256 over an employee identifier would be the same defect under a new name.
+  const forbidden = [
+    /sha256[^\n]*employee_?[Ii]d/,
+    /employee_?[Ii]d[^\n]*sha256/,
+    /createHash\([^)]*\)[\s\S]{0,80}employee_?[Ii]d/,
+  ];
+  for (const pattern of forbidden) {
+    assert.equal(pattern.test(source), false, `lib.mjs must not hash an employee identifier: ${pattern}`);
+  }
 });
 
 test('mapping: duplicate employee code and balance mismatch fail', () => {

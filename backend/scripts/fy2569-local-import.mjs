@@ -4,7 +4,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -65,10 +65,10 @@ function read(file) {
   return parseCsv(fs.readFileSync(file, 'utf8'));
 }
 
-function uidFor(code) {
-  const hex = createHash('sha256').update(`fy2569:${code}`).digest('hex').slice(0, 32);
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-}
+// ADR-012 rule 3: an `employee_uid` is never derived from a person code. This harness previously built one with
+// sha256("fy2569:" + code) shaped like a UUID, which is fully reproducible from a public code and would pass a
+// v4-shaped database CHECK. It now allocates a fresh UUIDv4 per person at import time; the in-memory `uidByCode`
+// map below keeps attendance/leave consistent within a run, and that is all the determinism this needs.
 
 const peopleRows = read(path.join(sourceRoot, 'docs', 'dataperson.csv'));
 const eventRows = read(path.join(prepared, 'events.csv'));
@@ -112,7 +112,7 @@ const passwordHash = bcrypt.hashSync('fy2569-local-only', 8);
 const employees = plan.people.map((person) => {
   const [firstNameTh, ...rest] = String(person.name).split(' ');
   return {
-    employeeUid: uidFor(String(person.code)),
+    employeeUid: randomUUID(),
     employeeId: String(person.code),
     firstNameTh: firstNameTh || '-',
     lastNameTh: rest.join(' ') || '-',
