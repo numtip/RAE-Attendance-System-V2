@@ -46,6 +46,8 @@ function createV1Router(container) {
   router.get('/auth/sso/callback', sso.callback);
   router.get('/auth/sso/me', authenticate, sso.me);
   router.post('/auth/sso/logout', authenticate, sso.logout);
+  // Public and idempotent: ends the MJU IdP session and lands the browser safely. Revokes nothing.
+  router.get('/auth/sso/signout', sso.signout);
 
   router.get('/employees', authenticate, employees.list);
   router.get('/employees/:employeeUid/attendance', authenticate, employees.attendance);

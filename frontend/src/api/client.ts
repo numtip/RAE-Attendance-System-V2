@@ -137,6 +137,15 @@ export const api = {
       method: 'POST',
       body: { refreshToken },
     }),
+  /**
+   * SSO logout. The server revokes the access and refresh tokens BEFORE this resolves, so the session is already
+   * dead when the browser leaves the app. Returns the validated MJU signout URL and post-signout landing page.
+   */
+  ssoLogout: (refreshToken: string) =>
+    apiRequest<{ revoked: boolean; signoutUrl?: string; afterSignoutUrl?: string }>('/auth/sso/logout', {
+      method: 'POST',
+      body: { refreshToken },
+    }),
   me: () => apiRequest<import('./types').EmployeePublic>('/auth/me'),
   attendanceDaily: (date: string) =>
     apiRequest<import('./types').AttendanceRecord[]>(`/attendance/daily/${date}`),
