@@ -148,3 +148,74 @@ employee uses).
   Not encoded.
 * **O-5** (spelling for code `2017`) is a single-character substitution between **non-homophone** consonants; not
   determinable from local artefacts, and no automatic choice is permitted.
+
+### D-2026-10-21-05 — PROPOSED: migrations 015–024 must reach `main` before any import
+
+**Status:** `PROPOSED` — PR #61, **unmerged, not approved**. Not an approved decision.
+
+**Finding (verified):** `main` ships migrations `001–014 + 025–026` only, so six tables the import path needs do
+not exist there: `employee_assignment`, `attendance_events`, `employee_identifier_access_audit`,
+`attendance_rule_version`, `attendance_holiday`, `attendance_schedule`.
+**Grade:** `VERIFIED` — main's 16 migrations applied to MariaDB 10.6.23 produce 16 tables, none of those six; the
+25-file union applied 26/26 with 31 assertions passing.
+**Proposal:** restore the nine files **verbatim** as git blobs (never squashed, renamed or retyped), because the
+ledger keys on the filename with no checksum and a new name would double-apply.
+**Not decided:** the fate of `015_facescan`'s destructive `DROP` (owner question `M1`), or approval to apply
+anything to a host.
+
+### D-2026-10-21-06 — PROPOSED: a national ID is stored and matched only as a versioned HMAC digest
+
+**Status:** `PROPOSED` — PR #60, **unmerged, not approved**. This entry records a design proposal and its
+evidence; it does not record an owner decision.
+
+**Proposal:** for `id_type='national_id'`, `id_value` holds **only** a lowercase 64-hex HMAC-SHA-256 digest, with
+`lookup_key_version` recording which key produced it. A plain SHA-256 is not acceptable — a Thai national ID's
+12-digit body plus checksum is enumerable, so an unkeyed digest is reversible. Raw values are never persisted,
+logged or returned; responses carry a mask. With no key configured the feature is **unavailable** (503) rather
+than unsafe.
+**Grade:** `VERIFIED` (of the implementation, not of the decision) — 24 contract cases, 14 service cases, 13/13 on
+the 015 schema, 4/4 on main's schema; the stored value is proven **not** `sha256(id)`.
+
+**Why the rotation path needed a control, not a comment.** The same national ID under two key versions produces
+two different digests, and `UNIQUE (id_type, id_value)` compares digests, so the database cannot see that they are
+one person. Migration `015_employee_identifier_secure_lookup` says so in its own header and delegates the check to
+the application. It was reproduced on real MariaDB — **two rows, two employees claiming one national ID** — and
+then fixed with a cross-version probe in `linkIdentifier` that returns 409. That is the fix this entry relies on.
+
+**Explicitly not approved, and left unimplemented:** storing raw national IDs anywhere. Schema table
+`employee_identifier_secret` exists (migration 015) and is stated by that migration as disabled-by-default; the
+code **never writes it**, and nothing in PR #60 introduces a path that could. Any future proposal to use it needs
+its own approval; the table is not a licence to store a raw value.
+
+### D-2026-10-21-07 — Rollbacks are not safe to retry, and the ledger does not follow them
+
+**Status:** `VERIFIED` finding. Fixing it is a separate, unapproved change.
+
+**Finding:** a rollback is not complete until its ledger row is removed, and most down scripts do not do that.
+Three defects, all reproduced on MariaDB 10.6.23:
+* **R1** — `025`/`026`/`017`/`020–024` down scripts leave their ledger row, so a re-run prints `skip` while the
+  tables are gone.
+* **R2** — `026_refresh_token_family.down.sql` is not idempotent (`ERROR 1091` on a second run).
+* **R3** — `015_facescan_hip_ingestion` and `016_attendance_events` have **no rollback at all**.
+**Consequence:** nothing may be rolled back on a host on the assumption that a re-run recovers the objects. None
+of R1–R3 is addressed by PR #58–#61.
+
+### D-2026-10-21-08 — OPEN P0: a national ID is still in public `origin/main`, and the earlier redaction never landed there
+
+**Status:** `OPEN` — incident **not resolved**. Do not describe it as contained-in-history or remediated.
+
+**Grade:** `VERIFIED` — scanning `origin/main` finds **2** distinct checksum-valid 13-digit literals in **1** file
+(`backend/tests/employeeIdentity.test.js`, masks `****5351`, `****0000`), reachable from **29** `origin/*` refs,
+first publicly introduced by `3244553` (2026-10-02, PR #32).
+
+**Corrects a standing claim:** `docs/memory/PROJECT_STATE.md` records the file-level redaction (R2) as complete.
+Commits `04ff9d0` and `850e3fc` (2026-10-16) are **not ancestors of `origin/main`**, so for `main` that claim is
+**wrong**.
+
+**Containment:** PR #60 removes both values from the source and adds `nationalIdFixtureHygiene.test.js`, which
+fails the build on any checksum-valid literal in four encodings. **History is untouched.**
+
+**Blocked on the owner:** `S1` (rewrite vs accept-and-contain), `S2` (merge #60), `S3` (PDPA assessment owner).
+
+**Trap to keep:** the introduction commit on `main` is `3244553`, **not** `83aaa53`; a rewrite keyed on the latter
+leaves the value public while appearing to succeed.
