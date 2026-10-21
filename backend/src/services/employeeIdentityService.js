@@ -12,13 +12,63 @@ const {
   maskIdentifierForLog,
   notFoundMessage,
 } = require('../domain/employeeIdentifier');
+const { NationalIdError } = require('../security/nationalIdContract');
 const { HttpError } = require('../utils/httpError');
 
-function createEmployeeIdentityService({ repositories }) {
+/**
+ * @param {object} deps
+ * @param {object} deps.repositories
+ * @param {object} [deps.nationalIdProtector] versioned HMAC protector. REQUIRED for any national_id operation;
+ *   an absent protector makes those operations fail closed rather than store plaintext (see `requireProtector`).
+ */
+function createEmployeeIdentityService({ repositories, nationalIdProtector = null }) {
   const employeeIdentifiers = repositories.employeeIdentifiers;
   const employees = repositories.employees;
 
+  /**
+   * A national ID may only ever be matched or stored as an HMAC digest. If no protector is configured the
+   * feature is unavailable — never a plaintext fallback, which is the defect this guards against.
+   */
+  function requireProtector() {
+    if (!nationalIdProtector) {
+      throw new HttpError(
+        503,
+        'NATIONAL_ID_MATCHING_UNAVAILABLE',
+        'national-ID matching requires a configured HMAC key',
+      );
+    }
+    return nationalIdProtector;
+  }
+
+  /**
+   * Converts a caller-supplied raw national ID into the digests a stored row could hold.
+   * The raw value never leaves this function.
+   */
+  function nationalIdLookupCandidates(raw) {
+    const candidates = requireProtector().lookupCandidates(raw);
+    if (candidates.length === 0) {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'national_id must be 13 digits');
+    }
+    return candidates;
+  }
+
   async function resolveToEmployee(idType, idValue) {
+    if (idType === 'national_id') {
+      // Match on digests only. Every accepted key version is tried, so a row written before a rotation still
+      // resolves; the raw value is discarded once the digests are computed.
+      for (const candidate of nationalIdLookupCandidates(idValue)) {
+        const link = await employeeIdentifiers.findActiveByTypeAndValue('national_id', candidate.lookup);
+        if (link) {
+          const employee = await employees.findByUid(link.employeeUid);
+          if (!employee) {
+            throw new HttpError(404, 'EMPLOYEE_NOT_FOUND', notFoundMessage(idType));
+          }
+          return employee;
+        }
+      }
+      throw new HttpError(404, 'EMPLOYEE_NOT_FOUND', notFoundMessage(idType));
+    }
+
     const normalized = normalizeIdentifierValue(idType, idValue);
     if (!normalized) {
       throw new HttpError(400, 'VALIDATION_ERROR', 'identifier value is required');
@@ -91,9 +141,61 @@ function createEmployeeIdentityService({ repositories }) {
         throw new HttpError(400, 'VALIDATION_ERROR', `Unsupported identifier type for link: ${idType}`);
       }
 
-      const normalized = normalizeIdentifierValue(idType, idValue);
-      if (idType === 'national_id' && normalized.replace(/\D/g, '').length !== 13) {
-        throw new HttpError(400, 'VALIDATION_ERROR', 'national_id must be 13 digits');
+      // A national ID is stored ONLY as a versioned HMAC digest. The raw value is hashed here and then goes out
+      // of scope; nothing below this line can see it, so it cannot reach a column, a log or a response.
+      let storedValue;
+      let keyVersion = null;
+      let maskedForLog;
+      if (idType === 'national_id') {
+        const activeProtector = requireProtector();
+        let protectedValue;
+        try {
+          protectedValue = activeProtector.protect(idValue);
+        } catch (error) {
+          if (error instanceof NationalIdError && error.code === 'NATIONAL_ID_INVALID') {
+            throw new HttpError(400, 'VALIDATION_ERROR', 'national_id must be 13 digits');
+          }
+          if (error instanceof NationalIdError) {
+            throw new HttpError(503, 'NATIONAL_ID_MATCHING_UNAVAILABLE', 'national-ID matching is misconfigured');
+          }
+          throw error;
+        }
+        storedValue = protectedValue.lookup;
+        keyVersion = protectedValue.keyVersion;
+        maskedForLog = protectedValue.masked;
+
+        /**
+         * Cross-version duplicate guard.
+         *
+         * `UNIQUE (id_type, id_value)` compares digests, and a digest differs per key version — so the database
+         * cannot see that a v1-era row and a v2 write are the SAME person. Migration
+         * `015_employee_identifier_secure_lookup` says so in its header and delegates this check to the
+         * application. Without it, a rotation lets two employees claim one national ID, which is exactly the
+         * automatic identity merge F4 forbids. Every accepted version is therefore probed before inserting.
+         */
+        for (const candidate of activeProtector.lookupCandidates(idValue)) {
+          const existing = await employeeIdentifiers.findActiveByTypeAndValue('national_id', candidate.lookup);
+          if (!existing) continue;
+          if (existing.employeeUid !== employeeUid) {
+            throw new HttpError(409, 'DUPLICATE_IDENTIFIER', 'Identifier already linked to another employee');
+          }
+          // Same person, same ID: idempotent, and nothing new is written.
+          return {
+            id: existing.id ?? null,
+            employeeUid,
+            idType,
+            idValueMasked: maskedForLog,
+            lookupKeyVersion: existing.lookupKeyVersion ?? candidate.keyVersion,
+            status: 'active',
+          };
+        }
+      } else {
+        const normalized = normalizeIdentifierValue(idType, idValue);
+        if (!normalized) {
+          throw new HttpError(400, 'VALIDATION_ERROR', 'identifier value is required');
+        }
+        storedValue = normalized;
+        maskedForLog = maskIdentifierForLog(idType, normalized);
       }
 
       const employee = await employees.findByUid(employeeUid);
@@ -102,14 +204,25 @@ function createEmployeeIdentityService({ repositories }) {
       }
 
       try {
-        return await employeeIdentifiers.insert({
+        const inserted = await employeeIdentifiers.insert({
           employeeUid,
           idType,
-          idValue: normalized,
+          idValue: storedValue,
+          lookupKeyVersion: keyVersion,
           sourceSystem: input.sourceSystem ?? null,
           isPrimary: Boolean(input.isPrimary),
           verifiedAt: input.verifiedAt ?? null,
         });
+        // Only non-sensitive fields and the masked form are returned. Previously this echoed the inserted row,
+        // including a raw national ID.
+        return {
+          id: inserted?.id ?? null,
+          employeeUid,
+          idType,
+          idValueMasked: maskedForLog,
+          lookupKeyVersion: keyVersion,
+          status: inserted?.status ?? 'active',
+        };
       } catch (error) {
         if (error.code === 'DUPLICATE_IDENTIFIER') {
           throw new HttpError(409, 'DUPLICATE_IDENTIFIER', 'Identifier already linked to another employee');

@@ -6,15 +6,29 @@ process.env.DATA_SOURCE = 'fixture';
 const { createFixtureRepositories } = require('../src/repositories/fixtureRepositories');
 const { createEmployeeIdentityService } = require('../src/services/employeeIdentityService');
 const { createContainer } = require('../src/container');
+const { createNationalIdProtector, MIN_KEY_BYTES } = require('../src/security/nationalIdContract');
 const {
   createAttendanceComputeService,
   resolveEmployeeUidFromBusinessId,
 } = require('../src/services/attendanceComputeService');
 
+/**
+ * F9: a national ID is matched and stored only as a versioned HMAC digest, so these tests must supply a
+ * protector. The previous version of this file asserted plaintext behaviour, which is exactly the defect the
+ * contract module now prevents. The key is a throwaway test constant.
+ */
+const TEST_KEY = 'k'.repeat(MIN_KEY_BYTES);
+function testProtector() {
+  return createNationalIdProtector({ keys: { 1: TEST_KEY } });
+}
+
 function createService(overrides = {}) {
   const repositories = overrides.repositories || createFixtureRepositories();
   return {
-    service: createEmployeeIdentityService({ repositories }),
+    service: createEmployeeIdentityService({
+      repositories,
+      nationalIdProtector: overrides.nationalIdProtector ?? testProtector(),
+    }),
     repositories,
   };
 }
@@ -39,7 +53,7 @@ test('resolve facescan_id -> employee_uid', async () => {
 
 test('resolve national_id -> employee_uid', async () => {
   const { service } = createService();
-  const plain = '9900000000002';
+  const plain = '9900000000001';
   await service.linkIdentifier({
     employeeUid: '22222222-2222-2222-2222-222222222222',
     idType: 'national_id',
@@ -136,11 +150,11 @@ test('national_id never appears unmasked in list or errors', async () => {
   assert.match(nationalRow.idValueMasked, /^\*\*\*\*\d{4}$/);
 
   try {
-    await service.resolve('national_id', '0000000000000');
+    await service.resolve('national_id', '9900000000003');
   } catch (error) {
     assert.equal(error.code, 'EMPLOYEE_NOT_FOUND');
     assert.ok(!String(error.message).includes(plain));
-    assert.ok(!String(error.message).includes('0000000000000'));
+    assert.ok(!String(error.message).includes('9900000000004'));
   }
 });
 
