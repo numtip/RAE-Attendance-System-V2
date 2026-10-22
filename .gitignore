@@ -10,6 +10,7 @@ coverage/
 *.sql
 !database/migrations/*.sql
 !database/seeds/*.sql
+!database/preflight/*.sql
 !database/rollbacks/*.sql
 *.dump
 logs/

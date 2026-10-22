@@ -6,9 +6,12 @@ import { fileURLToPath } from 'node:url';
 const blockedName = /(\.env$|\.pem$|\.key$|service-account|id_rsa|\.dump$)/i;
 
 function isAllowedSqlPath(file) {
-  return file.startsWith('database/migrations/')
-    || file.startsWith('database/seeds/')
-    || file.startsWith('database/rollbacks/');
+  if (file.startsWith('database/migrations/')) return true;
+  if (file.startsWith('database/seeds/')) return true;
+  // Reviewed operator SQL only: numbered preflight / rollback scripts. A bare directory prefix would also
+  // admit an arbitrary dump named anything at all; requiring `NNN_name.sql` keeps the exception narrow.
+  // Every file under database/preflight/ is read-only by construction — a test enforces that.
+  return /^database\/(preflight|rollbacks)\/\d{3}_[a-z0-9_]+(\.down)?\.sql$/.test(file);
 }
 
 function isBlockedSqlPath(file) {
