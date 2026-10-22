@@ -1,5 +1,6 @@
 const {
   normalizeIdentifierValue,
+  normalizeLookupValue,
   isStoredIdentifierType,
 } = require('../domain/employeeIdentifier');
 
@@ -9,6 +10,7 @@ function mapRecord(record) {
     employeeUid: record.employeeUid,
     idType: record.idType,
     idValue: record.idValue,
+    lookupKeyVersion: record.lookupKeyVersion ?? null,
     sourceSystem: record.sourceSystem,
     isPrimary: record.isPrimary,
     status: record.status,
@@ -32,7 +34,7 @@ function createFixtureEmployeeIdentifierRepository(initialRows = []) {
   }));
 
   function findActiveRow(idType, idValue) {
-    const normalizedValue = normalizeIdentifierValue(idType, idValue);
+    const normalizedValue = normalizeLookupValue(idType, idValue);
     return rows.find(
       (row) => row.status === 'active'
         && row.idType === idType
@@ -58,7 +60,22 @@ function createFixtureEmployeeIdentifierRepository(initialRows = []) {
         error.code = 'INVALID_IDENTIFIER_TYPE';
         throw error;
       }
-      const idValue = normalizeIdentifierValue(input.idType, input.idValue);
+      // Parity with the MariaDB repository: a national ID is stored only as a 64-hex digest with a key version,
+      // so the fixture twin cannot be more permissive than the real one (a fixture that accepts plaintext would
+      // make local green prove nothing).
+      let idValue;
+      const lookupKeyVersion = input.lookupKeyVersion ?? null;
+      if (input.idType === 'national_id') {
+        const looksLikeDigest = typeof input.idValue === 'string' && /^[0-9a-f]{64}$/.test(input.idValue);
+        if (!looksLikeDigest || lookupKeyVersion == null) {
+          const error = new Error('NATIONAL_ID_MUST_BE_PROTECTED');
+          error.code = 'NATIONAL_ID_MUST_BE_PROTECTED';
+          throw error;
+        }
+        idValue = input.idValue;
+      } else {
+        idValue = normalizeIdentifierValue(input.idType, input.idValue);
+      }
       const existing = findActiveRow(input.idType, idValue);
       if (existing) {
         if (existing.employeeUid === input.employeeUid) {
@@ -74,6 +91,7 @@ function createFixtureEmployeeIdentifierRepository(initialRows = []) {
         employeeUid: input.employeeUid,
         idType: input.idType,
         idValue,
+        lookupKeyVersion,
         sourceSystem: input.sourceSystem ?? null,
         isPrimary: Boolean(input.isPrimary),
         status: 'active',
