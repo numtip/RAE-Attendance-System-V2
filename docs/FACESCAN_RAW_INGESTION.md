@@ -2,6 +2,9 @@
 
 **Status:** Staging + batch + idempotency implemented in application code. Migration `014_facescan_raw_ingestion.sql` not applied until operator runs `npm run db:migrate`. **Phase B** (normalized attendance events → `daily_attendance`) is not started.
 
+Device-side questions (which model, which port, which vendor path to pull from) are covered in
+[`HIP_DEVICE_INGESTION.md`](./HIP_DEVICE_INGESTION.md). This file stays scoped to the app-side staging path.
+
 ## Identity flow
 
 ```text
