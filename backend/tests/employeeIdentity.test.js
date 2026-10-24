@@ -39,7 +39,7 @@ test('resolve facescan_id -> employee_uid', async () => {
 
 test('resolve national_id -> employee_uid', async () => {
   const { service } = createService();
-  const plain = '1180200015351';
+  const plain = '9900000000002';
   await service.linkIdentifier({
     employeeUid: '22222222-2222-2222-2222-222222222222',
     idType: 'national_id',
@@ -122,7 +122,7 @@ test('unlink deactivates identifier and resolve fails afterward', async () => {
 
 test('national_id never appears unmasked in list or errors', async () => {
   const { service } = createService();
-  const plain = '1180200015351';
+  const plain = '9900000000002';
   await service.linkIdentifier({
     employeeUid: '11111111-1111-1111-1111-111111111111',
     idType: 'national_id',
