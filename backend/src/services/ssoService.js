@@ -49,6 +49,19 @@ function createSsoService(deps) {
       if (config.sso.signinUrl) {
         return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
       }
+      // G-02: a login attempt must be bound to the browser that started it. When the gate is on
+      // (always in production) a missing or weak binding fails closed rather than creating an
+      // unbound attempt that any holder of the state could complete.
+      if (
+        config.sso.requireLoginBinding === true &&
+        (typeof browserBinding !== 'string' || browserBinding.length < 16)
+      ) {
+        throw new HttpError(
+          500,
+          'SSO_STATE_BINDING_REQUIRED',
+          'Login state must be bound to the browser',
+        );
+      }
       const state = await stateStore.create(browserBinding ? { binding: browserBinding } : {});
       return oauthProvider.buildAuthorizationUrl({
         authorizationUrl: config.sso.authorizationUrl,

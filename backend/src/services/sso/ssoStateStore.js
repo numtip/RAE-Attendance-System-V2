@@ -1,4 +1,4 @@
-const { randomBytes, createHash } = require('node:crypto');
+const { randomBytes, createHash, timingSafeEqual } = require('node:crypto');
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 10_000;
@@ -7,33 +7,43 @@ function digest(value) {
   return createHash('sha256').update(String(value), 'utf8').digest('hex');
 }
 
+function digestsMatch(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
 /**
  * SSO login state store.
  *
- * Two known gaps this file previously had (recorded as G-02 in the shared standard's pilot gap
- * report), both addressed here:
+ * History: this was a bare in-memory Map with no browser binding (G-02). Two gaps were recorded
+ * and are addressed here:
  *
  *   1. NO BINDING. `create()` returned an opaque state with nothing tying it to the browser that
- *      started the login. V2 does not echo MJU `state` (see docs/SSO_PROTOCOL_EVIDENCE.md), so
- *      the state alone cannot distinguish "the user who started this" from "anyone holding it".
- *      `create({ binding })` now records a digest of a server-generated binding and
+ *      started the login. MJU does not echo `state` (docs/SSO_PROTOCOL_EVIDENCE.md), so the state
+ *      alone cannot distinguish "the user who started this" from "anyone holding it".
+ *      `create({ binding })` records a digest of a server-generated binding and
  *      `consume(state, binding)` refuses a callback that does not present it.
- *   2. IN-MEMORY ONLY. The map meant a restart forgot every pending login and a second instance
- *      never saw the first instance's state. The API is now ASYNC and takes an injectable
- *      `backend`, so a shared implementation (Redis/SQL) can be dropped in without touching the
- *      service layer. The in-memory backend remains the default for single-process use and says
- *      so honestly.
+ *   2. IN-MEMORY ONLY. A restart forgot every pending login and a second instance never saw the
+ *      first instance's state. The API is async and takes an injectable `backend`, so a shared
+ *      implementation can be dropped in without touching the service layer.
  *
- * Only digests are stored for the binding: the store cannot be read back into a usable cookie.
+ * BACKEND CONTRACT. A backend supplies `get`/`set`/`delete`; everything else is optional:
+ *   consume(key)   -> Promise<{status: 'ok'|'missing'|'expired', bindingDigest}>   PREFERRED.
+ *                     Must remove the row atomically. When present, the store uses it instead of
+ *                     a read-then-delete, which would let two concurrent callbacks both win.
+ *   prune()        -> Promise<void>      expired-row housekeeping
+ *   stats()        -> Promise<{pending}> diagnostics
+ *   keys()         -> Promise<string[]>  legacy pruning path
+ *   deleteMany(k)  -> Promise<void>
+ *   size()         -> Promise<number>
+ *   kind/durable/shared                  honest capability flags
  *
- * BACKEND CONTRACT (a durable implementation must satisfy all of it — see
- * backend/tests/ssoStateStoreContract.test.js):
- *   get(key)          -> Promise<entry|undefined>
- *   set(key, entry)   -> Promise<void>            entry = { expiresAt, bindingDigest|null }
- *   delete(key)       -> Promise<void>
- *   keys()            -> Promise<string[]>        used only for pruning (optional)
- *   deleteMany(keys)  -> Promise<void>            optional; falls back to delete() in a loop
- *   kind              -> string, for diagnostics
+ * Keys are opaque strings. The store passes the state value through unchanged and never writes
+ * it to a shared backend in plaintext — a persistent backend must digest it (see
+ * mariadbLoginAttemptBackend.js).
  */
 
 /** Default backend: one process, one memory. Not durable, not shared. */
@@ -64,6 +74,22 @@ function createInMemoryStateBackend({ now = () => Date.now(), maxEntries = DEFAU
     async delete(key) {
       pending.delete(key);
     },
+    /** Atomic within one process: get + delete cannot interleave on the event loop boundary. */
+    async consume(key) {
+      const entry = pending.get(key);
+      if (!entry) return { status: 'missing', bindingDigest: null };
+      pending.delete(key);
+      return {
+        status: entry.expiresAt <= now() ? 'expired' : 'ok',
+        bindingDigest: entry.bindingDigest ?? null,
+      };
+    },
+    async prune() {
+      const at = now();
+      for (const [key, entry] of pending) {
+        if (entry.expiresAt <= at) pending.delete(key);
+      }
+    },
     async keys() {
       return [...pending.keys()];
     },
@@ -76,25 +102,47 @@ function createInMemoryStateBackend({ now = () => Date.now(), maxEntries = DEFAU
 function createSsoStateStore({ ttlMs = DEFAULT_TTL_MS, now = () => Date.now(), backend } = {}) {
   const store = backend ?? createInMemoryStateBackend({ now });
 
-  async function prune() {
-    if (typeof store.keys !== 'function') return;
-    const keys = await store.keys();
-    const at = now();
-    const stale = [];
-    for (const key of keys) {
-      const entry = await store.get(key);
-      // get() already drops expired entries in the default backend; a durable backend may not.
-      if (!entry || entry.expiresAt <= at) stale.push(key);
-    }
-    if (stale.length > 0) await removeMany(stale);
+  if (typeof store.get !== 'function' || typeof store.set !== 'function' || typeof store.delete !== 'function') {
+    throw new Error('SSO state backend must implement get, set and delete');
   }
 
-  async function removeMany(keys) {
-    if (typeof store.deleteMany === 'function') {
-      await store.deleteMany(keys);
+  async function prune() {
+    if (typeof store.prune === 'function') {
+      await store.prune();
       return;
     }
-    for (const key of keys) await store.delete(key);
+    if (typeof store.keys !== 'function') return;
+    const at = now();
+    const stale = [];
+    for (const key of await store.keys()) {
+      const entry = await store.get(key);
+      if (!entry || entry.expiresAt <= at) stale.push(key);
+    }
+    if (stale.length === 0) return;
+    if (typeof store.deleteMany === 'function') {
+      await store.deleteMany(stale);
+      return;
+    }
+    for (const key of stale) await store.delete(key);
+  }
+
+  async function removeAtomic(state) {
+    if (typeof store.consume === 'function') {
+      const result = await store.consume(state);
+      return {
+        status: result?.status ?? 'missing',
+        bindingDigest: result?.bindingDigest ?? null,
+      };
+    }
+    // Legacy backend without an atomic consume. Correct for a single process; a shared backend
+    // must implement consume() or two concurrent callbacks can both succeed.
+    const entry = await store.get(state);
+    if (!entry) return { status: 'missing', bindingDigest: null };
+    await store.delete(state);
+    return {
+      status: entry.expiresAt <= now() ? 'expired' : 'ok',
+      bindingDigest: entry.bindingDigest ?? null,
+    };
   }
 
   return {
@@ -131,26 +179,30 @@ function createSsoStateStore({ ttlMs = DEFAULT_TTL_MS, now = () => Date.now(), b
      */
     async consume(state, binding) {
       if (!state || typeof state !== 'string') return false;
-      const entry = await store.get(state);
-      if (!entry) return false;
 
-      // Burned on any attempt, valid or not: a second presentation can never succeed.
-      await store.delete(state);
+      const { status, bindingDigest } = await removeAtomic(state);
+      // Removed on every presentation, valid or not: a second attempt can never succeed and a
+      // wrong binding cannot be retried.
+      if (status !== 'ok') return false;
 
-      if (entry.expiresAt <= now()) return false;
-      if (entry.bindingDigest && entry.bindingDigest !== digest(binding ?? '')) return false;
-      if (!entry.bindingDigest && binding !== undefined && binding !== '') {
-        // A state created without a binding must not be satisfied by presenting one.
-        return false;
+      if (bindingDigest) {
+        const presented = typeof binding === 'string' && binding !== '' ? digest(binding) : null;
+        return presented !== null && digestsMatch(bindingDigest, presented);
       }
+      // A state created without a binding must not be satisfied by presenting one.
+      if (binding !== undefined && binding !== '') return false;
       return true;
     },
 
     /** Operational introspection: counts only. */
     async stats() {
+      if (typeof store.stats === 'function') {
+        const own = await store.stats();
+        return { pending: own?.pending ?? null, kind: store.kind ?? 'custom' };
+      }
       if (typeof store.size === 'function') return { pending: await store.size(), kind: store.kind };
       if (typeof store.keys === 'function') return { pending: (await store.keys()).length, kind: store.kind };
-      return { pending: null, kind: store.kind };
+      return { pending: null, kind: store.kind ?? 'custom' };
     },
   };
 }
@@ -158,5 +210,6 @@ function createSsoStateStore({ ttlMs = DEFAULT_TTL_MS, now = () => Date.now(), b
 module.exports = {
   createSsoStateStore,
   createInMemoryStateBackend,
+  digest,
   DEFAULT_TTL_MS,
 };
