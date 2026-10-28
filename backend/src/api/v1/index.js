@@ -12,6 +12,8 @@ const { createEmployeeService } = require('../../services/employeeService');
 const { createAttendanceService } = require('../../services/attendanceService');
 const { createLeaveService } = require('../../services/leaveService');
 const { createSsoService } = require('../../services/ssoService');
+const { createLoginAttemptStore } = require('../../services/sso/ssoLoginAttemptStore');
+const { getPool, isDatabaseConfigured } = require('../../db/pool');
 const { createAttendanceComputeService } = require('../../services/attendanceComputeService');
 const { createAttendanceComputeController } = require('../../controllers/attendanceComputeController');
 const { createReportService } = require('../../services/reportService');
@@ -23,7 +25,17 @@ function createV1Router(container) {
   const attendanceService = createAttendanceService(container);
   const leaveService = createLeaveService(container);
   const attendanceComputeService = createAttendanceComputeService(container);
-  const ssoService = createSsoService(container);
+  // G-02: the login attempt store is chosen once, here, so there is a single place that decides
+  // whether pending logins are shared across instances. A MariaDB pool is only obtained when the
+  // container is actually backed by MariaDB; a fixture container never opens a connection.
+  const loginAttemptPool =
+    container.dataSource === 'mariadb' && isDatabaseConfigured(container.config.database)
+      ? getPool(container.config.database)
+      : undefined;
+  const ssoService = createSsoService({
+    ...container,
+    stateStore: createLoginAttemptStore({ config: container.config, pool: loginAttemptPool }),
+  });
   const auth = createAuthController(authService);
   const sso = createSsoController(ssoService, container);
   const employees = createEmployeeController(employeeService, attendanceService);

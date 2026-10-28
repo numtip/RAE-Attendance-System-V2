@@ -41,6 +41,17 @@ module.exports = {
     callbackDiagnostic: process.env.SSO_CALLBACK_DIAGNOSTIC === 'true',
     subjectContractConfirmed: process.env.SSO_SUBJECT_CONTRACT_CONFIRMED === 'true',
     httpTimeoutMs: Number(process.env.SSO_HTTP_TIMEOUT_MS || 15_000),
+    // G-02: browser binding for a login attempt. The binding cookie is HttpOnly, Secure outside
+    // development, SameSite=Lax (it must survive the provider's top-level redirect back).
+    loginBindingCookie: process.env.SSO_LOGIN_BINDING_COOKIE || 'rae_sso_bind',
+    loginBindingTtlMs: Number(process.env.SSO_LOGIN_BINDING_TTL_MS || 10 * 60 * 1000),
+    // A callback without the binding is refused. Forced on in production regardless of the env
+    // value, so a wiring regression cannot quietly disable it.
+    requireLoginBinding:
+      process.env.SSO_REQUIRE_LOGIN_BINDING === 'true' ||
+      (process.env.NODE_ENV || 'development') === 'production',
+    // 'mariadb' (shared, durable) or 'memory' (single process only, refused in production).
+    loginAttemptStore: process.env.SSO_LOGIN_ATTEMPT_STORE || '',
   },
   corsOrigin: process.env.CORS_ORIGIN || 'http://127.0.0.1:5173',
   attendanceCore: {

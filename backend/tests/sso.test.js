@@ -41,11 +41,15 @@ function listen(app) {
   });
 }
 
-async function rawGet(port, path) {
-  const response = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual' });
+async function rawGet(port, path, { cookie } = {}) {
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    redirect: 'manual',
+    headers: cookie ? { cookie } : undefined,
+  });
   return {
     status: response.status,
     location: response.headers.get('location'),
+    setCookie: response.headers.getSetCookie?.() ?? [],
     body: response.headers.get('content-type')?.includes('json') ? await response.json() : null,
   };
 }
@@ -387,6 +391,51 @@ test('contract: token response without an access token is rejected', async () =>
   );
 });
 
+test('a callback without the binding cookie is refused even with a valid state', async () => {
+  const previous = {
+    enabled: config.sso.enabled,
+    callbackConfirmed: config.sso.callbackConfirmed,
+    provider: config.sso.provider,
+    authorizationUrl: config.sso.authorizationUrl,
+    tokenUrl: config.sso.tokenUrl,
+    userInfoUrl: config.sso.userInfoUrl,
+    clientId: config.sso.clientId,
+    clientSecret: config.sso.clientSecret,
+    callbackUrl: config.sso.callbackUrl,
+  };
+  Object.assign(config.sso, baseSsoConfig);
+  process.env.SSO_PROVIDER = 'mock';
+
+  const app = createApp({ dataSource: 'fixture' });
+  const { server, port } = await listen(app);
+  try {
+    const login = await rawGet(port, '/api/v1/auth/sso/login');
+    assert.equal(login.status, 302);
+    const state = new URL(login.location).searchParams.get('state');
+
+    // A valid state with no binding cookie: the login-CSRF case this control exists for.
+    const noCookie = await rawGet(
+      port,
+      `/api/v1/auth/sso/callback?code=mock-auth-code&state=${encodeURIComponent(state)}`,
+    );
+    assert.equal(noCookie.status, 403);
+    assert.equal(noCookie.body?.error?.code, 'SSO_STATE_INVALID');
+
+    // The attempt was burned by the failed presentation, so even the right cookie cannot revive it.
+    const bindingCookie = login.setCookie.find((value) => value.startsWith('rae_sso_bind='));
+    const late = await rawGet(
+      port,
+      `/api/v1/auth/sso/callback?code=mock-auth-code&state=${encodeURIComponent(state)}`,
+      { cookie: bindingCookie.split(';')[0] },
+    );
+    assert.equal(late.status, 403);
+  } finally {
+    Object.assign(config.sso, previous);
+    delete process.env.SSO_PROVIDER;
+    server.close();
+  }
+});
+
 test('SSO login redirect when enabled with mock provider env', async () => {
   const previous = {
     enabled: config.sso.enabled,
@@ -409,13 +458,24 @@ test('SSO login redirect when enabled with mock provider env', async () => {
     assert.equal(login.status, 302);
     assert.ok(login.location.includes('state='));
 
+    // G-02: the login attempt is bound to the browser. A real browser replays the cookie it was
+    // given; a callback without it is refused (see the negative test below).
+    const bindingCookie = login.setCookie.find((value) => value.startsWith('rae_sso_bind='));
+    assert.ok(bindingCookie, 'login must set the binding cookie');
+
     const state = new URL(login.location).searchParams.get('state');
     const callback = await rawGet(
       port,
       `/api/v1/auth/sso/callback?code=mock-auth-code&state=${encodeURIComponent(state)}`,
+      { cookie: bindingCookie.split(';')[0] },
     );
     assert.equal(callback.status, 302);
     assert.ok(callback.location.includes('sso=success'));
+    // The binding is single use: the callback clears it.
+    assert.ok(
+      callback.setCookie.some((value) => value.startsWith('rae_sso_bind=;')),
+      'the callback must clear the binding cookie',
+    );
   } finally {
     Object.assign(config.sso, previous);
     delete process.env.SSO_PROVIDER;

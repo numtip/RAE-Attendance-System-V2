@@ -35,7 +35,7 @@ function createSsoService(deps) {
   }
 
   return {
-    async beginLogin() {
+    async beginLogin({ browserBinding } = {}) {
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
       }
@@ -49,7 +49,20 @@ function createSsoService(deps) {
       if (config.sso.signinUrl) {
         return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
       }
-      const state = stateStore.create();
+      // G-02: a login attempt must be bound to the browser that started it. When the gate is on
+      // (always in production) a missing or weak binding fails closed rather than creating an
+      // unbound attempt that any holder of the state could complete.
+      if (
+        config.sso.requireLoginBinding === true &&
+        (typeof browserBinding !== 'string' || browserBinding.length < 16)
+      ) {
+        throw new HttpError(
+          500,
+          'SSO_STATE_BINDING_REQUIRED',
+          'Login state must be bound to the browser',
+        );
+      }
+      const state = await stateStore.create(browserBinding ? { binding: browserBinding } : {});
       return oauthProvider.buildAuthorizationUrl({
         authorizationUrl: config.sso.authorizationUrl,
         clientId: config.sso.clientId,
@@ -69,6 +82,7 @@ function createSsoService(deps) {
       method,
       rawBody,
       cookieNames,
+      browserBinding,
     }) {
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
@@ -99,7 +113,7 @@ function createSsoService(deps) {
       if (!code) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'code is required');
       }
-      if (!stateStore.consume(state)) {
+      if (!(await stateStore.consume(state, browserBinding))) {
         throw new HttpError(403, 'SSO_STATE_INVALID', 'OAuth state is missing or expired');
       }
 
