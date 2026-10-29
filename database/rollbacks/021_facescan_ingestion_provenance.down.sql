@@ -43,3 +43,8 @@ SET @col_exists = (
 SET @ddl = IF(@col_exists = 0, 'SELECT 1',
   'ALTER TABLE facescan_import_batches DROP COLUMN file_name');
 PREPARE r4 FROM @ddl; EXECUTE r4; DEALLOCATE PREPARE r4;
+
+-- Clearing the ledger row is part of the rollback (added 2026-10-29): the runner keys on the
+-- filename, so without it `npm run db:migrate` believes this migration is still applied and the
+-- schema stays partially rolled back.
+DELETE FROM schema_migrations WHERE version = '021_facescan_ingestion_provenance.sql';

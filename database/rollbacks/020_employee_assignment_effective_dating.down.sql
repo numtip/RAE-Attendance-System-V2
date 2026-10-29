@@ -60,3 +60,8 @@ SET @col_exists = (
 SET @ddl = IF(@col_exists = 0, 'SELECT 1',
   'ALTER TABLE employee_identifier_access_audit DROP COLUMN effective_from');
 PREPARE r5 FROM @ddl; EXECUTE r5; DEALLOCATE PREPARE r5;
+
+-- Clearing the ledger row is part of the rollback (added 2026-10-29): the runner keys on the
+-- filename, so without it `npm run db:migrate` believes this migration is still applied and the
+-- schema stays partially rolled back.
+DELETE FROM schema_migrations WHERE version = '020_employee_assignment_effective_dating.sql';

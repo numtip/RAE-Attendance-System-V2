@@ -3,7 +3,14 @@ const http = require('node:http');
 const test = require('node:test');
 const config = require('../src/config');
 const { createApp } = require('../src/app');
-const { isDatabaseConfigured } = require('../src/db/pool');
+const { closePool, isDatabaseConfigured } = require('../src/db/pool');
+
+// With a database configured, /api/v1/ready opens the shared mysql pool and nothing closed it, so
+// `node --test` waited on the open handle forever (killed at 420 s; CI hid it by using
+// --test-force-exit). Closing here costs nothing when no database is configured.
+test.after(async () => {
+  await closePool();
+});
 
 function listen(app) {
   const server = http.createServer(app);
@@ -57,7 +64,12 @@ test('readiness and health never disclose connection details', async () => {
         assert.ok(['connected', 'not_required'].includes(body.data.checks.database), path);
       }
       if (path.endsWith('/health/db')) {
-        assert.ok(['connected', 'unconfigured'].includes(body.data.status), path);
+        // With a database configured but unreachable the endpoint answers 503 with an error
+        // envelope and no `data` — that is a legitimate state, not a disclosure. Only a body that
+        // carries a status is checked here.
+        if (body.data?.status !== undefined) {
+          assert.ok(['connected', 'unconfigured'].includes(body.data.status), path);
+        }
       }
     }
   });
