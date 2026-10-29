@@ -70,6 +70,14 @@ Complete in order. Check each box only with evidence (MJU ticket, registered red
       `ssoService.handleCallback` currently resolves the employee with
       `repositories.employees.findByEmail`, which is acceptable only while the mocked OAuth path
       is used; it must not authenticate anyone against the live provider.
+- [ ] The **approved-link gate** is on the live path. `ssoIdentityChainService` exists and is
+      tested, but `handleCallback` does not call it (the code says so in a comment), so a
+      successful exchange currently mints a session with no approved local identity link. The
+      standard's policy S3/S6 allows a session only from an approved, current, unique link.
+- [ ] The callback does not depend on an unproven provider behaviour. V2 requires the provider to
+      echo `state` back; the shared contract lists that as `REFERENCE_ONLY`/`UNKNOWN` (C-10) and
+      the blueprint says to rely on provider `state` only once it is proven. If MJU does not echo
+      it, V2 needs the compensating control and the owner's written acceptance instead.
 
 ### 1. Callback registered with MJU
 
