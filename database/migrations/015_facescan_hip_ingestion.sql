@@ -1,3 +1,10 @@
+-- Version note (2026-10-29): this file deliberately keeps the numeric prefix 015, which it shares
+-- with 015_employee_identifier_secure_lookup.sql. The duplicate is confusing but not a defect
+-- today: scripts/migrate.mjs sorts by full filename and the ledger keys on the filename, so the
+-- order is deterministic ('015_employee...' before '015_facescan...'). It was not renumbered
+-- because 018/019 are reserved by draft PR #35, 027 is claimed by docs/proposals, and no host has
+-- ever applied these files - a rename is cheap only until the first apply. Renumber before the
+-- first apply, with the owner present. Nothing here is applied to any host by this change.
 -- HIP Pm2014 FaceScan model (replaces 014 skeleton). Safe when 014 tables are empty (pre-production).
 -- Drops 014 staging tables and recreates batch + raw + USERINFO staging. No daily_attendance.
 
