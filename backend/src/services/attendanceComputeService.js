@@ -35,11 +35,14 @@ function normalizeEvaluateDayBody(body) {
   };
 }
 
-async function resolveEmployeeUidFromBusinessId(repositories, businessEmployeeId) {
+async function resolveEmployeeUidFromBusinessId(repositories, businessEmployeeId, nationalIdProtector = null) {
   if (!repositories?.employees) {
     throw new HttpError(503, 'IDENTITY_UNAVAILABLE', 'Employee repositories are not configured');
   }
-  const identity = createEmployeeIdentityService({ repositories });
+  // The container's protector must reach this service. Without it the identity service falls back to `null`
+  // and every national-ID operation answers 503 even with a valid key configured (verified: the container
+  // built a protector that no call site passed on).
+  const identity = createEmployeeIdentityService({ repositories, nationalIdProtector });
   return identity.resolveUid('employee_id', businessEmployeeId);
 }
 
@@ -54,6 +57,7 @@ function buildCoreEvaluateDayPayload(boundaryPayload, employeeUid) {
 function createAttendanceComputeService(options = {}) {
   const config = options.config || options.container?.config || {};
   const repositories = options.repositories || options.container?.repositories;
+  const nationalIdProtector = options.nationalIdProtector || options.container?.nationalIdProtector || null;
   const coreClient = options.coreClient || createAttendanceCoreClient({
     baseUrl: options.baseUrl || config.attendanceCore?.url,
     timeoutMs: options.timeoutMs || config.attendanceCore?.timeoutMs,
@@ -66,7 +70,11 @@ function createAttendanceComputeService(options = {}) {
       const boundaryPayload = normalizeEvaluateDayBody(body);
       let employeeUid;
       if (repositories) {
-        employeeUid = await resolveEmployeeUidFromBusinessId(repositories, boundaryPayload.employee_id);
+        employeeUid = await resolveEmployeeUidFromBusinessId(
+          repositories,
+          boundaryPayload.employee_id,
+          nationalIdProtector,
+        );
       }
       const corePayload = employeeUid
         ? buildCoreEvaluateDayPayload(boundaryPayload, employeeUid)
@@ -89,7 +97,7 @@ function createAttendanceComputeService(options = {}) {
       const normalizedDays = days.map((day) => normalizeEvaluateDayBody(day));
       const coreDays = repositories
         ? await Promise.all(normalizedDays.map(async (day) => {
-          const employeeUid = await resolveEmployeeUidFromBusinessId(repositories, day.employee_id);
+          const employeeUid = await resolveEmployeeUidFromBusinessId(repositories, day.employee_id, nationalIdProtector);
           return buildCoreEvaluateDayPayload(day, employeeUid);
         }))
         : normalizedDays;
