@@ -33,7 +33,10 @@ export function classifyKeyVersions(storedRows, acceptVersions) {
     const version = row.lookup_key_version == null ? null : Number(row.lookup_key_version);
     return {
       version,
-      rows: Number(row.row_count),
+      // `row_count` is the SQL alias; `rows` is accepted too so a caller passing a plain object
+      // cannot silently produce NaN — that mismatch is exactly how this script's unit test passed while
+      // the query failed on a real server.
+      rows: Number(row.row_count ?? row.rows),
       status: version != null && accepted.has(version) ? 'accepted' : 'ORPHANED',
     };
   });

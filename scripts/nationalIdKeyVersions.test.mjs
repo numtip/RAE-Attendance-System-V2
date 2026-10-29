@@ -10,14 +10,14 @@ import test from 'node:test';
 const { classifyKeyVersions } = await import('./national-id-key-versions.mjs');
 
 test('N-2: a stored version that is still accepted is reported accepted', () => {
-  const result = classifyKeyVersions([{ lookup_key_version: 1, rows: 3 }], [1, 2]);
+  const result = classifyKeyVersions([{ lookup_key_version: 1, row_count: 3 }], [1, 2]);
   assert.equal(result.ok, true);
   assert.deepEqual(result.orphaned, []);
   assert.deepEqual(result.rows, [{ version: 1, rows: 3, status: 'accepted' }]);
 });
 
 test('N-2: dropping the only version an employee was written under is reported ORPHANED', () => {
-  const result = classifyKeyVersions([{ lookup_key_version: 1, rows: 2 }], [2]);
+  const result = classifyKeyVersions([{ lookup_key_version: 1, row_count: 2 }], [2]);
   assert.equal(result.ok, false);
   assert.equal(result.orphaned.length, 1);
   assert.equal(result.orphaned[0].rows, 2);
@@ -25,7 +25,7 @@ test('N-2: dropping the only version an employee was written under is reported O
 
 test('N-2: the count is summed per version, so the report is not one row', () => {
   const result = classifyKeyVersions(
-    [{ lookup_key_version: 1, rows: 2 }, { lookup_key_version: 9, rows: 5 }],
+    [{ lookup_key_version: 1, row_count: 2 }, { lookup_key_version: 9, row_count: 5 }],
     [1],
   );
   assert.equal(result.ok, false);
@@ -33,7 +33,7 @@ test('N-2: the count is summed per version, so the report is not one row', () =>
 });
 
 test('N-2: a NULL version is ORPHANED, not ignored — the CHECK requires a version', () => {
-  const result = classifyKeyVersions([{ lookup_key_version: null, rows: 1 }], [1]);
+  const result = classifyKeyVersions([{ lookup_key_version: null, row_count: 1 }], [1]);
   assert.equal(result.ok, false);
   assert.equal(result.orphaned[0].version, null);
 });
@@ -45,7 +45,7 @@ test('N-2: no stored rows is a clean result, not a pass by accident', () => {
 });
 
 test('N-2: the non-vacuity guard — the same rows must flip status when the accepted set changes', () => {
-  const rows = [{ lookup_key_version: 2, rows: 1 }];
+  const rows = [{ lookup_key_version: 2, row_count: 1 }];
   assert.equal(classifyKeyVersions(rows, [1, 2]).ok, true);
   assert.equal(classifyKeyVersions(rows, [1]).ok, false);
 });
