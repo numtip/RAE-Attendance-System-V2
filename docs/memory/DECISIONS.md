@@ -244,3 +244,27 @@ closes this.
 real person.
 **Open:** whether a live database already holds derived values from a prior run — `UNKNOWN`, and settling it needs
 a read-only query against a real host.
+
+## 2026-10-29
+
+### D-2026-10-29-01 — The identity-subject prohibition lives in the domain, and the source list is closed
+
+**Decision:** `rejectionCodeForProviderSubject` is defined once in `backend/src/domain/identityLink.js` and
+called by **every** path that creates an identity link; the SSO adapter imports the same predicates instead of
+keeping private copies. `IDENTITY_LINK_SOURCES` is a **frozen allowlist** and an unknown `source` is refused at
+creation (`400 IDENTITY_SOURCE_UNKNOWN`). Validation is **strict** (exact match, no trimming); guard application
+is **lenient** (trims) — the asymmetry is deliberate, so a legacy row written as `'mju_person_enrich '` is still
+machine evidence and still cannot be approved.
+**Why:** the rule used to live only in the SSO adapter, so the link layer itself accepted an e-mail-shaped subject
+and the callback `ac` — safe by accident, because the adapter happened to run first. Separately, a caller could
+**invent** a source string and escape the ambiguity guard entirely, because that guard is scoped to known
+enrichment sources. Neither was cosmetic.
+**Grade:** `VERIFIED` — `rejectionCodeForProviderSubject` existed nowhere on `main` before this entry; the guard,
+the closed list and the 32 new tests are on the branch that carries it.
+**Implementation:** `backend/src/domain/identityLink.js`, `backend/src/services/identityResolutionService.js`,
+`backend/src/services/sso/mjuSubjectAdapter.js`, `backend/tests/identityLinkHardening.test.js`,
+`backend/tests/identityLinkSourcePolicy.test.js`, `docs/IDENTITY_MAPPING_CONTRACT.md` (F1/F2).
+**Not approved by this entry:** merge, deploy, any identity import, any real national-ID processing.
+**Open:** **ID-6b / S-02** — the SSO approval path requires a *declared* matched national-ID lookup
+(`403 IDENTITY_EVIDENCE_REQUIRED`), but the declaration is not re-verifiable in the link layer and is not stored.
+That is a **contract check, not a proof**, and the durable fix needs an evidence column, i.e. a migration.
