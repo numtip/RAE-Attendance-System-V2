@@ -1,17 +1,26 @@
--- Version note (2026-10-29): this file deliberately keeps the numeric prefix 015, which it shares
--- with 015_employee_identifier_secure_lookup.sql. The duplicate is confusing but not a defect
--- today: scripts/migrate.mjs sorts by full filename and the ledger keys on the filename, so the
--- order is deterministic ('015_employee...' before '015_facescan...'). It was not renumbered
--- because 018/019 are reserved by draft PR #35, 027 is claimed by docs/proposals, and no host has
--- ever applied these files - a rename is cheap only until the first apply.
+-- Version note (2026-10-29) - the duplicate 015 prefix is LOAD-BEARING. Do not "fix" it.
 --
--- If it is ever renumbered, THIS file must keep its place ahead of 016: 016_attendance_events.sql
--- declares foreign keys to staging_facescan_raw(id) and facescan_import_batches(batch_uid), which
--- only this file creates. Moving this file to 029 (the next free number) would sort it after 016
--- and fail, so the safe renumber is the other file - 015_employee_identifier_secure_lookup.sql to
--- 029 - which has no ordering contract with 016+ (grep: nothing after it references
--- lookup_key_version). Renumber before the first apply, with the owner present. Nothing here is
--- applied to any host by this change.
+-- scripts/migrate.mjs applies migrations in filename sort order (:99) and the ledger keys on the
+-- filename (:9), so the order here is decided by the words after the number:
+--
+--   015_employee_identifier_secure_lookup  (creates employee_identifier_secret and
+--                                           employee_identifier_access_audit)
+--   015_facescan_hip_ingestion            (this file; creates staging_facescan_raw and
+--                                           facescan_import_batches)
+--   016_attendance_events                 (FKs -> the two tables this file creates)
+--   017_identifier_namespace_claim
+--   020_employee_assignment_effective_dating (ALTERs employee_identifier_access_audit)
+--
+-- Neither file can move. This one must stay ahead of 016 and 021; the other must stay ahead of 020.
+-- Renumbering either one sorts it after its own dependents. There is no free number between 017 and
+-- 020 either: 018/019 are reserved by draft PR #35.
+--
+-- Verified the hard way: renumbering the secure-lookup file to 029 failed CI's MariaDB job with
+-- "Table 'attendance_v2.employee_identifier_access_audit' doesn't exist" at
+-- 020_employee_assignment_effective_dating (run 40846057083). backend/tests/migrationOrdering.test.js
+-- now pins this order so the next attempt fails locally instead.
+--
+-- Nothing here is applied to any host by this change.
 -- HIP Pm2014 FaceScan model (replaces 014 skeleton). Safe when 014 tables are empty (pre-production).
 -- Drops 014 staging tables and recreates batch + raw + USERINFO staging. No daily_attendance.
 
