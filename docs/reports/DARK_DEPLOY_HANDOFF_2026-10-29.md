@@ -94,3 +94,61 @@ deployment จากสอง clone ข้างต้น:
 
 จนกว่าจะปิด blockers เหล่านี้ ผลที่ถูกต้องคือ **`DARK_DEPLOY_READY=NO`**. Branch protection,
 approved-link security และ required Attendance 9 checks ห้ามลด/ข้ามเพื่อให้ผ่าน gate.
+
+## 7. V8 readiness audit — read-only
+
+### Disk และ cleanup candidates
+
+VPS root filesystem: **82 GB, ใช้ 79 GB, เหลือ 179 MB, 100%**.
+
+| Candidate | ขนาดที่วัดได้ | ความเสี่ยง / เงื่อนไข |
+|---|---:|---|
+| `/var/log/journal` | 3.9 GB | เป็น audit/incident evidence; vacuum ต้องมีเจ้าของอนุมัติ retention ก่อน |
+| `/var/lib/snapd` | 3.5 GB | อาจเป็น old snap revisions; ต้อง inventory disabled revisions ก่อน |
+| `/var/lib/mysql` | 185 MB | production DB; ห้ามลบ/optimize โดยไม่มี backup + DBA approval |
+| `/home/prinyaroot/agent-workspace` | 16 GB | มี active repositories/data; ห้าม bulk cleanup |
+| `.cursor-server` / `.npm` / `.cache` | 4.2 / 1.8 / 1.8 GB | cache candidates แต่ต้องยืนยัน session/tool ที่กำลังใช้งานก่อน |
+| Docker images/volumes/build cache | reclaimable ตาม Docker: 2.773 / 4.026 / 0.067 GB | anonymous volumes อาจเป็น DB/test state; image provenance ยังไม่ครบ; ห้าม prune |
+
+มี image `darkdeploy_v7-*` จาก disposable test ราว 333 MB ที่ไม่มี container ใช้งานแล้ว แต่ยัง
+ไม่ลบตาม safety rule; ให้ owner อนุมัติเป็นรายการเฉพาะถ้าต้องการคืนพื้นที่
+
+### Production ownership และ backup
+
+- `mariadb.service` active, รันด้วย OS user `mysql`, datadir `/var/lib/mysql`, host version
+  `10.11.14`; session นี้ไม่มี DB credential จึงไม่อ่าน schema/data และไม่เปิดเผย secret
+- Apache active บน 80/443; `nginx` inactive. `raemanagemju.net` route `/Cemployee/...`
+  ไป `127.0.0.1:8088`; `raeservice.mju.ac.th` เป็น static/PHP vhost. `/api/v1/ready` บน
+  legacy host ตอบ `404`, จึงไม่ใช่ V2 deployment
+- `apachectl -t` ให้ `Syntax OK` แต่เตือน Alias overlap ใน `cemployee.conf`; ต้องแก้ใน
+  change window แยกต่างหาก ไม่ใช่เหตุให้ reload ตอนนี้
+- ตรวจ cron/timers แล้วไม่พบ `mysqldump`/`mariadb-dump` automation; `dpkg-db-backup` เป็น
+  package metadata ไม่ใช่ Attendance DB backup. ไฟล์ Apache backup มีอยู่ แต่ไม่ใช่ DB backup
+
+### Compatibility และ isolated backup/restore
+
+- `mariadb:10.11.14` exact version ผ่าน isolated tmpfs stack; migration ledger **26 rows**
+  (`001–017, 020–026, 028`), readiness และ full compose smoke ผ่าน
+- logical dump ข้อมูล synthetic ขนาด **51,466 bytes** → drop/recreate disposable DB → restore
+  → ledger 26 rows และ compose smoke ผ่าน
+- restart พร้อมกันครั้งแรกได้ `500` เพราะ backend เริ่มก่อน DB health; หลัง health แล้วพบว่า
+  tmpfs สูญข้อมูลตามธรรมชาติ จึงไม่ใช้ผลนั้นอ้าง persistence. ประเด็นนี้ยืนยันว่าการทดสอบจริง
+  ต้องใช้ persistent volume/backup restore ไม่ใช่ tmpfs
+- หลังทดสอบล้างเฉพาะ compatibility containers/network/override/dump; containers เดิม
+  `n6-maria`, `sso-v4-p0-mariadb`, `attendance-report-attendance-1` ยังอยู่
+
+### ขั้นตอนที่เตรียมไว้ แต่ยังไม่ execute บน production
+
+1. **Backup:** ยืนยัน target/schema/owner → ตรวจ free space → logical dump ด้วย
+   `--single-transaction --routines --triggers` ไปยัง path ที่ owner อนุมัติ → `sha256sum`
+   → บันทึก SHA/time/DB version โดยไม่ใส่ password ใน command history/log
+2. **Restore rehearsal:** restore dump เข้า disposable MariaDB ที่ version เดียวกัน → ตรวจ
+   migration ledger, row counts/metadata และ readiness → เก็บผล checksum; ห้าม restore ทับ
+   host DB ระหว่าง readiness phase
+3. **Apache rollback:** เก็บ active `000-raemanagemju.net.conf`, `raeservice.mju.ac.th.conf`,
+   `cemployee.conf` และ unit metadata พร้อม SHA → validate candidate ด้วย `apachectl -t` และ
+   `apachectl -S` → หลัง approval เท่านั้นจึง reload. Rollback คือ restore exact prior files,
+   validate ซ้ำ แล้ว reload; ต้องมี previous config ที่ owner ยืนยันว่าใช้งานได้
+
+ยังไม่มี backup/restore proof ของ production และยังไม่มี rollback rehearsal ของ Apache ที่
+ได้รับอนุมัติ จึงคงสถานะ **`DARK_DEPLOY_READY=NO`**.
