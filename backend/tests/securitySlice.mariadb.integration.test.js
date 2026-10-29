@@ -47,6 +47,11 @@ test('MariaDB security integration', { skip: enabled ? false : 'RUN_SECURITY_MAR
     waitForConnections: true,
     connectionLimit: 8,
     timezone: 'Z',
+    // Rollback files are multi-statement (the DDL plus the ledger row that has to disappear with
+    // it), and scripts/migrate.mjs already runs SQL files with multipleStatements: true (:143).
+    // Without the flag here the harness was stricter than the runner, so a legitimate rollback
+    // file failed with a syntax error at its second statement.
+    multipleStatements: true,
   });
   const uid = '44444444-4444-4444-4444-444444444444';
   const email = 'security.slice@example.test';

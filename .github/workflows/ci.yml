@@ -115,6 +115,61 @@ jobs:
           DB_PASSWORD: attendance
         run: npm run contract:smoke
 
+  # These two suites assert VERSION() matches ^10.11.14 and DATABASE() is
+  # attendance_security_main_test on 127.0.0.1:3306, and they never ran in CI: the
+  # backend-mariadb job uses mariadb:11.4 + attendance_v2 and does not set RUN_SECURITY_MARIADB.
+  # So the security slices were dead weight - green because nothing executed them. This job gives
+  # them exactly what they ask for, which is the only way they can pass.
+  security-mariadb:
+    name: security slices (mariadb 10.11.14)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11.14
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: attendance_security_main_test
+          MARIADB_USER: attendance
+          MARIADB_PASSWORD: attendance
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      JWT_SECRET: ci-security-only-secret
+      RUN_SECURITY_MARIADB: '1'
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_NAME: attendance_security_main_test
+      DB_USER: attendance
+      DB_PASSWORD: attendance
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_USER: attendance
+      MYSQL_PASSWORD: attendance
+      MYSQL_DATABASE: attendance_security_main_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+      - name: Apply migrations to the security database
+        run: |
+          npm ci
+          npm run db:migrate
+      - name: Security slices against a real MariaDB
+        working-directory: backend
+        run: |
+          npm ci
+          node --test --test-force-exit tests/securitySlice.mariadb.integration.test.js tests/securitySlice.finalqa.mariadb.test.js
+
   compose-smoke:
     runs-on: ubuntu-latest
     steps:
