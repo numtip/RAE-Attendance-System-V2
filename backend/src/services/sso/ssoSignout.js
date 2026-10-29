@@ -70,8 +70,8 @@ function assertNotSampleClientId(clientId) {
 /**
  * Validates the MJU signout endpoint before it is used as a redirect target.
  *
- * Requirements: absolute `https:` URL, no embedded credentials, no fragment, and a host that is not a bare
- * loopback/private address (a signout must reach the identity provider, not a local service).
+ * Requirements: absolute `https:` URL, no embedded credentials, no fragment. The host is not pinned: the value
+ * comes from operator configuration (`SSO_SIGNOUT_URL`), not from a request.
  */
 function assertSignoutEndpoint(signoutUrl) {
   if (typeof signoutUrl !== 'string' || signoutUrl.trim() === '') {

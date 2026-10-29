@@ -230,6 +230,8 @@ function createSsoService(deps) {
      * browser somewhere safe, so it is idempotent by construction.
      */
     signoutRedirect() {
+      // Unauthenticated entry point, so it obeys the same SSO gate as every other one.
+      disabledResponse();
       const { signoutUrl, afterSignoutUrl } = buildSignoutRedirects(config);
       if (!signoutUrl) {
         throw new HttpError(503, 'SSO_NOT_READY', 'SSO signout is not configured');
