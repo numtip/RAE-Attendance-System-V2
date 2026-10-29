@@ -1,6 +1,6 @@
 # G-02 — login attempt binding and the shared store
 
-**Status:** implemented on `feat/sso-standard-adapter` (PR #63), mock-tested and CI-tested.
+**Status:** merged on `main` (PR #63, `d1e0240`, 2026-10-28), mock-tested and CI-tested.
 **Not enabled anywhere.** SSO stays off by default; nothing here changes production.
 
 ---
@@ -10,8 +10,12 @@
 Two gaps were recorded against the SSO login state store:
 
 1. **No binding.** `create()` returned an opaque state with nothing tying it to the browser that
-   started the login. MJU does not echo `state` (`docs/SSO_PROTOCOL_EVIDENCE.md`), so the state
-   alone could not distinguish *the user who started this* from *anyone holding the value*.
+   started the login. Whether MJU echoes `state` back is **unproven** (shared contract item C-10 is
+   `REFERENCE_ONLY`/`UNKNOWN`; the earlier reference to a `docs/SSO_PROTOCOL_EVIDENCE.md` pointed at
+   a file this repository does not contain), so the state alone could not distinguish *the user who
+   started this* from *anyone holding the value*. If MJU does not echo it, every login fails closed
+   at `ssoService.handleCallback` with `SSO_STATE_INVALID` — see
+   [`SSO_ACTIVATION_CHECKLIST.md`](./SSO_ACTIVATION_CHECKLIST.md) section 0.
 2. **Process-local only.** A `Map` meant a restart forgot every pending login and a second
    instance never saw the first instance's state.
 
@@ -121,7 +125,7 @@ narrows the window; it does not close it, and no documentation here claims other
 
 | Check | Result |
 |---|---|
-| Backend suite | 208 tests — 194 pass, 0 fail, 14 skipped (DB-gated) |
+| Backend suite | 208 tests — 194 pass, 0 fail, 14 skipped (DB-gated) on `main`; 209/195 once PR #66 (live identity gate) adds its test |
 | `ssoLoginBinding` (new) | 13 pass — cookie attributes, randomness, tamper, single use, concurrency, logout |
 | `ssoStateStoreContract` | 12 pass — binding, expiry, shared-instance, legacy backends |
 | `ssoLoginAttemptStore.mariadb` (new) | 7 tests, skipped locally (no Docker), **run in CI's `backend-mariadb` job** |
