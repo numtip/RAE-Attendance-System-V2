@@ -8,6 +8,8 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { createFixtureRepositories } = require('../src/repositories/fixtureRepositories');
+const { createFixtureEmployeeIdentifierRepository } = require('../src/repositories/fixtureEmployeeIdentifierRepository');
+const { createEmployeeIdentifierMariaDbRepository } = require('../src/repositories/mariadb/employeeIdentifierMariaDbRepository');
 const { createEmployeeIdentityService } = require('../src/services/employeeIdentityService');
 const { createNationalIdProtector, MIN_KEY_BYTES } = require('../src/security/nationalIdContract');
 
@@ -242,6 +244,129 @@ test('facescan_id and employee_id keep their existing plaintext behaviour', asyn
 
   const stored = (await repositories.employeeIdentifiers.listByEmployeeUid(employee.employeeUid)).find((r) => r.idType === 'facescan_id');
   assert.equal(stored.idValue, '9001', 'a facescan code is not personal data and stays as-is');
+});
+
+// --- schema compatibility: with and without migration 015 ---------------------------------------------
+
+/**
+ * A pool that behaves like a schema WITHOUT migration 015: any statement naming `lookup_key_version` fails the
+ * way MariaDB fails it. `hasLookupKeyVersion: true` models the post-015 schema, so the same test proves the SQL
+ * shape in both directions and cannot pass vacuously.
+ */
+function fakePool({ hasLookupKeyVersion }) {
+  const statements = [];
+  return {
+    statements,
+    async query(sql, params = []) {
+      statements.push(sql);
+      if (!hasLookupKeyVersion && /lookup_key_version/.test(sql)) {
+        const error = new Error("Unknown column 'lookup_key_version' in 'field list'");
+        error.code = 'ER_BAD_FIELD_ERROR';
+        throw error;
+      }
+      if (/^\s*insert/i.test(sql)) return [{ insertId: 1 }];
+      if (/WHERE id = \?/.test(sql)) {
+        return [[{
+          id: 1,
+          employee_uid: 'u-1',
+          id_type: 'facescan_id',
+          id_value: params[0],
+          source_system: null,
+          is_primary: 0,
+          status: 'active',
+          verified_at: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        }]];
+      }
+      return [[]]; // lookups find nothing
+    },
+  };
+}
+
+test('without migration 015, a non-national identifier write never names lookup_key_version', async () => {
+  const pool = fakePool({ hasLookupKeyVersion: false });
+  const repo = createEmployeeIdentifierMariaDbRepository(pool);
+
+  for (const idType of ['facescan_id', 'employee_id', 'personnel_id']) {
+    await repo.insert({ employeeUid: 'u-1', idType, idValue: 'X-1' });
+  }
+  assert.equal(
+    pool.statements.some((sql) => /lookup_key_version/.test(sql)),
+    false,
+    'only a national_id write may depend on migration 015; the previous defect broke every identifier write',
+  );
+});
+
+test('with migration 015, the national_ID write records its key version', async () => {
+  const pool = fakePool({ hasLookupKeyVersion: true });
+  const repo = createEmployeeIdentifierMariaDbRepository(pool);
+  const linked = await repo.insert({
+    employeeUid: 'u-1',
+    idType: 'national_id',
+    idValue: 'a'.repeat(64),
+    lookupKeyVersion: 2,
+  });
+  assert.equal(linked.lookupKeyVersion, 2);
+  assert.equal(pool.statements.some((sql) => /lookup_key_version/.test(sql)), true);
+});
+
+test('without migration 015, a national-ID write is a 503, not a raw "Unknown column" error', async () => {
+  const pool = fakePool({ hasLookupKeyVersion: false });
+  const svc = createEmployeeIdentityService({
+    repositories: {
+      employees: { async findByUid() { return { employeeUid: 'u-1' }; } },
+      employeeIdentifiers: createEmployeeIdentifierMariaDbRepository(pool),
+    },
+    nationalIdProtector: createNationalIdProtector({ keys: { 1: KEY_V1 } }),
+  });
+
+  await assert.rejects(
+    () => svc.linkIdentifier({ employeeUid: 'u-1', idType: 'national_id', idValue: ID_A }),
+    (err) => err.status === 503 && err.code === 'NATIONAL_ID_STORAGE_NOT_READY',
+  );
+});
+
+// --- legacy rows and unknown keys ----------------------------------------------------------------------
+
+test('a legacy plaintext national_id row is not matched (there is no plaintext fallback)', async () => {
+  // The state migration 015 refuses to run over: a row written by the old code. Lookups are digest-only, so
+  // such a row is invisible until it is reindexed — and it is never matched by comparing raw values.
+  const legacy = createFixtureEmployeeIdentifierRepository([
+    { id: 1, employeeUid: 'u-1', idType: 'national_id', idValue: ID_A, status: 'active' },
+  ]);
+  const svc = createEmployeeIdentityService({
+    repositories: {
+      employees: { async findByUid() { return { employeeUid: 'u-1' }; } },
+      employeeIdentifiers: legacy,
+    },
+    nationalIdProtector: protector(),
+  });
+
+  await assert.rejects(
+    () => svc.resolve('national_id', ID_A),
+    (err) => err.status === 404,
+    'a raw value must never be compared to a stored plaintext row',
+  );
+});
+
+test('a row written under an unknown key does not match a different key of the same version', async () => {
+  const repositories = createFixtureRepositories();
+  const employee = await firstEmployee(repositories);
+  await createEmployeeIdentityService({
+    repositories,
+    nationalIdProtector: createNationalIdProtector({ keys: { 1: KEY_V1 } }),
+  }).linkIdentifier({ employeeUid: employee.employeeUid, idType: 'national_id', idValue: ID_A });
+
+  // Same version number, different secret: nothing may match.
+  const otherKeyDeploy = createEmployeeIdentityService({
+    repositories,
+    nationalIdProtector: createNationalIdProtector({ keys: { 1: 'z'.repeat(MIN_KEY_BYTES) } }),
+  });
+  await assert.rejects(
+    () => otherKeyDeploy.resolve('national_id', ID_A),
+    (err) => err.status === 404,
+  );
 });
 
 // --- PII leakage -------------------------------------------------------------------------------------

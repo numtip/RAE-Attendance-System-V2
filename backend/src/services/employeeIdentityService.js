@@ -265,7 +265,9 @@ function createEmployeeIdentityService({ repositories, nationalIdProtector = nul
         employeeUid: row.employeeUid,
         idType: row.idType,
         idValue: row.idType === 'national_id' ? undefined : row.idValue,
-        idValueMasked: maskIdentifierForLog(row.idType, row.idValue),
+        // A national_id row holds a digest, so its "last four" would be four hex characters of the HMAC, not
+        // four digits of the citizen's ID. Nothing about the raw value survives, so there is no mask to show.
+        idValueMasked: row.idType === 'national_id' ? null : maskIdentifierForLog(row.idType, row.idValue),
         sourceSystem: row.sourceSystem,
         isPrimary: row.isPrimary,
         status: row.status,

@@ -39,6 +39,8 @@ const SCAN_ROOTS = [
   path.join(REPO_ROOT, 'backend', 'tests'),
   path.join(REPO_ROOT, 'scripts'),
   path.join(REPO_ROOT, 'docs'),
+  // Seeds and migrations are where a fixture value would be copied to next.
+  path.join(REPO_ROOT, 'database'),
 ];
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__', 'local']);

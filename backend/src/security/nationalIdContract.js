@@ -74,8 +74,10 @@ function canonicalizeNationalId(raw) {
 /**
  * Thai citizen-ID checksum (mod 11 over the first 12 digits).
  *
- * Used only to reject obvious typos before a digest is computed. It is **not** an access control: a value that
- * fails the checksum is rejected, but a value that passes is still treated as personal data.
+ * Used by the fixture-hygiene guard to tell a synthetic value from a real-looking one. It is deliberately NOT
+ * enforced on write: a checksum typo is stored as an unmatchable digest rather than rejected, because rejecting
+ * it would also reject the checksum-invalid synthetics the tests depend on. It is **not** an access control: a
+ * value that passes the checksum is still treated as personal data.
  */
 function isValidNationalIdChecksum(canonical) {
   if (!NATIONAL_ID.test(canonical)) return false;

@@ -146,16 +146,17 @@ test('national_id never appears unmasked in list or errors', async () => {
   const nationalRow = listed.find((row) => row.idType === 'national_id');
   assert.ok(nationalRow);
   assert.equal(nationalRow.idValue, undefined);
-  assert.ok(!nationalRow.idValueMasked.includes(plain));
-  assert.match(nationalRow.idValueMasked, /^\*\*\*\*\d{4}$/);
+  // Only a digest is stored, so any "last four" shown here would be four characters of the HMAC rather than
+  // four digits of the citizen's ID. There is nothing legitimate to mask, so nothing is shown.
+  assert.equal(nationalRow.idValueMasked, null);
+  assert.equal(JSON.stringify(nationalRow).includes(plain), false);
 
-  try {
-    await service.resolve('national_id', '9900000000003');
-  } catch (error) {
-    assert.equal(error.code, 'EMPLOYEE_NOT_FOUND');
-    assert.ok(!String(error.message).includes(plain));
-    assert.ok(!String(error.message).includes('9900000000004'));
-  }
+  await assert.rejects(
+    () => service.resolve('national_id', '9900000000003'),
+    (error) => error.code === 'EMPLOYEE_NOT_FOUND'
+      && !String(error.message).includes(plain)
+      && !String(error.message).includes('9900000000003'),
+  );
 });
 
 test('attendance boundary resolves employee_id and Attendance Core receives employee_uid', async () => {

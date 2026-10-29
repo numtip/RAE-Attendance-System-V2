@@ -39,7 +39,8 @@ function normalizeLookupValue(idType, idValue) {
   return normalizeIdentifierValue(idType, idValue);
 }
 
-function maskIdentifierForLog(idType, idValue) {  if (idType === 'national_id') {
+function maskIdentifierForLog(idType, idValue) {
+  if (idType === 'national_id') {
     const digits = String(idValue || '').replace(/\D/g, '');
     if (digits.length >= 4) {
       return `****${digits.slice(-4)}`;
