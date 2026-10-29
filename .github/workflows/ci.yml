@@ -41,6 +41,11 @@ jobs:
       - name: Secret-scan rule tests
         run: node --test scripts/secret-scan.test.mjs
 
+      # N-2: the key-version audit's classification rule. The database half runs in backend-mariadb,
+      # because this job has no MariaDB.
+      - name: National-ID key-version audit tests
+        run: node --test scripts/nationalIdKeyVersions.test.mjs
+
   backend-mariadb:
     runs-on: ubuntu-latest
     services:
