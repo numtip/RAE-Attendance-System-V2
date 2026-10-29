@@ -57,6 +57,20 @@ No OAuth authorization, token, or userinfo **URL values** appear in repository d
 
 Complete in order. Check each box only with evidence (MJU ticket, registered redirect URI, successful non-production test, etc.).
 
+### 0. Integration model confirmed in writing (blocking — do this first)
+
+- [ ] MJU has stated, in writing, which model this client uses: **A** portal redirect
+      (`signin.aspx?cid=` → callback `?ac=` → `POST token.aspx`) or **B** OAuth2/OIDC
+      (`response_type=code`/`state` → token endpoint + userinfo). Question 0 in
+      [`MJU_SSO_ADMIN_QUESTIONS.md`](./MJU_SSO_ADMIN_QUESTIONS.md).
+- [ ] V2's code path matches the confirmed model. Today V2 implements **B** (`oauthProvider`),
+      while the vendor sample supplied to clients describes **A**. Only one can be right, so no
+      staging sign-in is meaningful before this is settled.
+- [ ] The identity subject is the field MJU names as authoritative — **not** the profile e-mail.
+      `ssoService.handleCallback` currently resolves the employee with
+      `repositories.employees.findByEmail`, which is acceptable only while the mocked OAuth path
+      is used; it must not authenticate anyone against the live provider.
+
 ### 1. Callback registered with MJU
 
 - [ ] MJU OAuth client allows redirect URI: `https://raeservice.mju.ac.th/api/v1/auth/sso/callback` (or the exact URL chosen for the deploy host).
