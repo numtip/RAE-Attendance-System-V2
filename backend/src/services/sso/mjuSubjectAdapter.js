@@ -1,6 +1,9 @@
-const { PROVIDER_MJU_SSO } = require('../../domain/identityLink');
-
-const EMAIL_LIKE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const {
+  PROVIDER_MJU_SSO,
+  EMAIL_LIKE,
+  isEmailShaped,
+  isCallbackAcLike,
+} = require('../../domain/identityLink');
 
 function result(status, fields) {
   return {
@@ -24,10 +27,6 @@ function profileFrom(input) {
   return input.profile || input.oauthProfile || null;
 }
 
-function isAcValue(value) {
-  return value === 'ac' || value === 'AC';
-}
-
 /**
  * Fail-closed MJU subject extraction. Does not call Person API or interpret callback `ac` as identity.
  *
@@ -38,7 +37,7 @@ function extractVerifiedSubject(input = {}) {
   const profile = profileFrom(input);
   const proposedSubject = input.providerSubject ?? input.subject ?? input.confirmedSubject ?? null;
 
-  if (input.usesCallbackAc === true || isAcValue(proposedSubject)) {
+  if (input.usesCallbackAc === true || isCallbackAcLike(proposedSubject)) {
     return result('invalid', { evidence: 'callback_ac_rejected' });
   }
   if (input.treatQueryAcAsSubject === true && query.ac) {
@@ -51,17 +50,20 @@ function extractVerifiedSubject(input = {}) {
   if (input.emailOnly === true) {
     return result('invalid', { evidence: 'email_only_rejected' });
   }
-  if (proposedSubject && EMAIL_LIKE.test(String(proposedSubject)) && input.allowEmailShapedSubject !== true) {
+  if (proposedSubject && isEmailShaped(proposedSubject) && input.allowEmailShapedSubject !== true) {
     return result('invalid', { evidence: 'email_only_rejected' });
   }
 
   if (profile) {
     const claim = profile.sub || profile.subject || profile.providerSubject;
     const email = profile.email || profile.mail || profile.preferred_username;
+    if (claim && (isCallbackAcLike(claim) || (query.ac && String(claim) === String(query.ac)))) {
+      return result('invalid', { evidence: 'callback_ac_rejected' });
+    }
     if (!claim && email) {
       return result('invalid', { evidence: 'email_only_profile_rejected' });
     }
-    if (claim && EMAIL_LIKE.test(String(claim)) && input.allowEmailShapedSubject !== true) {
+    if (claim && isEmailShaped(claim) && input.allowEmailShapedSubject !== true) {
       return result('invalid', { evidence: 'email_only_rejected' });
     }
   }
@@ -78,7 +80,7 @@ function extractVerifiedSubject(input = {}) {
   if (String(confirmed) === String(query.ac || '')) {
     return result('invalid', { evidence: 'callback_ac_rejected' });
   }
-  if (EMAIL_LIKE.test(String(confirmed)) && input.allowEmailShapedSubject !== true) {
+  if (isEmailShaped(confirmed) && input.allowEmailShapedSubject !== true) {
     return result('invalid', { evidence: 'email_only_rejected' });
   }
 
