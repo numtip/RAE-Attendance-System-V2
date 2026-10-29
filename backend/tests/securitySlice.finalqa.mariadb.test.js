@@ -39,6 +39,9 @@ test('final MariaDB security QA', { skip: enabled ? false : 'RUN_SECURITY_MARIAD
     password: database.password,
     connectionLimit: 20,
     timezone: 'Z',
+    // Same reason as securitySlice.mariadb.integration.test.js: rollback files are
+    // multi-statement and scripts/migrate.mjs runs them with this flag (:143).
+    multipleStatements: true,
   });
   const repositories = createMariaDbRepositories(database);
   const passwordHash = bcrypt.hashSync('valid-pass', 8);
