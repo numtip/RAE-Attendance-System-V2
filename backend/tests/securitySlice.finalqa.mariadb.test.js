@@ -289,8 +289,14 @@ test('final MariaDB security QA', { skip: enabled ? false : 'RUN_SECURITY_MARIAD
         hostname: '127.0.0.1', port: Number(process.env.APP_PORT), path: '/api/v1/auth/refresh', method: 'POST',
         headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
       }, (res) => {
-        res.resume();
-        res.on('end', () => { process.stdout.write(String(res.statusCode)); process.exit(0); });
+        let text = '';
+        res.on('data', (chunk) => { text += chunk; });
+        res.on('end', () => {
+          let refreshToken = null;
+          try { refreshToken = JSON.parse(text)?.data?.refreshToken ?? null; } catch { refreshToken = null; }
+          process.stdout.write(JSON.stringify({ status: res.statusCode, refreshToken }));
+          process.exit(0);
+        });
       });
       req.on('error', () => process.exit(1));
       req.end(body);
@@ -303,7 +309,11 @@ test('final MariaDB security QA', { skip: enabled ? false : 'RUN_SECURITY_MARIAD
         });
         let out = '';
         child.stdout.on('data', (chunk) => { out += chunk; });
-        child.on('close', (code) => resolve({ code, status: out.trim() }));
+        child.on('close', (code) => {
+          let parsed = null;
+          try { parsed = JSON.parse(out.trim()); } catch { parsed = null; }
+          resolve({ code, status: parsed ? String(parsed.status) : '', refreshToken: parsed?.refreshToken ?? null });
+        });
       });
     }
     const pair = await Promise.all([
@@ -316,14 +326,37 @@ test('final MariaDB security QA', { skip: enabled ? false : 'RUN_SECURITY_MARIAD
       'SELECT COUNT(*) AS n FROM refresh_tokens WHERE employee_uid = ? AND revoked_at IS NULL',
       [uid],
     );
-    assert.equal(Number(afterRace[0].n), Number(before[0].n));
+    // TWO CONCURRENT USES OF ONE REFRESH TOKEN ARE, BY DEFINITION, A REUSE — and reuse detection revokes the
+    // whole family. So the live count after the race may legitimately DROP (the loser's 401 revokes the family,
+    // including the token the winner was just issued) and may stay the same when the loser's request arrives
+    // before the winner commits. Asserting equality encoded one of those two orderings and failed ~half the
+    // time (`finalqa.mariadb.test.js:329`, expected 3, actual 2 — measured 3/6 locally and in CI). The
+    // invariants that hold in every ordering: exactly one success, exactly one rejection (above), and no
+    // extra live tokens minted by the race.
+    assert.ok(
+      Number(afterRace[0].n) <= Number(before[0].n),
+      `a race must not mint live tokens (before ${before[0].n}, after ${afterRace[0].n})`,
+    );
     const again = await refreshFromNewProcess(raced.body.data.refreshToken);
     assert.equal(again.status, '401');
+    // REUSE DETECTION REVOKES THE WHOLE FAMILY, so the exact number of rows that disappear depends on how
+    // many tokens the race left live — asserting `before - 1` encoded an accident of the race and failed
+    // roughly half the time (`finalqa.mariadb.test.js:319`, expected 3, actual 2). The property that matters
+    // is measured instead: the successor the winning child received must no longer be usable.
+    const winner = pair.find((row) => row.status === '200');
+    assert.ok(winner?.refreshToken, 'the winning rotation must return a token');
+    const afterSuccessor = await refreshFromNewProcess(winner.refreshToken);
+    assert.equal(afterSuccessor.status, '401');
     const [afterReuse] = await pool.query(
       'SELECT COUNT(*) AS n FROM refresh_tokens WHERE employee_uid = ? AND revoked_at IS NULL',
       [uid],
     );
-    assert.equal(Number(afterReuse[0].n), Number(before[0].n) - 1);
+    // Family revocation removes at least the reused token's whole family; it must never leave the count
+    // unchanged, and it must never go negative.
+    assert.ok(
+      Number(afterReuse[0].n) < Number(before[0].n),
+      `reuse detection must revoke live tokens (before ${before[0].n}, after ${afterReuse[0].n})`,
+    );
 
     const [familyIndexes] = await pool.query(
       `SELECT DISTINCT index_name AS name FROM information_schema.statistics
