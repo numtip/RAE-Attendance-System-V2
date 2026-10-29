@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { randomUUID } = require('node:crypto');
 const { HttpError } = require('../utils/httpError');
-const { assertSsoGate, portalConfigReady } = require('./sso/ssoConfig');
+const { assertLiveIdentityGate, assertSsoGate, portalConfigReady } = require('./sso/ssoConfig');
 const { createOAuthProvider } = require('./sso/oauthProvider');
 const { createSsoStateStore } = require('./sso/ssoStateStore');
 const { buildCidUrl } = require('./sso/mjuPortal');
@@ -49,6 +49,7 @@ function createSsoService(deps) {
       if (config.sso.signinUrl) {
         return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
       }
+      assertLiveIdentityGate(config);
       // G-02: a login attempt must be bound to the browser that started it. When the gate is on
       // (always in production) a missing or weak binding fails closed rather than creating an
       // unbound attempt that any holder of the state could complete.
@@ -104,6 +105,7 @@ function createSsoService(deps) {
         );
       }
       disabledResponse();
+      assertLiveIdentityGate(config);
       if (portalConfigReady(config.sso) && config.sso.provider !== 'mock') {
         throw new HttpError(503, 'SSO_NOT_READY', 'MJU callback query contract is not confirmed');
       }

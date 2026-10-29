@@ -26,6 +26,10 @@ const baseSsoConfig = {
   clientId: 'v2-client-id',
   clientSecret: 'v2-client-secret',
   callbackUrl: 'http://127.0.0.1:3210/api/v1/auth/sso/callback',
+  // The fixture asserts the subject-contract switch so the exchange mechanics can be exercised
+  // against the fake HTTP provider. Production keeps SSO_SUBJECT_CONTRACT_CONFIRMED=false, and
+  // assertSsoGate refuses every non-mock provider while it is false (see the dedicated test).
+  subjectContractConfirmed: true,
 };
 
 const baseJwtConfig = {
@@ -214,6 +218,30 @@ test('SSO gates: disabled, unconfirmed callback, and incomplete config', async (
     oauthProvider: createMockOAuthProvider(),
   });
   await assert.rejects(() => unconfirmed.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
+});
+
+test('live login is refused while the subject contract is unconfirmed (default posture)', async () => {
+  // The shipped default is SSO_PROVIDER=http with SSO_SUBJECT_CONTRACT_CONFIRMED=false. Without
+  // this gate the live callback would authenticate whoever owns a matching e-mail address and
+  // would never consult an approved identity link (policy S7, S3/S6).
+  const service = createSsoService({
+    config: {
+      jwt: baseJwtConfig,
+      sso: { ...baseSsoConfig, provider: 'http', subjectContractConfirmed: false },
+    },
+    repositories: createFixtureRepositories(),
+    oauthProvider: createMockOAuthProvider(),
+    stateStore: createSsoStateStore(),
+  });
+
+  await assert.rejects(
+    () => service.beginLogin({ browserBinding: 'b'.repeat(32) }),
+    (err) => err.status === 503 && err.code === 'SSO_SUBJECT_CONTRACT_UNCONFIRMED',
+  );
+  await assert.rejects(
+    () => service.handleCallback({ code: 'any-code', state: 'any-state' }),
+    (err) => err.status === 503 && err.code === 'SSO_SUBJECT_CONTRACT_UNCONFIRMED',
+  );
 });
 
 test('SSO HTTP routes stay closed by default', async () => {

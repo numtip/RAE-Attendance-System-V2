@@ -72,8 +72,11 @@ Complete in order. Check each box only with evidence (MJU ticket, registered red
       is used; it must not authenticate anyone against the live provider.
 - [ ] The **approved-link gate** is on the live path. `ssoIdentityChainService` exists and is
       tested, but `handleCallback` does not call it (the code says so in a comment), so a
-      successful exchange currently mints a session with no approved local identity link. The
+      successful exchange would mint a session with no approved local identity link. The
       standard's policy S3/S6 allows a session only from an approved, current, unique link.
+      **Until then this is enforced closed:** `assertLiveIdentityGate` refuses every non-mock
+      provider with `SSO_SUBJECT_CONTRACT_UNCONFIRMED` while
+      `SSO_SUBJECT_CONTRACT_CONFIRMED=false`, so no live sign-in can complete.
 - [ ] The callback does not depend on an unproven provider behaviour. V2 requires the provider to
       echo `state` back; the shared contract lists that as `REFERENCE_ONLY`/`UNKNOWN` (C-10) and
       the blueprint says to rely on provider `state` only once it is proven. If MJU does not echo

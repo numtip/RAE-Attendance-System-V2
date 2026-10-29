@@ -130,7 +130,7 @@ MJU OAuth callback
   → JWT (sub = employee_uid)
 ```
 
-**Today:** `ssoService.handleCallback` still maps mock/live profile **email** → `employees.findByEmail` when SSO enabled. Prepared chain exists in `ssoIdentityChainService` but is not wired to HTTP callback until `SSO_SUBJECT_CONTRACT_CONFIRMED`.
+**Today:** `ssoService.handleCallback` still maps mock/live profile **email** → `employees.findByEmail`, and the prepared chain in `ssoIdentityChainService` is not wired to the HTTP callback. Because that mapping is not a permitted subject (policy S7) and no approved link is consulted (S3/S6), `assertLiveIdentityGate` refuses every **non-mock** provider while `SSO_SUBJECT_CONTRACT_CONFIRMED=false` with `SSO_SUBJECT_CONTRACT_UNCONFIRMED` — so the live callback cannot authenticate anyone by e-mail. Only the mock provider (a test double) still exercises the exchange.
 
 ### 4.4 MJU Person Enrich → human review (offline)
 
