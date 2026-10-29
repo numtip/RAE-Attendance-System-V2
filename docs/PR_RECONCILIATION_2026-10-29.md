@@ -37,7 +37,10 @@ landed as `873e539`, plus two files in #42 and one CI job in #35.
 ## 2. What was merged under this analysis
 
 **#44 — `4851a8a9`.** `backend/tests/employeeIdentity.test.js:42,125` contained a **real Thai
-national ID** (`1180200015351`) in a public repository. #44 was the only PR that merged cleanly into
+national ID** — a checksum-valid 13-digit value — committed as a literal in a public repository.
+The value is deliberately **not repeated here**; the incident record
+(`docs/SECURITY_INCIDENT_PII_IN_FIXTURES_20261016.md`) documents what happened without republishing
+it, and this document originally got that wrong by quoting it. #44 was the only PR that merged cleanly into
 today's `main`; it was rebased onto `main`, re-run (backend 236 tests / 218 pass / 0 fail /
 18 skipped, secret scan clean), marked ready and merged. The literal is now absent from `main`
 (verified by reading the file back at `main`). Its incident record
