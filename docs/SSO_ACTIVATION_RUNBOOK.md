@@ -106,6 +106,13 @@ Copy `.env.example`. Leave secrets out of git.
 | `APP_URL` | Public origin used for the success redirect |
 | `JWT_SECRET` | Existing V2 secret, independent of SSO |
 
+## Staging preparation without MJU (allowed now)
+
+Mock E2E in the test runner, the fail-closed probe of a deployed staging container, and the
+migration `028` apply/rollback rehearsal are prepared in
+[`SSO_STAGING_MOCK_E2E.md`](./SSO_STAGING_MOCK_E2E.md). None of it contacts MJU, and the mock
+provider is deliberately refused when `NODE_ENV=production`.
+
 ## Live test (only after the asks above are answered)
 
 1. Keep a second shell ready to set `SSO_ENABLED=false`.
