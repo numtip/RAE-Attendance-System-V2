@@ -36,6 +36,11 @@ jobs:
       - name: Compose config regression tests
         run: node --test scripts/composeConfig.test.mjs
 
+      # The secret-scan rules are the gate that keeps credentials out of history; its own test
+      # file was not run in CI, so a rule change broke it unnoticed.
+      - name: Secret-scan rule tests
+        run: node --test scripts/secret-scan.test.mjs
+
   backend-mariadb:
     runs-on: ubuntu-latest
     services:
