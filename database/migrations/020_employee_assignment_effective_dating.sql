@@ -25,8 +25,8 @@
 --     read as "unbounded" and therefore resolve exactly as before this migration.
 --   * ORDER: this file must be applied BEFORE the code that reads the new columns. The identifier
 --     repository selects effective_from/effective_to unconditionally, so without 020 every identifier
---     lookup fails (ER_BAD_FIELD_ERROR) — the same contract migration 015 already imposes.
---   * Requires MariaDB >= 10.2.3 for enforced CHECK constraints, the same floor as migration 015.
+--     lookup fails (ER_BAD_FIELD_ERROR) — the same contract migration 029 (formerly 015) already imposes.
+--   * Requires MariaDB >= 10.2.3 for enforced CHECK constraints, the same floor as migration 029 (formerly 015).
 --   * Not applied to any host by this change.
 --
 -- Rollback: database/rollbacks/020_employee_assignment_effective_dating.down.sql

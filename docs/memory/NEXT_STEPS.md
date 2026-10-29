@@ -54,7 +54,7 @@ Merging #61 is safe. **Applying** it is not, until these are fixed:
    a rollback the runner prints `skip` while the tables are gone. Reproduced. An operator must delete ledger rows
    by hand.
 4. **`026_refresh_token_family.down.sql` is not idempotent** (`ERROR 1091` on re-run).
-5. **Preflights must run first**, on the target engine: `database/preflight/015_preflight.sql` and
+5. **Preflights must run first**, on the target engine: `database/preflight/029_preflight.sql` and
    `017_preflight.sql`. Skipping them on a DB holding legacy plaintext national IDs or duplicate employee-days
    aborts mid-file with no ledger row.
 

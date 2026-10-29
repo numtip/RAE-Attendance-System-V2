@@ -178,12 +178,12 @@ the 015 schema, 4/4 on main's schema; the stored value is proven **not** `sha256
 
 **Why the rotation path needed a control, not a comment.** The same national ID under two key versions produces
 two different digests, and `UNIQUE (id_type, id_value)` compares digests, so the database cannot see that they are
-one person. Migration `015_employee_identifier_secure_lookup` says so in its own header and delegates the check to
+one person. Migration `029_employee_identifier_secure_lookup` (renamed from 015 on 2026-10-29) says so in its own header and delegates the check to
 the application. It was reproduced on real MariaDB — **two rows, two employees claiming one national ID** — and
 then fixed with a cross-version probe in `linkIdentifier` that returns 409. That is the fix this entry relies on.
 
 **Explicitly not approved, and left unimplemented:** storing raw national IDs anywhere. Schema table
-`employee_identifier_secret` exists (migration 015) and is stated by that migration as disabled-by-default; the
+`employee_identifier_secret` exists (migration 029, formerly 015) and is stated by that migration as disabled-by-default; the
 code **never writes it**, and nothing in PR #60 introduces a path that could. Any future proposal to use it needs
 its own approval; the table is not a licence to store a raw value.
 

@@ -1,5 +1,11 @@
 -- Secure National ID storage (policy: docs/NATIONAL_ID_PROTECTION_POLICY.md). NOT applied to production by this PR.
 --
+-- Renumbered 015 -> 029 on 2026-10-29. Two files shared the 015 prefix; this one moved because it has no
+-- ordering contract with 016+ (nothing after it references lookup_key_version), while the facescan file must
+-- stay ahead of 016, which holds foreign keys to the tables that file creates. The ledger keys on the filename,
+-- so this file re-applies cleanly under its new name - every step below is guarded by information_schema, which
+-- is exactly why the renumber is safe. No host had applied any of these files.
+--
 -- Design
 --   * employee_identifier.id_value for id_type='national_id' holds ONLY the lowercase hex HMAC-SHA-256
 --     lookup (64 chars); never the raw ID. lookup_key_version records which HMAC key produced it.
@@ -19,8 +25,8 @@
 --   * Legacy plaintext: if any national_id row is not a 64-hex lookup with a key version, the CHECK step
 --     fails. The only change left behind is the NULLable column; the ledger row is not written, so after
 --     the approved reindex (planReindex) the same file is simply rerun. Run
---     database/preflight/015_preflight.sql first.
---   * DDL is not transactional; rollback = database/rollbacks/015_employee_identifier_secure_lookup.down.sql.
+--     database/preflight/029_preflight.sql first.
+--   * DDL is not transactional; rollback = database/rollbacks/029_employee_identifier_secure_lookup.down.sql.
 
 SET @server_version = VERSION();
 SET @server_num =

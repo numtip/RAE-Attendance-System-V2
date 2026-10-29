@@ -1,4 +1,5 @@
--- Manual rollback for 015 (NOT auto-applied: lives outside database/migrations/).
+-- Manual rollback for 029 (was 015 before the 2026-10-29 renumber; NOT auto-applied: lives outside
+-- database/migrations/).
 -- Precondition: take a backup first.
 -- Refuses (aborts before dropping anything) if employee_identifier_secret holds rows (encrypted raw IDs)
 -- — export/retire them under the retention policy first. The audit table is NEVER dropped here.
@@ -45,4 +46,4 @@ PREPARE r1 FROM @ddl; EXECUTE r1; DEALLOCATE PREPARE r1;
 
 DROP TABLE IF EXISTS employee_identifier_secret;
 
-DELETE FROM schema_migrations WHERE version = '015_employee_identifier_secure_lookup.sql';
+DELETE FROM schema_migrations WHERE version = '029_employee_identifier_secure_lookup.sql';

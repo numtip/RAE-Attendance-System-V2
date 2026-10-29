@@ -1,4 +1,4 @@
--- READ-ONLY preflight for 015_employee_identifier_secure_lookup.sql. Run BEFORE migrating; every value must be 0
+-- READ-ONLY preflight for 029_employee_identifier_secure_lookup.sql (renumbered from 015 on 2026-10-29). Run BEFORE migrating; every value must be 0
 -- (except rows in the audit/secret tables, which do not exist yet). Counts only: never SELECT id_value.
 -- Runs on the post-013 schema (does not reference columns that 015 adds).
 SELECT
