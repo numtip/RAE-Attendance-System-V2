@@ -25,7 +25,7 @@ Default `DATA_SOURCE=fixture`. The MariaDB adapter does not connect while ERROR 
 | GET | `/api/v1/leave/balance/:employeeUid` | 200 / 403 / 404 | Query `year`. |
 | GET | `/api/v1/leave/history/:employeeUid` | 200 / 403 / 404 | |
 | GET | `/api/v1/auth/sso/login` | 302 / 403 / 503 | Redirects to MJU authorization URL when `SSO_ENABLED=true`, `SSO_CALLBACK_CONFIRMED=true`, and config is complete. Otherwise `SSO_DISABLED` or `SSO_NOT_READY`. Default deploy: **403**. |
-| GET | `/api/v1/auth/sso/callback` | 302 / 4xx | OAuth callback. Validates `state`, exchanges `code`, maps MJU user to `employees`, issues V2 tokens, redirects to `APP_URL/?sso=success`. Not callable against real MJU until registration is confirmed. |
+| GET | `/api/v1/auth/sso/callback` | 302 / 4xx | OAuth callback. Validates `state`, exchanges `code`, maps the MJU profile to `employees` and **mints V2 tokens server-side that the browser never receives** (the controller only redirects; the handoff is unspecified — see `SSO_ACTIVATION_RUNBOOK.md`). Refused with `503 SSO_SUBJECT_CONTRACT_UNCONFIRMED` while `SSO_SUBJECT_CONTRACT_CONFIRMED=false`, so it cannot authenticate anyone against the live provider yet. |
 | GET | `/api/v1/auth/sso/me` | 200 / 401 / 403 / 503 | Bearer access token (same envelope as `/auth/me`). Closed until SSO gates pass. |
 | POST | `/api/v1/auth/sso/logout` | 200 / 401 | Bearer token plus body `refreshToken`. Closed until SSO gates pass. |
 

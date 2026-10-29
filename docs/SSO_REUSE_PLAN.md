@@ -35,4 +35,4 @@ Do not keep `/attendance/api/*`.
 3. Confirm which host fields are the authorization, token, and user-info URLs. The donor's single `SSO_ENDPOINT` and the host's split URLs were not proven to be the same contract.
 4. Keep `SSO_ENABLED=false` until that confirmation exists.
 
-Release 1 routes are reserved and return `501` until that work is done.
+Release 1 routes are wired and fail closed: `403 SSO_DISABLED` while `SSO_ENABLED=false`, and `503 SSO_NOT_READY` when a gate is unmet (`backend/src/services/ssoService.js`, routes in `backend/src/api/v1/index.js`).

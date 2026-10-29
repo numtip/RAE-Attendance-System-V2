@@ -58,7 +58,7 @@ Token URL, userinfo URL, and the callback query shape remain **UNKNOWN**. Portal
 | Required claims | Code tries `email`, `mail`, `preferred_username`. MJU claim is **UNKNOWN.** |
 | Employee match | `employees.email`, fail closed |
 | `SSO_ENABLED` | `false` |
-| `SSO_CALLBACK_CONFIRMED` | `true` in the example contract only. Live host env is unchanged |
+| `SSO_CALLBACK_CONFIRMED` | `false` in `.env.example` (corrected 2026-10-29; the earlier "true" claim was wrong). Live host env unchanged |
 
 Mock tests cover a valid callback, invalid and reused state, missing claims, unknown employee, disabled employee, provider timeout, a token body without `access_token`, and a userinfo HTTP error.
 
