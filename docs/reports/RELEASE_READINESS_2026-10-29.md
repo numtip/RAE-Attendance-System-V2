@@ -11,9 +11,28 @@
 | #45 | `1205fdc` | identity subject guard moved into the domain + a **closed** source allowlist (was bypassable by inventing a source) |
 | #81 | `bce4fee` | facescan staging repository aligned with the schema `015_facescan` actually created (`ER_BAD_FIELD_ERROR` before) |
 | #82 | `1e93d46` | ID-7b: the enrichment-outcome guard **fails closed** — it had never fired on MariaDB |
+| #60 | `00425a7` | national IDs are stored/matched only as versioned HMAC digests; the protector now reaches the services that need it; real-MariaDB tests + the N-2 audit script |
 | #78 (earlier) | `3066505` | the security slices run against MariaDB 10.11.14 at all |
 
-`main` at the time of writing: **`1e93d46`** plus the open PRs below.
+`main` at the time of writing: **`00425a7`**.
+
+## 1a. Branch protection is now enforced on `main` (2026-10-29)
+
+`main` was **unprotected** (HTTP 404) for the whole project until today. Now enabled and read back from the API:
+
+| Rule | Value |
+|---|---|
+| required status checks (strict) | `backend`, `backend-mariadb`, `security slices (mariadb 10.11.14)`, `compose-smoke`, `container`, `frontend`, `pages-build`, `secrets`, `agent-core` — all nine report on `pull_request` |
+| require branches up to date | **true** — this is the rule that would have caught the week-old-green-CI trap |
+| required reviews | 0 (a solo maintainer must be able to merge), stale reviews dismissed |
+| conversation resolution | required |
+| force pushes / deletions | **blocked** |
+| linear history | required (the repo merges with squash) |
+| enforce on admins | **false** — a deliberate break-glass path; a bypass must be recorded in the PR or incident note |
+
+Deliberately **not** required: the `pages.yml` jobs `build` and `deploy`, which are push-only and would block
+every PR forever. The 9th context is the job's `name:` — `security slices (mariadb 10.11.14)` — not the job id
+`security-mariadb`; requiring the id would deadlock all merges.
 
 ## 2. QA actually executed (not asserted)
 
