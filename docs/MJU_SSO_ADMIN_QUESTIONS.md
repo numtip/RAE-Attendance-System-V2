@@ -7,6 +7,19 @@ After signout: `https://raeservice.mju.ac.th/attendance-v2/`
 
 Please answer from the registered client, not from the older Attendance client.
 
+**Please answer question 0 first — the rest only makes sense once we know which model applies.**
+
+0. Which integration model should this client use?
+   - **A — portal redirect:** `signin.aspx?cid=<client id>` → callback `?ac=<value>` → `POST token.aspx`
+     with `{"clientID","code"}`. No `state`, no `grant_type`, no client secret, no userinfo, no `id_token`.
+     (This is what the client sample we were given, dated 2025-04-08, shows.)
+   - **B — OAuth2/OIDC:** authorization endpoint with `response_type=code&client_id&redirect_uri&scope&state`
+     → callback `?code=&state=` → token endpoint with `grant_type=authorization_code` + client secret → userinfo.
+   If both exist, which is supported for a new application, and is one deprecated?
+
+   *Why first:* our code and the vendor sample describe different protocols. Implementing the wrong
+   one fails at the first real sign-in, and no amount of local testing can tell the two apart.
+
 1. After a successful sign-in, what exactly is sent to the webhook URL? (method, query string, form body, or redirect)
 2. Which query or form field names are returned?
 3. Is there a ticket, code, or token exchange after that redirect?

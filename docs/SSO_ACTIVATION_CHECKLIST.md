@@ -57,6 +57,28 @@ No OAuth authorization, token, or userinfo **URL values** appear in repository d
 
 Complete in order. Check each box only with evidence (MJU ticket, registered redirect URI, successful non-production test, etc.).
 
+### 0. Integration model confirmed in writing (blocking — do this first)
+
+- [ ] MJU has stated, in writing, which model this client uses: **A** portal redirect
+      (`signin.aspx?cid=` → callback `?ac=` → `POST token.aspx`) or **B** OAuth2/OIDC
+      (`response_type=code`/`state` → token endpoint + userinfo). Question 0 in
+      [`MJU_SSO_ADMIN_QUESTIONS.md`](./MJU_SSO_ADMIN_QUESTIONS.md).
+- [ ] V2's code path matches the confirmed model. Today V2 implements **B** (`oauthProvider`),
+      while the vendor sample supplied to clients describes **A**. Only one can be right, so no
+      staging sign-in is meaningful before this is settled.
+- [ ] The identity subject is the field MJU names as authoritative — **not** the profile e-mail.
+      `ssoService.handleCallback` currently resolves the employee with
+      `repositories.employees.findByEmail`, which is acceptable only while the mocked OAuth path
+      is used; it must not authenticate anyone against the live provider.
+- [ ] The **approved-link gate** is on the live path. `ssoIdentityChainService` exists and is
+      tested, but `handleCallback` does not call it (the code says so in a comment), so a
+      successful exchange currently mints a session with no approved local identity link. The
+      standard's policy S3/S6 allows a session only from an approved, current, unique link.
+- [ ] The callback does not depend on an unproven provider behaviour. V2 requires the provider to
+      echo `state` back; the shared contract lists that as `REFERENCE_ONLY`/`UNKNOWN` (C-10) and
+      the blueprint says to rely on provider `state` only once it is proven. If MJU does not echo
+      it, V2 needs the compensating control and the owner's written acceptance instead.
+
 ### 1. Callback registered with MJU
 
 - [ ] MJU OAuth client allows redirect URI: `https://raeservice.mju.ac.th/api/v1/auth/sso/callback` (or the exact URL chosen for the deploy host).
