@@ -4,6 +4,9 @@ const { createFixtureRepositories } = require('./repositories/fixtureRepositorie
 const { createMariaDbRepositories } = require('./repositories/mariadbRepositories');
 const { protectorFromEnv, NationalIdError } = require('./security/nationalIdContract');
 
+/** One warning per process: a malformed key set must be visible at boot, but not repeated per container. */
+let nationalIdWarningEmitted = false;
+
 /**
  * Builds the national-ID protector, or `null` when no key is configured.
  *
@@ -16,7 +19,16 @@ function buildNationalIdProtector(env) {
   try {
     return protectorFromEnv(env);
   } catch (error) {
-    if (error instanceof NationalIdError) return null;
+    if (error instanceof NationalIdError) {
+      // N-3: without this, a MALFORMED key set looks exactly like "feature off" — the only difference is a
+      // 503 on the first national-ID operation, which is indistinguishable from a missing key. The code is a
+      // static identifier; no key material is logged. Warned once per process so tests stay readable.
+      if (!nationalIdWarningEmitted) {
+        nationalIdWarningEmitted = true;
+        console.warn(`national-id: matching disabled (${error.code})`);
+      }
+      return null;
+    }
     throw error;
   }
 }

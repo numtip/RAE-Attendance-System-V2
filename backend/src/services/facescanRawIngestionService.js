@@ -8,9 +8,9 @@ const {
   normalizeScanType,
 } = require('../domain/facescanRaw');
 
-function createFacescanRawIngestionService({ repositories }) {
+function createFacescanRawIngestionService({ repositories, nationalIdProtector = null }) {
   const facescanRaw = repositories.facescanRaw;
-  const identity = createEmployeeIdentityService({ repositories });
+  const identity = createEmployeeIdentityService({ repositories, nationalIdProtector });
 
   async function resolveFacescanUid(facescanId) {
     try {
