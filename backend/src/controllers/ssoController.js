@@ -112,6 +112,15 @@ function createSsoController(ssoService, { config }) {
       clearBindingCookie(res);
       success(res, data, 'ออกจาก SSO แล้ว');
     }),
+    /**
+     * Browser-navigable signout. Redirects to the MJU signout page with the RAE V2 client ID, so a closed tab or
+     * a repeated logout still ends the identity-provider session. It revokes nothing here: the app session is
+     * already gone, and revoking from a bare URL would be a log-out-anyone CSRF primitive.
+     */
+    signout: asyncRoute(async (_req, res) => {
+      const { signoutUrl } = ssoService.signoutRedirect();
+      res.redirect(302, signoutUrl);
+    }),
   };
 }
 

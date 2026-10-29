@@ -118,6 +118,21 @@ test('contract: SSO_NOT_READY when required env fields are missing', async () =>
   await assert.rejects(() => ssoService.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
 });
 
+test('contract: the unauthenticated signout endpoint stays closed while SSO is disabled', () => {
+  // Signout is a bare GET, so it must obey the same gate as every other SSO entry point: with SSO off, nobody
+  // gets redirected to the IdP, and the client ID stays out of a public Location header.
+  const ssoService = createEnabledSsoService({
+    ssoConfig: {
+      enabled: false,
+      signinUrl: 'https://sso.mju.ac.th/signin.aspx',
+      signoutUrl: 'https://sso.mju.ac.th/signout.aspx',
+      clientId: 'a46a0b5374b4404a9f71a2397dcab283',
+      callbackUrl: 'https://raeservice.mju.ac.th/api/v1/auth/sso/callback',
+    },
+  });
+  assert.throws(() => ssoService.signoutRedirect(), (err) => err.code === 'SSO_DISABLED');
+});
+
 test('contract: mock provider success flow (login, callback, me, logout)', async () => {
   const stateStore = createSsoStateStore();
   const ssoService = createEnabledSsoService({ stateStore });

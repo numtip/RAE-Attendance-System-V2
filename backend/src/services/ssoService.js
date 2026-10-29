@@ -5,6 +5,7 @@ const { assertLiveIdentityGate, assertSsoGate, portalConfigReady } = require('./
 const { createOAuthProvider } = require('./sso/oauthProvider');
 const { createSsoStateStore } = require('./sso/ssoStateStore');
 const { buildCidUrl } = require('./sso/mjuPortal');
+const { buildSignoutUrl, resolveAfterSignoutUrl } = require('./sso/ssoSignout');
 const { summarizeCallbackFields } = require('./sso/callbackDiagnostic');
 const { revokePresentedAccessToken } = require('./accessTokenRevocation');
 
@@ -12,6 +13,39 @@ function assertJwtSecret(config) {
   if (!config.jwt.secret) {
     throw new HttpError(503, 'CONFIG_ERROR', 'JWT_SECRET is not configured');
   }
+}
+
+/**
+ * Builds the two redirect targets used by signout, validating both.
+ *
+ * Returns `{ signoutUrl: null, afterSignoutUrl: null }` when signout is not configured at all, so a deployment
+ * without SSO keeps working. When it IS configured, an invalid value throws instead of silently shipping a
+ * redirect — a wrong client ID or an unvalidated return URL is not something to discover in production.
+ */
+function buildSignoutRedirects(config) {
+  const { signoutUrl, clientId, afterSignoutUrl } = config.sso;
+  // Not configured at all: a deployment without SSO keeps working, and signout is simply absent.
+  if (!signoutUrl || !clientId) {
+    return { signoutUrl: null, afterSignoutUrl: null };
+  }
+  let built = null;
+  try {
+    built = buildSignoutUrl({ signoutUrl, clientId });
+  } catch (error) {
+    throw new HttpError(503, 'SSO_SIGNOUT_MISCONFIGURED', error.message);
+  }
+  let landing = null;
+  if (afterSignoutUrl) {
+    try {
+      landing = resolveAfterSignoutUrl({
+        candidate: afterSignoutUrl,
+        allowedOrigins: [String(config.app.url || '').replace(/\/+$/, '')].filter(Boolean),
+      });
+    } catch (error) {
+      throw new HttpError(503, 'SSO_SIGNOUT_MISCONFIGURED', error.message);
+    }
+  }
+  return { signoutUrl: built, afterSignoutUrl: landing };
 }
 
 function signAccessToken(config, employee, authMethod = 'sso') {
@@ -213,11 +247,31 @@ function createSsoService(deps) {
       }
       await revokePresentedAccessToken(repositories, auth);
       await repositories.refreshTokens.revoke(refreshToken);
+      // Server-side session is dead before any browser redirect happens. The redirect targets are built and
+      // validated here rather than in the controller, so the open-redirect and sample-client-ID rules cannot be
+      // skipped by a second caller.
       const result = { revoked: true };
-      if (config.sso.signoutUrl && config.sso.clientId) {
-        result.signoutUrl = buildCidUrl(config.sso.signoutUrl, config.sso.clientId);
-      }
+      const { signoutUrl, afterSignoutUrl } = buildSignoutRedirects(config);
+      if (signoutUrl) result.signoutUrl = signoutUrl;
+      if (afterSignoutUrl) result.afterSignoutUrl = afterSignoutUrl;
       return result;
+    },
+
+    /**
+     * Browser-navigable signout for a session that is already gone (closed tab, second logout, expired token).
+     *
+     * It revokes nothing on purpose: there is no presented credential to revoke, and revoking by URL parameter
+     * would let any page log a user out. Its only job is to end the IDENTITY PROVIDER session and land the
+     * browser somewhere safe, so it is idempotent by construction.
+     */
+    signoutRedirect() {
+      // Unauthenticated entry point, so it obeys the same SSO gate as every other one.
+      disabledResponse();
+      const { signoutUrl, afterSignoutUrl } = buildSignoutRedirects(config);
+      if (!signoutUrl) {
+        throw new HttpError(503, 'SSO_NOT_READY', 'SSO signout is not configured');
+      }
+      return { signoutUrl, afterSignoutUrl };
     },
 
   };
