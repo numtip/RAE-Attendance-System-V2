@@ -14,6 +14,36 @@ const {
 } = require('../src/services/sso/oauthProvider');
 const { createSsoStateStore } = require('../src/services/sso/ssoStateStore');
 const { createFixtureRepositories } = require('../src/repositories/fixtureRepositories');
+const { createIdentityResolutionService } = require('../src/services/identityResolutionService');
+const { PROVIDER_MJU_SSO } = require('../src/domain/identityLink');
+
+const LINKED_EMPLOYEE_UID = '22222222-2222-2222-2222-222222222222';
+
+// Approve (or leave pending) an identity link, so the live path has something to resolve.
+async function linkSubject(repositories, subject, { approve = true, employeeUid = LINKED_EMPLOYEE_UID } = {}) {
+  const identity = createIdentityResolutionService({ repositories });
+  const candidate = await identity.createCandidate({
+    providerKey: PROVIDER_MJU_SSO,
+    providerSubject: subject,
+    employeeUid,
+    emailSnapshot: 'user@example.test',
+    confidence: 'high',
+    source: 'operator_review',
+  });
+  if (!approve) return candidate;
+  return identity.approve(candidate.id, { approvedBy: 'reviewer@example.test' });
+}
+
+// Counts session minting attempts, so a denial test can prove no token was issued.
+function countRefreshSaves(repositories) {
+  const original = repositories.refreshTokens.save.bind(repositories.refreshTokens);
+  const counter = { count: 0 };
+  repositories.refreshTokens.save = async (row) => {
+    counter.count += 1;
+    return original(row);
+  };
+  return counter;
+}
 
 const baseSsoConfig = {
   enabled: true,
@@ -26,6 +56,10 @@ const baseSsoConfig = {
   clientId: 'v2-client-id',
   clientSecret: 'v2-client-secret',
   callbackUrl: 'http://127.0.0.1:3210/api/v1/auth/sso/callback',
+  // The fixture asserts the subject-contract switch so the exchange mechanics can be exercised
+  // against the fake HTTP provider. Production keeps SSO_SUBJECT_CONTRACT_CONFIRMED=false, and
+  // assertSsoGate refuses every non-mock provider while it is false (see the dedicated test).
+  subjectContractConfirmed: true,
 };
 
 const baseJwtConfig = {
@@ -216,6 +250,30 @@ test('SSO gates: disabled, unconfirmed callback, and incomplete config', async (
   await assert.rejects(() => unconfirmed.beginLogin(), (err) => err.code === 'SSO_NOT_READY');
 });
 
+test('live login is refused while the subject contract is unconfirmed (default posture)', async () => {
+  // The shipped default is SSO_PROVIDER=http with SSO_SUBJECT_CONTRACT_CONFIRMED=false. Without
+  // this gate the live callback would authenticate whoever owns a matching e-mail address and
+  // would never consult an approved identity link (policy S7, S3/S6).
+  const service = createSsoService({
+    config: {
+      jwt: baseJwtConfig,
+      sso: { ...baseSsoConfig, provider: 'http', subjectContractConfirmed: false },
+    },
+    repositories: createFixtureRepositories(),
+    oauthProvider: createMockOAuthProvider(),
+    stateStore: createSsoStateStore(),
+  });
+
+  await assert.rejects(
+    () => service.beginLogin({ browserBinding: 'b'.repeat(32) }),
+    (err) => err.status === 503 && err.code === 'SSO_SUBJECT_CONTRACT_UNCONFIRMED',
+  );
+  await assert.rejects(
+    () => service.handleCallback({ code: 'any-code', state: 'any-state' }),
+    (err) => err.status === 503 && err.code === 'SSO_SUBJECT_CONTRACT_UNCONFIRMED',
+  );
+});
+
 test('SSO HTTP routes stay closed by default', async () => {
   const previous = { ...config.sso };
   config.sso.enabled = false;
@@ -263,32 +321,64 @@ async function callbackWithFetch(responses, repositories) {
   return ssoService.handleCallback({ code: 'any-code', state });
 }
 
-test('contract: valid callback issues tokens for a known active employee', async () => {
+test('contract: live callback issues tokens only through an approved identity link', async () => {
+  const repositories = createFixtureRepositories();
+  await linkSubject(repositories, 'mju-approved-subject-1');
   const session = await callbackWithFetch([
     { body: { access_token: 'provider-token', token_type: 'Bearer' } },
-    { body: { email: 'user@example.test' } },
-  ]);
-  assert.equal(session.employee.email, 'user@example.test');
+    { body: { sub: 'mju-approved-subject-1' } },
+  ], repositories);
+  assert.equal(session.employee.employeeUid, LINKED_EMPLOYEE_UID);
   assert.ok(session.accessToken);
+  assert.ok(session.refreshToken);
+});
+
+test('contract: live callback never issues a session from a profile e-mail', async () => {
+  // The employee exists and the e-mail matches exactly - the old code authenticated here.
+  const repositories = createFixtureRepositories();
+  const saves = countRefreshSaves(repositories);
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { access_token: 'provider-token' } },
+      { body: { email: 'user@example.test' } },
+    ], repositories),
+    (err) => err.code === 'SSO_SUBJECT_INVALID' && /email_only/.test(err.message),
+  );
+  assert.equal(saves.count, 0, 'no refresh token may be minted for an e-mail identity');
+});
+
+test('contract: a confirmed subject contract does not bypass the approved-link gate', async () => {
+  // baseSsoConfig sets subjectContractConfirmed: true; a verified-looking subject with no link
+  // must still be refused.
+  const repositories = createFixtureRepositories();
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { access_token: 'provider-token' } },
+      { body: { sub: 'mju-subject-without-link' } },
+    ], repositories),
+    (err) => err.code === 'IDENTITY_UNKNOWN',
+  );
+});
+
+test('contract: a pending identity link is refused', async () => {
+  const repositories = createFixtureRepositories();
+  await linkSubject(repositories, 'mju-pending-subject', { approve: false });
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { access_token: 'provider-token' } },
+      { body: { sub: 'mju-pending-subject' } },
+    ], repositories),
+    (err) => err.code === 'IDENTITY_NOT_APPROVED',
+  );
 });
 
 test('contract: missing claims reject the callback', async () => {
   await assert.rejects(
     () => callbackWithFetch([
       { body: { access_token: 'provider-token' } },
-      { body: { sub: 'only-a-subject' } },
+      { body: {} },
     ]),
-    (err) => err.code === 'SSO_USER_UNKNOWN',
-  );
-});
-
-test('contract: unknown employee rejects the callback', async () => {
-  await assert.rejects(
-    () => callbackWithFetch([
-      { body: { access_token: 'provider-token' } },
-      { body: { email: 'nobody@example.test' } },
-    ]),
-    (err) => err.code === 'SSO_USER_UNKNOWN',
+    (err) => err.code === 'SSO_SUBJECT_UNKNOWN',
   );
 });
 
@@ -298,7 +388,7 @@ test('contract: missing employee mapping does not fall back to employee_id', asy
       { body: { access_token: 'provider-token' } },
       { body: { employee_id: 'E-USER' } },
     ]),
-    (err) => err.code === 'SSO_USER_UNKNOWN',
+    (err) => err.code === 'SSO_SUBJECT_UNKNOWN',
   );
 });
 
@@ -348,27 +438,49 @@ test('MJU signin and signout use only the cid parameter', async () => {
   assert.equal(signoutUrl.searchParams.get('cid'), clientId);
 });
 
-test('contract: disabled employee rejects the callback', async () => {
+test('contract: disabled employee with an approved link is rejected', async () => {
   const repositories = createFixtureRepositories();
-  const previous = repositories.employees.findByEmail.bind(repositories.employees);
-  repositories.employees.findByEmail = async (email) => {
-    if (email === 'inactive@example.test') {
-      return {
-        employeeUid: '44444444-4444-4444-4444-444444444444',
-        email,
-        role: 'user',
-        status: 'inactive',
-        lockedUntil: null,
-      };
-    }
-    return previous(email);
+  await linkSubject(repositories, 'mju-disabled-subject');
+  const inactive = {
+    employeeUid: LINKED_EMPLOYEE_UID,
+    email: 'user@example.test',
+    role: 'user',
+    status: 'inactive',
+    lockedUntil: null,
   };
+  // Both lookups must agree: resolve reads the link owner by uid, then re-reads by e-mail.
+  repositories.employees.findByUid = async () => inactive;
+  repositories.employees.findByEmail = async () => inactive;
   await assert.rejects(
     () => callbackWithFetch([
       { body: { access_token: 'provider-token' } },
-      { body: { email: 'inactive@example.test' } },
+      { body: { sub: 'mju-disabled-subject' } },
     ], repositories),
     (err) => err.code === 'SSO_USER_DISABLED',
+  );
+});
+
+test('contract: an approved link whose e-mail evidence no longer matches is rejected', async () => {
+  const repositories = createFixtureRepositories();
+  const identity = createIdentityResolutionService({ repositories });
+  const candidate = await identity.createCandidate({
+    providerKey: PROVIDER_MJU_SSO,
+    providerSubject: 'mju-stale-email-subject',
+    employeeUid: LINKED_EMPLOYEE_UID,
+    emailSnapshot: 'someone-else@example.test',
+    confidence: 'high',
+    source: 'operator_review',
+  });
+  await identity.approve(candidate.id, {
+    approvedBy: 'reviewer@example.test',
+    acknowledgeEmailMismatch: true,
+  });
+  await assert.rejects(
+    () => callbackWithFetch([
+      { body: { access_token: 'provider-token' } },
+      { body: { sub: 'mju-stale-email-subject' } },
+    ], repositories),
+    (err) => err.code === 'IDENTITY_EMAIL_MISMATCH',
   );
 });
 

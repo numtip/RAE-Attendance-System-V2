@@ -25,11 +25,32 @@ function assertSsoGate(config) {
   }
 }
 
+// A live (non-mock) login must not start while the subject contract is unconfirmed: the callback
+// has no approved-link gate and maps the provider profile e-mail to an employee, which policy S7
+// forbids and S3/S6 do not permit. The mock provider is a test double and stays usable. This is
+// deliberately separate from assertSsoGate: the identity-chain service uses that gate and has its
+// own subject-contract handling (mjuSubjectAdapter -> SSO_SUBJECT_UNKNOWN).
+function assertLiveIdentityGate(config) {
+  // A test double must never be the identity provider of a deployed environment: it would bypass
+  // the approved-link requirement entirely.
+  if (config.sso.provider === 'mock' && (process.env.NODE_ENV || 'development') === 'production') {
+    throw new HttpError(503, 'SSO_MOCK_PROVIDER_REFUSED', 'The mock SSO provider is refused in production');
+  }
+  if (config.sso.provider !== 'mock' && config.sso.subjectContractConfirmed !== true) {
+    throw new HttpError(
+      503,
+      'SSO_SUBJECT_CONTRACT_UNCONFIRMED',
+      'MJU subject contract is unconfirmed, so no live SSO sign-in is allowed',
+    );
+  }
+}
+
 function isSsoOperational(config) {
   return config.sso.enabled && config.sso.callbackConfirmed && requiredConfig(config);
 }
 
 module.exports = {
+  assertLiveIdentityGate,
   assertSsoGate,
   isSsoOperational,
   requiredConfig,

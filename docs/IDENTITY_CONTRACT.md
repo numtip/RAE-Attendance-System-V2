@@ -130,7 +130,7 @@ MJU OAuth callback
   → JWT (sub = employee_uid)
 ```
 
-**Today:** `ssoService.handleCallback` still maps mock/live profile **email** → `employees.findByEmail` when SSO enabled. Prepared chain exists in `ssoIdentityChainService` but is not wired to HTTP callback until `SSO_SUBJECT_CONTRACT_CONFIRMED`.
+**Today:** the chain **is** the live path. `ssoService.handleCallback` hands the provider profile to `ssoIdentityChainService.issueSessionFromVerifiedInput`, which extracts a subject fail-closed (`extractVerifiedSubject` rejects an e-mail-shaped claim and the callback `ac`) and resolves it through `identityResolutionService.resolve` — provider active, link present, **approved**, e-mail snapshot matching, employee active and unlocked. No approved link means no session, and that does not depend on `SSO_SUBJECT_CONTRACT_CONFIRMED`: with the flag on the subject still has to be a non-email claim on an approved link. Two further guards: `assertLiveIdentityGate` refuses every **non-mock** provider while the flag is false (before any redirect), and the **mock** provider — a test double that still maps e-mail — is refused when `NODE_ENV=production`.
 
 ### 4.4 MJU Person Enrich → human review (offline)
 
