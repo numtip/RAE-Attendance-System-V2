@@ -135,6 +135,25 @@ function createSsoService(deps) {
         userInfoUrl: config.sso.userInfoUrl,
         accessToken,
       });
+
+      // Every live provider must resolve an approved, current, unique identity link from a
+      // verified subject - not a profile e-mail. This is not conditional on
+      // SSO_SUBJECT_CONTRACT_CONFIRMED: even with the flag on, extractVerifiedSubject rejects an
+      // e-mail-shaped claim and identityResolutionService.resolve refuses a missing, pending or
+      // revoked link. So a live callback cannot mint a session from an e-mail.
+      // Lazy require: ssoIdentityChainService imports signAccessToken from this module.
+      if (config.sso.provider !== 'mock') {
+        const { createSsoIdentityChainService } = require('./ssoIdentityChainService');
+        const chain = createSsoIdentityChainService({ config, repositories });
+        const session = await chain.issueSessionFromVerifiedInput({ profile, query: rawQuery });
+        return {
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          employee: session.employee,
+        };
+      }
+
+      // Mock provider only: a test double, refused in production by assertLiveIdentityGate.
       const email = profile.email || profile.mail || profile.preferred_username;
       if (!email) {
         throw new HttpError(403, 'SSO_USER_UNKNOWN', 'MJU profile did not include an email');

@@ -10,11 +10,13 @@ test('default config keeps SSO and subject contract gates off', () => {
   assert.equal(config.sso.subjectContractConfirmed, false);
 });
 
-test('HTTP ssoService callback does not reference identity chain', () => {
+test('the live callback goes through the approved-link identity chain', () => {
   const src = fs.readFileSync(require.resolve('../src/services/ssoService.js'), 'utf8');
-  assert.doesNotMatch(src, /ssoIdentityChainService/);
-  assert.doesNotMatch(src, /extractVerifiedSubject/);
-  assert.doesNotMatch(src, /createIdentityResolutionService/);
+  // Replaces the earlier assertion that the chain was *not* wired: that was the gap.
+  assert.match(src, /ssoIdentityChainService/);
+  assert.match(src, /issueSessionFromVerifiedInput/);
+  // The e-mail mapping may only be reachable for the mock provider (a test double).
+  assert.match(src, /Mock provider only/);
 });
 
 test('identity chain is isolated in ssoIdentityChainService', () => {
