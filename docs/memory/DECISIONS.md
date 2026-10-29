@@ -219,3 +219,28 @@ fails the build on any checksum-valid literal in four encodings. **History is un
 
 **Trap to keep:** the introduction commit on `main` is `3244553`, **not** `83aaa53`; a rewrite keyed on the latter
 leaves the value public while appearing to succeed.
+
+### D-2026-10-21-04 — Derived `employee_uid` is removed from every tooling path (C2)
+
+**Decision:** no tooling path may derive an `employee_uid` from a person code, national ID, email or name. The UID
+is an **input** supplied by the identity allocator; an import that lacks one **fails closed**. Three derivation
+sites are removed or constrained:
+
+* `scripts/data-onboarding/lib.mjs` — `stableEmployeeUid(employeeId)` (sha256 of the employee code, reshaped into a
+  v4-shaped UUID) and its use as a fallback in `transformSource`. The importer now requires `employee_uid` and
+  reports `EMPLOYEE_UID_REQUIRED` / `INVALID_UUID`.
+* `backend/scripts/fy2569-local-import.mjs` — `uidFor(code)` (sha256 of `fy2569:<code>`) replaced with a fresh
+  `randomUUID()` per person; the in-memory map keeps a single run consistent.
+* `scripts/data-recovery/rehearse_fy2569_import.py` — `uuid5` remains, explicitly labelled rehearsal-only and
+  never a source of production identity.
+
+**Grade:** `VERIFIED` — the defect was reproduced: the derived value passes both the F4 v4 regex and proposal
+`027`'s CHECK pattern, is deterministic, and is reproducible from a public employee code.
+**Why a schema constraint was insufficient:** the derived value was forged to look compliant (hard-coded version
+nibble `4` and variant `a`, two hash characters dropped), so `027` would have accepted it. Only a code change
+closes this.
+**Docs corrected:** `docs/DATA_MAPPING.md`, `docs/PRODUCTION_DATA_ONBOARDING_PLAN.md`, ADR-012 §1.
+**Not approved by this entry:** any import, migration, deploy or SSO activation. No UID has been allocated for any
+real person.
+**Open:** whether a live database already holds derived values from a prior run — `UNKNOWN`, and settling it needs
+a read-only query against a real host.
