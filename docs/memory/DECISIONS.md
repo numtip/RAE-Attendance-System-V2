@@ -268,3 +268,25 @@ the closed list and the 32 new tests are on the branch that carries it.
 **Open:** **ID-6b / S-02** — the SSO approval path requires a *declared* matched national-ID lookup
 (`403 IDENTITY_EVIDENCE_REQUIRED`), but the declaration is not re-verifiable in the link layer and is not stored.
 That is a **contract check, not a proof**, and the durable fix needs an evidence column, i.e. a migration.
+
+### D-2026-10-29-02 — A control that reads a column must be written as an allowlist and be proven on MariaDB
+
+**Decision:** `enrichmentBlocksApproval` refuses an **absent, empty, whitespace or unrecognised** enrichment
+outcome and accepts only `ALLOWED_ENRICHMENT_OUTCOMES` (today: `found`). The three guards are named separately in
+the code (MISSING / UNKNOWN / CONTRADICTION) so a reader can see which kind of absence is refused.
+**Why:** the guard used to be a blocklist. Two holes followed — a new tool status would be approvable by default,
+and, far worse, an **absent** outcome meant "nothing to block". `employee_identity_links` has never had an
+`enrichment_outcome` column and the MariaDB twin hardcodes `enrichmentOutcome: null`, so on MariaDB the guard
+**never fired for any row** while every fixture test passed. An allowlist denies by construction.
+**Grade:** `VERIFIED` — the absence of the column was confirmed across the migrations, and the behaviour was
+reproduced on a real MariaDB 11.4 by the tests added with this decision.
+**Consequence, stated rather than hidden:** until the column exists (migration `025`, still a proposal) **no
+enrichment-source link can be approved on MariaDB at all**. That is the intended posture; the alternative is
+approving on evidence the system cannot read. Non-enrichment flows are untouched, and the drift itself is pinned
+by a test that fails the moment the column appears.
+**Lesson recorded:** a mutation test alone cannot establish that a guard works — it killed the guard on the
+fixture twin while the control was inert on MariaDB. A control that reads a column must be adversarially tested
+against the repository that owns that column.
+**Implementation:** `backend/src/domain/identityLink.js`, `backend/tests/identityLinkEnrichmentGuard.test.js`,
+`backend/tests/identityLinkEnrichment.mariadb.test.js`, `docs/IDENTITY_MAPPING_CONTRACT.md` F3/F4.
+**Not approved by this entry:** merge, deploy, migration `025`, any enrichment of real people.
