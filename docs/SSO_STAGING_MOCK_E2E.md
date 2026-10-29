@@ -93,6 +93,18 @@ npm run db:migrate                  # applies pending migrations in order, 028 i
 npm run db:migrate                  # second run must apply nothing (idempotency check)
 ```
 
+> **Verified on a disposable MariaDB 11.4 database, 2026-10-29** (`docs/reports/QA_STAGING_2026-10-29.md`
+> §3): rollbacks revert their DDL, but **until this week nine of the ten did not clear their own
+> `schema_migrations` row**, so a plain `npm run db:migrate` afterwards would skip the file and leave
+> the schema half rolled back. All ten now clear their row (`backend/tests/rollbackLedger.test.js`
+> pins it), and `026_refresh_token_family` — which used to abort on a second run with
+> `ERROR 1091 Can't DROP INDEX` — is guarded by `information_schema` checks and was drilled
+> twice in a row, then re-applied.
+>
+> **`026` deletes sessions on purpose.** `DELETE FROM refresh_tokens WHERE token IS NULL` removes
+> every session issued after 026, because their plaintext token was discarded by design. Rolling it
+> back signs those users out; there is no way to recover them.
+
 Then verify and rehearse the rollback, in this order:
 
 ```bash
@@ -106,6 +118,23 @@ npm run db:migrate
 
 Behaviour to confirm: a **missing** table must fail closed (`503`) rather than silently fall back
 to process memory — that fallback is exactly what the table exists to remove.
+
+### 4.1 Two suites need their own database and a different MariaDB version
+
+`backend/tests/securitySlice.mariadb.integration.test.js` and `securitySlice.finalqa.mariadb.test.js`
+assert `VERSION()` matches `^10\.11\.14` and that `DATABASE()` is `attendance_security_main_test`,
+and that host/port are `127.0.0.1:3306`. On the repo's pinned `mariadb:11.4` (compose and the CI
+service) they **cannot** pass — they fail on their first assertion, before exercising anything.
+QA on 2026-10-29 confirmed all 8 subtests pass when they get what they ask for (a 10.11.14 server
+with that database name reachable on 3306). Treat them as a separate, explicitly provisioned job;
+do not "fix" them by loosening the version pin without deciding which version is authoritative.
+
+### 4.2 A local DB-mode run needs `--test-force-exit` — or did
+
+`backend/tests/readiness.test.js` opened the shared mysql pool and never closed it, so
+`node --test` waited on the handle and a DB-configured local run hung (killed at 420 s; CI masked it
+with `--test-force-exit`). Fixed on 2026-10-29: the file now calls `closePool()` in a `test.after`
+hook, and a DB-configured run exits 0 without the flag (verified against a throwaway MariaDB).
 
 ---
 

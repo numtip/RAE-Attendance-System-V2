@@ -71,3 +71,8 @@ SET @col = (
 SET @ddl = IF(@col = 0, 'SELECT 1',
   'ALTER TABLE monthly_summary DROP COLUMN computation_status');
 PREPARE r6 FROM @ddl; EXECUTE r6; DEALLOCATE PREPARE r6;
+
+-- Clearing the ledger row is part of the rollback (added 2026-10-29): the runner keys on the
+-- filename, so without it `npm run db:migrate` believes this migration is still applied and the
+-- schema stays partially rolled back.
+DELETE FROM schema_migrations WHERE version = '024_monthly_summary_provenance.sql';

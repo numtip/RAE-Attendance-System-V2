@@ -9,3 +9,8 @@
 DROP TABLE IF EXISTS attendance_schedule;
 DROP TABLE IF EXISTS attendance_holiday;
 DROP TABLE IF EXISTS attendance_rule_version;
+
+-- Clearing the ledger row is part of the rollback (added 2026-10-29): the runner keys on the
+-- filename, so without it `npm run db:migrate` believes this migration is still applied and the
+-- schema stays partially rolled back.
+DELETE FROM schema_migrations WHERE version = '022_attendance_rule_versioning.sql';
