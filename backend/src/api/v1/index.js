@@ -11,6 +11,7 @@ const { createLeaveController } = require('../../controllers/leaveController');
 const { createAuthService } = require('../../services/authService');
 const { createEmployeeService } = require('../../services/employeeService');
 const { createAttendanceService } = require('../../services/attendanceService');
+const { createAttendanceRecordService } = require('../../services/attendanceRecordService');
 const { createLeaveService } = require('../../services/leaveService');
 const { createSsoService } = require('../../services/ssoService');
 const { createLoginAttemptStore } = require('../../services/sso/ssoLoginAttemptStore');
@@ -24,6 +25,7 @@ function createV1Router(container) {
   const authService = createAuthService(container);
   const employeeService = createEmployeeService(container);
   const attendanceService = createAttendanceService(container);
+  const attendanceRecordService = createAttendanceRecordService(container);
   const leaveService = createLeaveService(container);
   const attendanceComputeService = createAttendanceComputeService(container);
   // G-02: the login attempt store is chosen once, here, so there is a single place that decides
@@ -40,7 +42,7 @@ function createV1Router(container) {
   const auth = createAuthController(authService);
   const sso = createSsoController(ssoService, container);
   const employees = createEmployeeController(employeeService, attendanceService);
-  const attendance = createAttendanceController(attendanceService);
+  const attendance = createAttendanceController(attendanceService, attendanceRecordService);
   const leave = createLeaveController(leaveService);
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
   const reports = createReportController(createReportService(container));
@@ -83,6 +85,9 @@ function createV1Router(container) {
 
   router.get('/attendance/daily/:date', authenticate, attendance.daily);
   router.get('/attendance/monthly/:employeeUid/:year/:month', authenticate, attendance.monthly);
+  // The first writer for daily_attendance: evaluate one employee-day with AR-0001, persist it, and
+  // re-derive that employee-month. No new migration — 004/005/023/024 already carry the columns.
+  router.post('/attendance/daily/:employeeUid/:date', authenticate, attendance.record);
   router.post('/attendance/evaluate-day', authenticate, attendanceCompute.evaluateDay);
   router.post('/attendance/evaluate-period', authenticate, attendanceCompute.evaluatePeriod);
   router.post('/attendance/explain', authenticate, attendanceCompute.explainResult);
