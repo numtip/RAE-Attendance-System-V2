@@ -59,7 +59,7 @@ function workHours(checkIn, checkOut) {
 }
 
 /** Engine status -> the DB row. The engine's finer status is kept in reconciliation_json. */
-function toDayRow({ employeeUid, date, checkIn, checkOut, leaveType, note, source, evaluation }) {
+function toDayRow({ employeeUid, date, checkIn, checkOut, leaveType, note, source, evaluation, context = {} }) {
   const [year, month] = date.split('-').map(Number);
   const isoWeekday = new Date(`${date}T00:00:00Z`).getUTCDay() || 7;
   const pendingPolicy = evaluation.pendingPolicy === true;
@@ -103,20 +103,21 @@ function toDayRow({ employeeUid, date, checkIn, checkOut, leaveType, note, sourc
     leaveType: status === 'leave' ? leaveType : null,
     status,
     notes: note || null,
-    sourceSystem: 'API',
+    sourceSystem: context.sourceSystem || 'API',
     ruleVersionCode: pendingPolicy ? null : evaluation.ruleVersion,
     computationStatus,
     dayClassification,
     isOvernight: 0,
-    sourceEventCount: 0,
-    firstEventAt: instant(date, checkIn),
-    lastEventAt: instant(date, checkOut),
+    sourceEventCount: context.eventCount || 0,
+    // A derived day knows the real first/last scan; a manual write only knows what was typed.
+    firstEventAt: context.firstEventAt ? new Date(context.firstEventAt) : instant(date, checkIn),
+    lastEventAt: context.lastEventAt ? new Date(context.lastEventAt) : instant(date, checkOut),
     calculatedAt: new Date(),
     reconciliation: JSON.stringify({
       engineStatus: pendingPolicy ? 'rule_year_not_approved' : evaluation.status,
       reasons: evaluation.reasons || [],
       earlyLeaveMinutes: evaluation.earlyLeaveMinutes || 0,
-      source,
+      source: context.source || source,
       submittedAt: new Date().toISOString(),
     }),
   };
@@ -186,6 +187,22 @@ function deriveSummary(employeeUid, year, month, rows) {
   return summary;
 }
 
+/**
+ * The one data-scope rule for writing someone's attendance. Exported because the facescan
+ * derivation writes `attendance_events` before it can derive anything, and it must refuse an
+ * out-of-scope caller *before* the first insert — with the same rule, not a second copy of it.
+ */
+async function assertCanRecordDay(auth, employeeUid, repositories) {
+  const scope = await resolveScope(auth, repositories, 'data');
+  // Two conditions, because each alone is wrong: a broad scope must still cover the target person
+  // (a manager may not write for another org unit), and self-scope alone is never enough to write
+  // (an employee cannot author their own attendance — that is an HR act, not a self service).
+  const coversTarget = scope.all || scope.uids.has(employeeUid);
+  if (!(scope.all || scope.broad) || !coversTarget) {
+    throw new HttpError(403, 'FORBIDDEN', 'Recording attendance for this employee is outside your scope');
+  }
+}
+
 function createAttendanceRecordService({ repositories }) {
   return {
     /**
@@ -193,7 +210,7 @@ function createAttendanceRecordService({ repositories }) {
      * RBAC: writing another person's attendance needs data scope over that person. An EMPLOYEE has
      * self-read only, so they cannot author their own record — that is deliberate, not an oversight.
      */
-    async recordDay(auth, employeeUid, date, body = {}) {
+    async recordDay(auth, employeeUid, date, body = {}, context = {}) {
       assertDate(date);
       const checkIn = assertTime(body.checkIn, 'checkIn');
       const checkOut = assertTime(body.checkOut, 'checkOut');
@@ -215,15 +232,7 @@ function createAttendanceRecordService({ repositories }) {
         throw new HttpError(400, 'VALIDATION_ERROR', `note must be at most ${NOTE_MAX} characters`);
       }
 
-      const scope = await resolveScope(auth, repositories, 'data');
-      // Two conditions, because each alone is wrong: a broad scope must still cover the target
-      // person (a manager may not write for another org unit), and self-scope alone is never enough
-      // to write (an employee cannot author their own attendance — that is an HR act, not a self
-      // service).
-      const coversTarget = scope.all || scope.uids.has(employeeUid);
-      if (!(scope.all || scope.broad) || !coversTarget) {
-        throw new HttpError(403, 'FORBIDDEN', 'Recording attendance for this employee is outside your scope');
-      }
+      await assertCanRecordDay(auth, employeeUid, repositories);
 
       const employee = await repositories.employees.findByUid(employeeUid);
       if (!employee) throw new HttpError(404, 'NOT_FOUND', 'Employee was not found');
@@ -249,7 +258,7 @@ function createAttendanceRecordService({ repositories }) {
       }
 
       const row = toDayRow({
-        employeeUid, date, checkIn, checkOut, leaveType, note, source, evaluation,
+        employeeUid, date, checkIn, checkOut, leaveType, note, source, evaluation, context,
       });
       await repositories.attendance.upsertDay(row);
 
@@ -278,4 +287,4 @@ function createAttendanceRecordService({ repositories }) {
   };
 }
 
-module.exports = { createAttendanceRecordService, deriveSummary, weekdaysIn };
+module.exports = { createAttendanceRecordService, assertCanRecordDay, deriveSummary, weekdaysIn };
