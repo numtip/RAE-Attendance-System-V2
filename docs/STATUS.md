@@ -1,4 +1,53 @@
-# Status — 2026-10-21 (one page)
+# Status — 2026-11-17 (current)
+
+**Gate:** `DAY_20261117_CLOSED`
+**Production:** **LIVE** at https://raeservice.mju.ac.th/attendance-v2/ — `PRODUCTION_LIVE = YES`
+
+Shipped today: MJU SSO activation, the first writer for `daily_attendance`, FaceScan → `attendance_events`
+promotion, the staff self-read endpoint, roster onboarding, and production preflight/cutover scripts.
+Everything below this section is the preserved 2026-10-21 record: superseded for current status, not deleted.
+
+## Where production is
+
+| Item | Value | Label |
+|---|---|---|
+| `origin/main` | `33f2c93` (PR #92) · CI 9/9 · Pages success | VERIFIED |
+| Deployed image | `rae-attendance-v2-backend:dark-33f2c93` (compose project `rae-attendance-v2-dark`) | VERIFIED |
+| Routed stack | dark backend `127.0.0.1:3260`, frontend `127.0.0.1:8094` (vhost markers `ATT-V2-DARK`) | VERIFIED |
+| Database | `attendance_v2_prod_next` on `rae-v2-mariadb` — 28 tables from `main`'s 26 migrations | VERIFIED |
+| Employees | 49 from the owner roster, department `สำนักวิจัยและบริการวิชาการ` | VERIFIED |
+| Identity links | 49 approved · 0 candidate · 0 email-derived (`subject = HMAC-SHA256(citizenID)`) | VERIFIED |
+| SSO | real MJU login end to end: provider → callback → session → authenticated read → logout | VERIFIED |
+| Attendance data | `attendance_events=0`, `daily_attendance=0`, `monthly_summary=0` — no real scan data yet | VERIFIED |
+| Provider contract | `C-13 UNKNOWN`, `providerCertified=false`, owner risk acceptance v2 (12 items) | VERIFIED |
+| Original database | `attendance_v2` untouched: 10 tables, 0 employees | VERIFIED |
+| Legacy services | `attendance-api` and `rae-v2-*` still running and healthy | VERIFIED |
+
+## Two things that will bite the next deployment
+
+1. **DNS** — containers on this host resolve `sso.mju.ac.th` to the public address, which is unreachable.
+   The unit must use the campus resolver (`dns: 10.1.255.20`), which resolves it to the internal
+   `10.1.254.54`. Symptom when wrong: `SSO_PROVIDER_ERROR: The provider is unreachable`.
+2. **Path prefix** — the `raeservice.mju.ac.th` vhost strips `/attendance-v2/` before proxying, so the SPA
+   container must serve the bundle at `/`, not under the prefix. Otherwise the page 404s while the API
+   answers 200.
+
+Do not run `attv2-e2e-sso-route.sh enable --full-v2` in production: it points at the retired staging ports.
+
+## Rollback
+
+`sudo bash /home/rae_admin/sso/prod-cutover-route.sh disable` restores the vhost from the newest backup in
+`/var/backups/attv2-e2e/`. Pre-cutover checkpoint: `/home/rae_admin/backups/golive-20261117T092209Z/`
+(dumps of both databases, image tags, compose and env). The previous stack still runs on `3210`/`8088`.
+
+## Next
+
+HIP FaceScan file ingestion into `staging_facescan_raw` — `facescanRawIngestionService` exists but nothing
+calls it (no route, no CLI) — then verify real `daily_attendance` / `monthly_summary` rows.
+
+---
+
+# Status — 2026-10-21 (historical, superseded)
 
 **Gate:** `DAY_20261021_CLOSED_WITH_SECURITY_FOLLOWUP`
 **Production:** **FROZEN.**
