@@ -160,6 +160,8 @@ export const api = {
   me: () => apiRequest<import('./types').EmployeePublic>('/auth/me'),
   attendanceDaily: (date: string) =>
     apiRequest<import('./types').AttendanceRecord[]>(`/attendance/daily/${date}`),
+  attendanceMe: (date: string) =>
+    apiRequest<import('./types').AttendanceRecord[]>(`/attendance/me/${date}`),
   attendanceMonthly: (employeeUid: string, year: number, month: number) =>
     apiRequest<import('./types').MonthlySummary>(
       `/attendance/monthly/${employeeUid}/${year}/${month}`,

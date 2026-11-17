@@ -29,6 +29,16 @@ function createAttendanceService({ repositories }) {
       if (scope.all) return rows;
       return rows.filter((row) => scope.uids.has(row.employeeUid));
     },
+    /**
+     * The caller's own day. `auth.employeeUid` is the only subject, so there is no argument that
+     * could widen the result and no scope resolution to get wrong.
+     */
+    async meDaily(auth, date) {
+      assertDate(date);
+      const rows = await repositories.attendance.findDaily(date);
+      return rows.filter((row) => row.employeeUid === auth.employeeUid);
+    },
+
     async monthly(auth, employeeUid, year, month) {
       assertMonth(year, month);
       await assertCanReadEmployee(auth, employeeUid, repositories, 'data');

@@ -93,6 +93,8 @@ function createV1Router(container) {
   router.get('/employees/:employeeUid', authenticate, employees.detail);
 
   router.get('/attendance/daily/:date', authenticate, attendance.daily);
+  // Staff cannot list the whole organisation, but they can always read their own day.
+  router.get('/attendance/me/:date', authenticate, attendance.me);
   router.get('/attendance/monthly/:employeeUid/:year/:month', authenticate, attendance.monthly);
   // The first writer for daily_attendance: evaluate one employee-day with AR-0001, persist it, and
   // re-derive that employee-month. No new migration — 004/005/023/024 already carry the columns.
