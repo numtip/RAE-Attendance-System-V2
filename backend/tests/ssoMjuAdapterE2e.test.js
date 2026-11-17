@@ -1041,6 +1041,7 @@ test('production & configuration gates: sample client ID, lawful basis, HMAC key
 test('MariaDB backend claimOnce distinguishes duplicate replay (false) from DB failure (503)', async () => {
   const seen = new Set();
   let failDb = false;
+  let deadlocksLeft = 1;
   const fakePool = {
     async query() {
       return [[]];
@@ -1057,7 +1058,14 @@ test('MariaDB backend claimOnce distinguishes duplicate replay (false) from DB f
             err.code = 'ER_NO_SUCH_TABLE';
             throw err;
           }
-          if (sql.startsWith('INSERT INTO sso_login_attempt')) {
+          if (String(sql).startsWith('INSERT INTO sso_login_attempt')) {
+            if (deadlocksLeft > 0) {
+              deadlocksLeft -= 1;
+              const locked = new Error('Deadlock found');
+              locked.code = 'ER_LOCK_DEADLOCK';
+              locked.errno = 1213;
+              throw locked;
+            }
             const digest = params[0];
             if (seen.has(digest)) {
               const dup = new Error('Duplicate entry');
@@ -1066,6 +1074,10 @@ test('MariaDB backend claimOnce distinguishes duplicate replay (false) from DB f
               throw dup;
             }
             seen.add(digest);
+            return [{ affectedRows: 1 }];
+          }
+          if (String(sql).startsWith('UPDATE sso_login_attempt')) {
+            return [{ affectedRows: 0 }];
           }
           return [{ affectedRows: 1 }];
         },
@@ -1076,6 +1088,7 @@ test('MariaDB backend claimOnce distinguishes duplicate replay (false) from DB f
   const store = createSsoStateStore({ backend: createMariaDbLoginAttemptBackend(fakePool) });
   const ac = nextValidAc();
   assert.equal(await store.claimCodeOnce(ac), true);
+  assert.equal(deadlocksLeft, 0, 'a single InnoDB deadlock must be retried, not failed closed');
   assert.equal(await store.claimCodeOnce(ac), false, 'duplicate entry must map to false (replay)');
 
   failDb = true;

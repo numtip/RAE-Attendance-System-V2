@@ -3,6 +3,18 @@ const { HttpError } = require('../../utils/httpError');
 
 const DEFAULT_TTL_SECONDS = 10 * 60;
 const MAX_TTL_SECONDS = 60 * 60;
+const CLAIM_ATTEMPTS = 4;
+
+function isDuplicateKey(error) {
+  return error?.code === 'ER_DUP_ENTRY' || error?.errno === 1062;
+}
+
+function isRetryableLock(error) {
+  return error?.code === 'ER_LOCK_DEADLOCK'
+    || error?.errno === 1213
+    || error?.code === 'ER_LOCK_WAIT_TIMEOUT'
+    || error?.errno === 1205;
+}
 
 function digestHex(value) {
   return createHash('sha256').update(String(value), 'utf8').digest('hex');
@@ -147,10 +159,15 @@ function createMariaDbLoginAttemptBackend(pool, { ttlSeconds = DEFAULT_TTL_SECON
     /**
      * Atomically record a single-use replay claim (e.g. a callback `ac` digest).
      *
-     * Returns `true` when claimed for the first time inside its TTL window, `false` when an
-     * unexpired claim already exists (`ER_DUP_ENTRY`), and throws `503 SSO_LOGIN_STORE_UNAVAILABLE`
-     * on any database failure (missing table, broken connection) so replay protection never fails
-     * open.
+     * Insert first. A live primary key comes back as `ER_DUP_ENTRY` and stays refused.
+     * An already-expired row is reclaimed with one conditional UPDATE, so two callers
+     * cannot both win. DELETE-then-INSERT is not used: deleting a missing key takes an
+     * InnoDB gap lock, and concurrent claims deadlock (errno 1213) instead of losing cleanly.
+     *
+     * Returns `true` when this caller holds the claim, `false` when an unexpired claim
+     * already exists, and throws `503 SSO_LOGIN_STORE_UNAVAILABLE` on any database failure
+     * (missing table, broken connection, deadlock that survives the retry) so replay
+     * protection never fails open.
      *
      * @param {string} key
      * @param {{expiresAt: number}} entry
@@ -164,37 +181,38 @@ function createMariaDbLoginAttemptBackend(pool, { ttlSeconds = DEFAULT_TTL_SECON
         throw new Error('claimOnce entry requires expiresAt');
       }
       const digestKey = digestHex(key);
-      let connection;
-      try {
-        connection = await pool.getConnection();
-        await connection.beginTransaction();
+      const expiresSec = Math.floor(entry.expiresAt / 1000);
 
-        await connection.query(
-          'DELETE FROM sso_login_attempt WHERE state_digest = ? AND expires_at <= UTC_TIMESTAMP(3)',
-          [digestKey],
-        );
-        await connection.query(
-          `INSERT INTO sso_login_attempt (state_digest, binding_digest, expires_at, created_at)
-           VALUES (?, NULL, FROM_UNIXTIME(?), UTC_TIMESTAMP(3))`,
-          [digestKey, Math.floor(entry.expiresAt / 1000)],
-        );
-        await connection.commit();
-        return true;
-      } catch (error) {
-        if (connection) {
+      for (let attempt = 1; attempt <= CLAIM_ATTEMPTS; attempt += 1) {
+        let connection;
+        try {
+          connection = await pool.getConnection();
           try {
-            await connection.rollback();
-          } catch {
-            // A rollback failure must not mask the original failure.
+            await connection.query(
+              `INSERT INTO sso_login_attempt (state_digest, binding_digest, expires_at, created_at)
+               VALUES (?, NULL, FROM_UNIXTIME(?), UTC_TIMESTAMP(3))`,
+              [digestKey, expiresSec],
+            );
+            return true;
+          } catch (error) {
+            if (!isDuplicateKey(error)) throw error;
           }
+
+          const [result] = await connection.query(
+            `UPDATE sso_login_attempt
+                SET expires_at = FROM_UNIXTIME(?), created_at = UTC_TIMESTAMP(3)
+              WHERE state_digest = ? AND expires_at <= UTC_TIMESTAMP(3)`,
+            [expiresSec, digestKey],
+          );
+          return Number(result?.affectedRows ?? 0) === 1;
+        } catch (error) {
+          if (isRetryableLock(error) && attempt < CLAIM_ATTEMPTS) continue;
+          throw unavailable();
+        } finally {
+          if (connection) connection.release();
         }
-        if (error?.code === 'ER_DUP_ENTRY' || error?.errno === 1062) {
-          return false;
-        }
-        throw unavailable();
-      } finally {
-        if (connection) connection.release();
       }
+      throw unavailable();
     },
 
     /** Remove expired rows. Best effort: a failure here must not block a login. */
