@@ -89,7 +89,10 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      NODE_ENV: production
+      # A staging stack must be able to say it is staging: with a hardcoded value the SSO gates and
+      # the owner risk-acceptance requirement are decided by the compose file rather than by the
+      # deployment. Production remains the default so an unset NODE_ENV is still production.
+      NODE_ENV: ${NODE_ENV:-production}
       PORT: '3210'
       HOST: 0.0.0.0
       DATA_SOURCE: mariadb
