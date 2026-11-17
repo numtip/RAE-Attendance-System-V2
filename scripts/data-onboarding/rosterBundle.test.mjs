@@ -11,10 +11,12 @@ const converter = join(here, 'roster-csv-to-bundle.mjs');
 const importer = join(here, 'apply-import.mjs');
 
 const HEADER = 'ID HIP,name,c_name,email,employee type,ID card,คำอธิบาย';
+// Placeholder people: `.invalid` addresses and invented names, so no fixture can be mistaken for a
+// real employee and no test address can ever receive mail.
 const ROWS = [
-  '1001,สมชาย,ใจดี,somchai@mju.ac.th,university,1234567890123,อาจารย์',
-  '1002,สมหญิง,ขยัน,somying@mju.ac.th,contract,9876543210987,เจ้าหน้าที่',
-  '1003,สมปอง,ตั้งใจ,sompong@mju.ac.th,department,1111111111111,พนักงาน',
+  '1001,ทดสอบ,หนึ่ง,employee1@example.invalid,university,1234567890123,อาจารย์',
+  '1002,ทดสอบ,สอง,employee2@example.invalid,contract,9876543210987,เจ้าหน้าที่',
+  '1003,ทดสอบ,สาม,employee3@example.invalid,department,1111111111111,พนักงาน',
 ];
 
 function run(script, args, options = {}) {

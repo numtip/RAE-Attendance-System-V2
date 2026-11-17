@@ -114,8 +114,9 @@ say "   built $IMAGE_TAG"
 
 say "== 6. frontend dist =="
 BUILD_DIR=$(mktemp -d)
+# Copy out of the read-only mount first: npm ci writes node_modules next to the sources.
 docker run --rm -v "$CHECKOUT/frontend:/src:ro" -v "$BUILD_DIR:/out" -e VITE_BASE_PATH=/attendance-v2/ node:20-alpine \
-  sh -lc 'cd /src && npm ci --no-audit --no-fund >/dev/null 2>&1 && npm run build >/dev/null 2>&1 && cp -r dist/. /out/' \
+  sh -lc 'mkdir -p /work && cp -a /src/. /work/ && cd /work && npm ci --no-audit --no-fund >/dev/null 2>&1 && npm run build >/dev/null 2>&1 && cp -a dist/. /out/' \
   || { fail "frontend build"; rollback; exit 6; }
 grep -q '/attendance-v2/assets/' "$BUILD_DIR/index.html" \
   || { fail "frontend built without the deployment base path"; rollback; exit 6; }
