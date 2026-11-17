@@ -1,8 +1,25 @@
 const { success } = require('../utils/response');
 const { asyncRoute } = require('../utils/asyncRoute');
 
-function createAttendanceController(attendanceService) {
+function createAttendanceController(attendanceService, attendanceRecordService, facescanIngestionService) {
   return {
+    deriveFacescan: asyncRoute(async (req, res) => {
+      const data = await facescanIngestionService.deriveDay(
+        req.auth,
+        req.params.employeeUid,
+        req.params.date,
+      );
+      success(res, data, 'บันทึกการมาทำงานจากเครื่องสแกนใบหน้า');
+    }),
+    record: asyncRoute(async (req, res) => {
+      const data = await attendanceRecordService.recordDay(
+        req.auth,
+        req.params.employeeUid,
+        req.params.date,
+        req.body,
+      );
+      success(res, data, 'บันทึกการมาทำงาน');
+    }),
     daily: asyncRoute(async (req, res) => {
       success(res, await attendanceService.daily(req.auth, req.params.date), 'การมาทำงานรายวัน');
     }),
