@@ -9,6 +9,16 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// The API returns UTC instants; staff read the office clock.
+function bangkokTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  return new Date(value).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Bangkok',
+  });
+}
+
 const date = ref(todayIso());
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -53,8 +63,9 @@ onMounted(load);
       </div>
     </div>
     <p class="muted">
-      Signed in as <strong>{{ employee?.role }}</strong>. The API decides who can query
-      <code>GET /api/v1/attendance/daily/:date</code>.
+      Signed in as <strong>{{ employee?.role }}</strong>. The API decides what you can read: the whole
+      organisation from <code>GET /api/v1/attendance/daily/:date</code>, or your own day from
+      <code>GET /api/v1/attendance/me/:date</code>.
     </p>
     <AsyncState
       :loading="loading"
@@ -78,8 +89,8 @@ onMounted(load);
           <tr v-for="row in rows" :key="`${row.employeeUid}-${row.date}`">
             <td><code>{{ row.employeeUid.slice(0, 8) }}…</code></td>
             <td>{{ row.date }}</td>
-            <td>{{ row.checkIn ?? '—' }}</td>
-            <td>{{ row.checkOut ?? '—' }}</td>
+            <td>{{ bangkokTime(row.checkIn) }}</td>
+            <td>{{ bangkokTime(row.checkOut) }}</td>
             <td>{{ row.status }}</td>
             <td>{{ row.lateMinutes ?? '—' }}</td>
           </tr>
