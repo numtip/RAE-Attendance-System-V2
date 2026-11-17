@@ -23,6 +23,17 @@ database/local/
 
 # --- Owner-supplied personnel sources (never commit) ---
 database/roster*.csv
+database/IDCard*.csv
+**/IDCardRaecsv*
+docs/*Roster*.xlsx
+mju-person-enrich.zip
+
+# --- Local vendor samples and Agent Core local state (never commit) ---
+docs/sampleCallback.aspx*
+/sso/
+.ai/state/*
+!.ai/state/.gitkeep
+.ai/.env
 
 # --- Python bytecode from the local data-recovery scripts ---
 __pycache__/

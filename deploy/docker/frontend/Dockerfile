@@ -3,6 +3,14 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# The SPA is served under a path prefix (/attendance-v2/), not at the domain root. vite.config
+# reads VITE_BASE_PATH and defaults to '/', so building without it produces an index.html whose
+# assets point at /assets/… — which the reverse proxy does not map to this app, and the browser
+# renders a blank page with every script 404ing. Default the base to the deployment path so a plain
+# `docker build` yields a usable image; override it for a different prefix.
+ARG VITE_BASE_PATH=/attendance-v2/
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 

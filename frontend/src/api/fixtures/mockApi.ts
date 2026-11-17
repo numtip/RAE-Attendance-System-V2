@@ -313,11 +313,11 @@ export async function fixtureApiRequest<T>(
     return result as T;
   }
 
-  if (auth && method === 'GET' && path === '/auth/me') {
+  if (auth && method === 'GET' && (path === '/auth/me' || path === '/auth/sso/me')) {
     return (await handleMe()) as T;
   }
 
-  if (auth && method === 'POST' && path === '/auth/logout') {
+  if (auth && method === 'POST' && (path === '/auth/logout' || path === '/auth/sso/logout')) {
     return (await handleLogout(options.body)) as T;
   }
 
