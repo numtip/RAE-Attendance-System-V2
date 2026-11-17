@@ -84,6 +84,18 @@ function createInMemoryStateBackend({ now = () => Date.now(), maxEntries = DEFAU
         bindingDigest: entry.bindingDigest ?? null,
       };
     },
+    /** Single-use replay claim: refuses instead of evicting when full, so live claims survive. */
+    async claimOnce(key, entry) {
+      const at = now();
+      for (const [k, existing] of pending) {
+        if (existing.expiresAt <= at) pending.delete(k);
+      }
+      const current = pending.get(key);
+      if (current && current.expiresAt > at) return false;
+      if (pending.size >= maxEntries) return false;
+      pending.set(key, { expiresAt: entry.expiresAt, bindingDigest: null });
+      return true;
+    },
     async prune() {
       const at = now();
       for (const [key, entry] of pending) {
@@ -191,6 +203,58 @@ function createSsoStateStore({ ttlMs = DEFAULT_TTL_MS, now = () => Date.now(), b
       }
       // A state created without a binding must not be satisfied by presenting one.
       if (binding !== undefined && binding !== '') return false;
+      return true;
+    },
+
+    /**
+     * Register a browser-bound portal login attempt where the provider echoes no `state` (C-10).
+     * Keyed on `attempt:<sha256(binding)>` so no plaintext binding ever touches the backend.
+     * @param {string} binding
+     */
+    async registerAttempt(binding) {
+      if (typeof binding !== 'string' || binding.length < 16) {
+        throw new Error('binding must be a string of at least 16 characters');
+      }
+      await prune();
+      const bindingHash = digest(binding);
+      await store.set(`attempt:${bindingHash}`, {
+        expiresAt: now() + ttlMs,
+        bindingDigest: bindingHash,
+      });
+    },
+
+    /**
+     * Consume a browser-bound portal login attempt at most once.
+     * @param {string|undefined} binding
+     * @returns {Promise<'ok'|'missing'|'expired'>}
+     */
+    async consumeAttempt(binding) {
+      if (typeof binding !== 'string' || binding === '') return 'missing';
+      const bindingHash = digest(binding);
+      const { status, bindingDigest } = await removeAtomic(`attempt:${bindingHash}`);
+      if (status === 'expired') return 'expired';
+      if (status !== 'ok') return 'missing';
+      if (!bindingDigest || !digestsMatch(bindingDigest, bindingHash)) return 'missing';
+      return 'ok';
+    },
+
+    /**
+     * Claim a callback `ac` digest at most once inside its replay window.
+     * @param {string} code
+     * @param {{ttlMs?: number}} [options]
+     * @returns {Promise<boolean>}
+     */
+    async claimCodeOnce(code, { ttlMs: codeTtlMs = 60 * 60 * 1000 } = {}) {
+      if (typeof code !== 'string' || code === '') return false;
+      const key = `code:${digest(code)}`;
+      const expiresAt = now() + codeTtlMs;
+      if (typeof store.claimOnce === 'function') {
+        return store.claimOnce(key, { expiresAt });
+      }
+      await prune();
+      const existing = await store.get(key);
+      if (existing) return false;
+      await store.set(key, { expiresAt, bindingDigest: null });
       return true;
     },
 

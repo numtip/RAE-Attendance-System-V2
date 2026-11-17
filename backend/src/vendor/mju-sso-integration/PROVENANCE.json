@@ -1,0 +1,9 @@
+{
+  "sourceRepository": "numtip/mju-sso-integration",
+  "sourceRef": "origin/main",
+  "sourceCommit": "cb8815c2407848c604090e16201bfb727060b32e",
+  "adapterVersion": "1.0.0-rc.6",
+  "contractVersion": "1.0.0-rc.6",
+  "verifiedItems": ["C-08", "C-14"],
+  "providerCertified": false
+}

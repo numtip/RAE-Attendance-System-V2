@@ -138,6 +138,17 @@ export const api = {
       body: { refreshToken },
     }),
   /**
+   * Redeem the single-use 45-second handoff code issued by `/api/v1/auth/sso/callback`.
+   */
+  ssoExchange: (code: string) =>
+    apiRequest<import('./types').LoginResult>('/auth/sso/exchange', {
+      method: 'POST',
+      body: { code },
+      auth: false,
+      retryOnUnauthorized: false,
+    }),
+  ssoMe: () => apiRequest<import('./types').EmployeePublic>('/auth/sso/me'),
+  /**
    * SSO logout. The server revokes the access and refresh tokens BEFORE this resolves, so the session is already
    * dead when the browser leaves the app. Returns the validated MJU signout URL and post-signout landing page.
    */

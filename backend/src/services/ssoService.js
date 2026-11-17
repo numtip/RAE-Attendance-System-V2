@@ -1,9 +1,16 @@
 const jwt = require('jsonwebtoken');
 const { randomUUID } = require('node:crypto');
 const { HttpError } = require('../utils/httpError');
-const { assertLiveIdentityGate, assertSsoGate, portalConfigReady } = require('./sso/ssoConfig');
+const {
+  assertLiveIdentityGate,
+  assertSsoGate,
+  isPortalProvider,
+  portalConfigReady,
+} = require('./sso/ssoConfig');
 const { createOAuthProvider } = require('./sso/oauthProvider');
 const { createSsoStateStore } = require('./sso/ssoStateStore');
+const { createSsoLoginHandoffStore } = require('./sso/ssoLoginHandoffStore');
+const { createMjuPortalAdapterBridge } = require('./sso/mjuPortalAdapterBridge');
 const { buildCidUrl } = require('./sso/mjuPortal');
 const { buildSignoutUrl, resolveAfterSignoutUrl } = require('./sso/ssoSignout');
 const { summarizeCallbackFields } = require('./sso/callbackDiagnostic');
@@ -62,14 +69,31 @@ function createSsoService(deps) {
     repositories,
     oauthProvider = createOAuthProvider(config, deps),
     stateStore = createSsoStateStore(),
+    handoffStore = createSsoLoginHandoffStore({
+      ttlMs: Number(config?.sso?.handoffTtlMs || 45_000),
+    }),
+    fetchImpl,
+    ssoLogger,
   } = deps;
+
+  const portalBridge = createMjuPortalAdapterBridge({
+    config,
+    repositories,
+    stateStore,
+    fetchImpl,
+    logger: ssoLogger,
+  });
 
   function disabledResponse() {
     assertSsoGate(config);
   }
 
   return {
-    async beginLogin({ browserBinding } = {}) {
+    async adapterManifest() {
+      return portalBridge.manifest();
+    },
+
+    async beginLogin({ browserBinding, clientIp, correlationId } = {}) {
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
       }
@@ -78,6 +102,9 @@ function createSsoService(deps) {
           throw new HttpError(503, 'SSO_NOT_READY', 'SSO environment configuration is incomplete');
         }
         return buildCidUrl(config.sso.signinUrl, config.sso.clientId);
+      }
+      if (isPortalProvider(config.sso.provider)) {
+        return portalBridge.beginLogin({ browserBinding, clientIp, correlationId });
       }
       disabledResponse();
       if (config.sso.signinUrl) {
@@ -107,8 +134,8 @@ function createSsoService(deps) {
       });
     },
 
-    // Live callback does not use createSsoIdentityChainService yet (subject contract UNKNOWN).
     async handleCallback({
+      ac,
       code,
       state,
       error,
@@ -118,7 +145,22 @@ function createSsoService(deps) {
       rawBody,
       cookieNames,
       browserBinding,
+      clientIp,
+      userAgent,
+      correlationId,
     }) {
+      if (isPortalProvider(config.sso.provider) && !config.sso.callbackDiagnostic) {
+        return portalBridge.handleCallback({
+          method,
+          rawQuery,
+          ac,
+          error,
+          browserBinding,
+          clientIp,
+          userAgent,
+          correlationId,
+        });
+      }
       if (!config.sso.enabled) {
         throw new HttpError(403, 'SSO_DISABLED', 'SSO stays disabled until the MJU callback URL is confirmed');
       }
@@ -225,6 +267,38 @@ function createSsoService(deps) {
           role: employee.role,
         },
       };
+    },
+
+    /**
+     * Issue a single-use, 45-second browser-bound handoff code so tokens never appear in a URL.
+     */
+    issueLoginHandoff(session, { browserBinding } = {}) {
+      if (!session?.accessToken || !session?.refreshToken || !session?.employee) {
+        throw new HttpError(500, 'SSO_SESSION_INVALID', 'Cannot issue handoff for an incomplete session');
+      }
+      return handoffStore.issue(
+        {
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          employee: session.employee,
+        },
+        { browserBinding },
+      );
+    },
+
+    /**
+     * Redeem a single-use handoff code from `POST /api/v1/auth/sso/exchange`.
+     */
+    async exchangeLoginHandoff({ code, browserBinding } = {}) {
+      disabledResponse();
+      if (typeof code !== 'string' || code.trim() === '') {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'code is required');
+      }
+      const outcome = handoffStore.consume(code, browserBinding);
+      if (outcome.status !== 'ok') {
+        throw new HttpError(401, 'SSO_HANDOFF_INVALID', 'SSO login code is invalid or expired');
+      }
+      return outcome.payload;
     },
 
     async me(auth) {

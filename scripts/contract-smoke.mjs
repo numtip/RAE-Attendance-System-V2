@@ -150,7 +150,8 @@ async function main() {
           const publicHealth = path.endsWith('/health');
           const ssoLogin = path.includes('/auth/sso/login');
           const ssoCallback = path.includes('/auth/sso/callback');
-          const needsAuth = !publicHealth && !ssoLogin && !ssoCallback;
+          const ssoSignout = path.includes('/auth/sso/signout');
+          const needsAuth = !publicHealth && !ssoLogin && !ssoCallback && !ssoSignout;
           result = await request(port, 'GET', path, { token: needsAuth ? accessToken : undefined });
           if (path.endsWith('/health')) {
             assertStatus(label, result.status, [200]);
@@ -167,6 +168,9 @@ async function main() {
             body: { refreshToken },
           });
           assertStatus(label, result.status, [200, 401, 403, 503]);
+        } else if (route.template.includes('/auth/sso/exchange')) {
+          result = await request(port, 'POST', path, { body: {} });
+          assertStatus(label, result.status, [400, 401, 403, 503]);
         } else {
           result = await request(port, 'POST', path, { token: accessToken, body: {} });
         }

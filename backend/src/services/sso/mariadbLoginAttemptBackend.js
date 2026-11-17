@@ -144,6 +144,59 @@ function createMariaDbLoginAttemptBackend(pool, { ttlSeconds = DEFAULT_TTL_SECON
       }
     },
 
+    /**
+     * Atomically record a single-use replay claim (e.g. a callback `ac` digest).
+     *
+     * Returns `true` when claimed for the first time inside its TTL window, `false` when an
+     * unexpired claim already exists (`ER_DUP_ENTRY`), and throws `503 SSO_LOGIN_STORE_UNAVAILABLE`
+     * on any database failure (missing table, broken connection) so replay protection never fails
+     * open.
+     *
+     * @param {string} key
+     * @param {{expiresAt: number}} entry
+     * @returns {Promise<boolean>}
+     */
+    async claimOnce(key, entry) {
+      if (typeof key !== 'string' || key.length === 0) {
+        return false;
+      }
+      if (!entry || typeof entry.expiresAt !== 'number') {
+        throw new Error('claimOnce entry requires expiresAt');
+      }
+      const digestKey = digestHex(key);
+      let connection;
+      try {
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        await connection.query(
+          'DELETE FROM sso_login_attempt WHERE state_digest = ? AND expires_at <= UTC_TIMESTAMP(3)',
+          [digestKey],
+        );
+        await connection.query(
+          `INSERT INTO sso_login_attempt (state_digest, binding_digest, expires_at, created_at)
+           VALUES (?, NULL, FROM_UNIXTIME(?), UTC_TIMESTAMP(3))`,
+          [digestKey, Math.floor(entry.expiresAt / 1000)],
+        );
+        await connection.commit();
+        return true;
+      } catch (error) {
+        if (connection) {
+          try {
+            await connection.rollback();
+          } catch {
+            // A rollback failure must not mask the original failure.
+          }
+        }
+        if (error?.code === 'ER_DUP_ENTRY' || error?.errno === 1062) {
+          return false;
+        }
+        throw unavailable();
+      } finally {
+        if (connection) connection.release();
+      }
+    },
+
     /** Remove expired rows. Best effort: a failure here must not block a login. */
     async prune() {
       try {
