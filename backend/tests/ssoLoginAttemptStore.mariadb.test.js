@@ -181,3 +181,29 @@ test(
     await closePool();
   },
 );
+
+test(
+  'portal attempt registration and single-use ac replay claims are atomic across instances on MariaDB',
+  { skip: gated ? 'MariaDB integration is not enabled' : false },
+  async () => {
+    const pool = getPool();
+    const instanceA = createSsoStateStore({ backend: createMariaDbLoginAttemptBackend(pool) });
+    const instanceB = createSsoStateStore({ backend: createMariaDbLoginAttemptBackend(pool) });
+
+    const binding = `portal-mariadb-binding-${Date.now()}-abcdef123456`;
+    await instanceA.registerAttempt(binding);
+    assert.equal(await instanceB.consumeAttempt(binding), 'ok');
+    assert.equal(await instanceA.consumeAttempt(binding), 'missing');
+
+    const ac = `${String(Date.now()).padStart(16, '0')}abcdef0123456789`.slice(0, 32);
+    const race = await Promise.all(
+      Array.from({ length: 6 }, (_, index) =>
+        (index % 2 === 0 ? instanceA : instanceB).claimCodeOnce(ac),
+      ),
+    );
+    assert.equal(race.filter(Boolean).length, 1, 'exactly one concurrent ac claim may succeed');
+    assert.equal(await instanceB.claimCodeOnce(ac), false, 'replayed ac stays refused');
+
+    await closePool();
+  },
+);

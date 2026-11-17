@@ -1,0 +1,15 @@
+{
+  "name": "@mju/sso-integration",
+  "version": "1.0.0-rc.6",
+  "private": true,
+  "description": "Vendored verbatim from numtip/mju-sso-integration@cb8815c2407848c604090e16201bfb727060b32e (v1.0.0-rc.6) so public CI and unauthenticated Docker builds use the exact shared MJU SSO adapter without private GitHub credentials.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./contract": "./src/contract.js",
+    "./adapter": "./src/adapter.js"
+  }
+}

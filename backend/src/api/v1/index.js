@@ -1,6 +1,7 @@
 const express = require('express');
 const healthRoutes = require('./routes/health');
 const readyRoutes = require('./routes/ready');
+const { HttpError } = require('../../utils/httpError');
 const { createAuthenticate } = require('../../middleware/authenticate');
 const { createAuthController } = require('../../controllers/authController');
 const { createSsoController } = require('../../controllers/ssoController');
@@ -65,12 +66,27 @@ function createV1Router(container) {
   router.get('/auth/me', authenticate, auth.me);
   router.post('/auth/logout', authenticate, auth.logout);
 
+  function methodNotAllowed(allowedMethod, code = 'SSO_METHOD_NOT_ALLOWED') {
+    return (_req, _res, next) => {
+      next(
+        new HttpError(405, code, `Endpoint requires ${allowedMethod}`, { allow: allowedMethod }),
+      );
+    };
+  }
+
   router.get('/auth/sso/login', sso.login);
+  router.all('/auth/sso/login', methodNotAllowed('GET'));
   router.get('/auth/sso/callback', sso.callback);
+  router.all('/auth/sso/callback', methodNotAllowed('GET', 'SSO_CALLBACK_METHOD'));
+  router.post('/auth/sso/exchange', sso.exchange);
+  router.all('/auth/sso/exchange', methodNotAllowed('POST'));
   router.get('/auth/sso/me', authenticate, sso.me);
+  router.all('/auth/sso/me', methodNotAllowed('GET'));
   router.post('/auth/sso/logout', authenticate, sso.logout);
+  router.all('/auth/sso/logout', methodNotAllowed('POST', 'SSO_LOGOUT_METHOD'));
   // Public and idempotent: ends the MJU IdP session and lands the browser safely. Revokes nothing.
   router.get('/auth/sso/signout', sso.signout);
+  router.all('/auth/sso/signout', methodNotAllowed('GET'));
 
   router.get('/employees', authenticate, employees.list);
   router.get('/employees/:employeeUid/attendance', authenticate, employees.attendance);

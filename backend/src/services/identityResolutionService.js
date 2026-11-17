@@ -102,6 +102,13 @@ function createIdentityResolutionService(deps) {
       if (!isAuthenticatableStatus(link.status)) {
         throw new HttpError(403, 'IDENTITY_NOT_APPROVED', 'Identity link is not approved for sign-in');
       }
+      if (!link.approvedBy || !link.approvedAt) {
+        throw new HttpError(
+          403,
+          'IDENTITY_PROVENANCE_INVALID',
+          'Approved identity link is missing approval provenance',
+        );
+      }
 
       const profile = await employees.findByUid(link.employeeUid);
       if (!profile) {
