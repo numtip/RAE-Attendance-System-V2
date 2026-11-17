@@ -11,6 +11,7 @@ const { createAuthService } = require('../../services/authService');
 const { createEmployeeService } = require('../../services/employeeService');
 const { createAttendanceService } = require('../../services/attendanceService');
 const { createAttendanceRecordService } = require('../../services/attendanceRecordService');
+const { createFacescanAttendanceIngestionService } = require('../../services/facescanAttendanceIngestionService');
 const { createLeaveService } = require('../../services/leaveService');
 const { createSsoService } = require('../../services/ssoService');
 const { createLoginAttemptStore } = require('../../services/sso/ssoLoginAttemptStore');
@@ -25,6 +26,10 @@ function createV1Router(container) {
   const employeeService = createEmployeeService(container);
   const attendanceService = createAttendanceService(container);
   const attendanceRecordService = createAttendanceRecordService(container);
+  const facescanIngestionService = createFacescanAttendanceIngestionService({
+    repositories: container.repositories,
+    recordService: attendanceRecordService,
+  });
   const leaveService = createLeaveService(container);
   const attendanceComputeService = createAttendanceComputeService(container);
   // G-02: the login attempt store is chosen once, here, so there is a single place that decides
@@ -41,7 +46,11 @@ function createV1Router(container) {
   const auth = createAuthController(authService);
   const sso = createSsoController(ssoService, container);
   const employees = createEmployeeController(employeeService, attendanceService);
-  const attendance = createAttendanceController(attendanceService, attendanceRecordService);
+  const attendance = createAttendanceController(
+    attendanceService,
+    attendanceRecordService,
+    facescanIngestionService,
+  );
   const leave = createLeaveController(leaveService);
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
   const reports = createReportController(createReportService(container));
@@ -72,6 +81,8 @@ function createV1Router(container) {
   // The first writer for daily_attendance: evaluate one employee-day with AR-0001, persist it, and
   // re-derive that employee-month. No new migration — 004/005/023/024 already carry the columns.
   router.post('/attendance/daily/:employeeUid/:date', authenticate, attendance.record);
+  // Promote that day's resolved facescan scans into attendance_events and derive the day from them.
+  router.post('/attendance/facescan/:employeeUid/:date', authenticate, attendance.deriveFacescan);
   router.post('/attendance/evaluate-day', authenticate, attendanceCompute.evaluateDay);
   router.post('/attendance/evaluate-period', authenticate, attendanceCompute.evaluatePeriod);
   router.post('/attendance/explain', authenticate, attendanceCompute.explainResult);

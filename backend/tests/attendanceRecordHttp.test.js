@@ -72,6 +72,20 @@ test('validation runs before authorization, so a malformed request is a 400 not 
   assert.match(noFact.body.error.message, /at least one fact|record at least one fact/);
 });
 
+test('the facescan derive route is mounted and refuses an unauthenticated or staff caller', async (t) => {
+  const { server, port } = await listen(createApp());
+  t.after(() => server.close());
+  const path = `/api/v1/attendance/facescan/${userUid}/2026-11-16`;
+
+  const anonymous = await api(port, 'POST', path, { body: {} });
+  assert.equal(anonymous.status, 401);
+
+  const token = await staffToken(port);
+  const staff = await api(port, 'POST', path, { token, body: {} });
+  assert.equal(staff.status, 403, 'a staff member cannot derive their own attendance from scans');
+  assert.equal(staff.body.error.code, 'FORBIDDEN');
+});
+
 test('a staff member with a valid request is refused: attendance is not self-service', async (t) => {
   const { server, port } = await listen(createApp());
   t.after(() => server.close());

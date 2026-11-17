@@ -1,6 +1,7 @@
 const fixtures = require('../dev/fixtures');
 const { EmployeeRepository } = require('./employeeRepository');
 const { AttendanceRepository } = require('./attendanceRepository');
+const { createAttendanceEventRepository } = require('./attendanceEventRepository');
 const { LeaveRepository } = require('./leaveRepository');
 const { createFixtureIdentityLinkRepository } = require('./fixtureIdentityLinkRepository');
 const { createFixtureEmployeeIdentifierRepository } = require('./fixtureEmployeeIdentifierRepository');
@@ -12,6 +13,7 @@ function createFixtureRepositories() {
   return {
     employees: new EmployeeRepository(fixtures.employees),
     attendance: new AttendanceRepository(fixtures.attendance, fixtures.monthly),
+    attendanceEvents: createAttendanceEventRepository(fixtures.attendanceEvents || []),
     leave: new LeaveRepository(fixtures.leave, fixtures.balances),
     refreshTokens: createFixtureRefreshTokenRepository(),
     authLogs: {

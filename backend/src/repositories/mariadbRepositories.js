@@ -1,6 +1,7 @@
 const config = require('../config');
 const { getDbUnavailableError, getPool, isDatabaseConfigured } = require('../db/pool');
 const { createAttendanceMariaDbRepository } = require('./mariadb/attendanceMariaDbRepository');
+const { createAttendanceEventMariaDbRepository } = require('./mariadb/attendanceEventMariaDbRepository');
 const { createAuthLogsMariaDbRepository } = require('./mariadb/authLogsMariaDbRepository');
 const { createEmployeeMariaDbRepository } = require('./mariadb/employeeMariaDbRepository');
 const { createLeaveMariaDbRepository } = require('./mariadb/leaveMariaDbRepository');
@@ -24,6 +25,7 @@ function createMariaDbRepositories(database = config.database) {
     return {
       employees: blockedRepo(),
       attendance: blockedRepo(),
+      attendanceEvents: blockedRepo(),
       leave: blockedRepo(),
       refreshTokens: blockedRepo(),
       authLogs: blockedRepo(),
@@ -39,6 +41,7 @@ function createMariaDbRepositories(database = config.database) {
   return {
     employees: createEmployeeMariaDbRepository(pool),
     attendance: createAttendanceMariaDbRepository(pool),
+    attendanceEvents: createAttendanceEventMariaDbRepository(pool),
     leave: createLeaveMariaDbRepository(pool),
     refreshTokens: createRefreshTokenMariaDbRepository(pool),
     authLogs: createAuthLogsMariaDbRepository(pool),
