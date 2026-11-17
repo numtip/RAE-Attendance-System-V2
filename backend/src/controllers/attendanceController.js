@@ -6,6 +6,9 @@ function createAttendanceController(attendanceService) {
     daily: asyncRoute(async (req, res) => {
       success(res, await attendanceService.daily(req.auth, req.params.date), 'การมาทำงานรายวัน');
     }),
+    me: asyncRoute(async (req, res) => {
+      success(res, await attendanceService.meDaily(req.auth, req.params.date), 'การมาทำงานของฉัน');
+    }),
     monthly: asyncRoute(async (req, res) => {
       const data = await attendanceService.monthly(
         req.auth,

@@ -82,6 +82,8 @@ function createV1Router(container) {
   router.get('/employees/:employeeUid', authenticate, employees.detail);
 
   router.get('/attendance/daily/:date', authenticate, attendance.daily);
+  // Staff cannot list the whole organisation, but they can always read their own day.
+  router.get('/attendance/me/:date', authenticate, attendance.me);
   router.get('/attendance/monthly/:employeeUid/:year/:month', authenticate, attendance.monthly);
   router.post('/attendance/evaluate-day', authenticate, attendanceCompute.evaluateDay);
   router.post('/attendance/evaluate-period', authenticate, attendanceCompute.evaluatePeriod);

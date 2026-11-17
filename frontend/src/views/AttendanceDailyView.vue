@@ -19,7 +19,14 @@ async function load() {
   loading.value = true;
   error.value = null;
   try {
-    rows.value = await api.attendanceDaily(date.value);
+    try {
+      rows.value = await api.attendanceDaily(date.value);
+    } catch (e) {
+      // A staff member cannot see the whole organisation; the API answers 403 and their own day is
+      // still readable. Ask for that instead of deciding the role in the browser.
+      if (!(e instanceof ApiError) || e.status !== 403) throw e;
+      rows.value = await api.attendanceMe(date.value);
+    }
   } catch (e) {
     rows.value = [];
     error.value = e instanceof ApiError ? e.message : 'Failed to load daily attendance';

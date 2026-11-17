@@ -19,6 +19,7 @@ Default `DATA_SOURCE=fixture`. The MariaDB adapter does not connect while ERROR 
 | GET | `/api/v1/employees` | 200 / 401 | Authenticated list. |
 | GET | `/api/v1/employees/:employeeUid` | 200 / 404 | Profile without `passwordHash`. |
 | GET | `/api/v1/employees/:employeeUid/attendance` | 200 / 403 / 404 | Own records, or any records for admin/manager. |
+| GET | `/api/v1/attendance/me/:date` | 200 / 400 | **The caller's own day.** The subject comes from the session and no parameter can override it, so a staff member can always read their own attendance while `/daily` stays organisation-only. Empty list when nothing is recorded. |
 | GET | `/api/v1/attendance/daily/:date` | 200 / 403 | Admin or manager. |
 | GET | `/api/v1/attendance/monthly/:employeeUid/:year/:month` | 200 / 403 / 404 | Own summary, or any summary for admin/manager. |
 | GET | `/api/v1/leave` | 200 / 403 | Own rows unless `employeeUid` is allowed. |
