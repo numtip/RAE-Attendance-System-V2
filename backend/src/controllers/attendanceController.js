@@ -1,8 +1,17 @@
 const { success } = require('../utils/response');
 const { asyncRoute } = require('../utils/asyncRoute');
 
-function createAttendanceController(attendanceService) {
+function createAttendanceController(attendanceService, attendanceRecordService) {
   return {
+    record: asyncRoute(async (req, res) => {
+      const data = await attendanceRecordService.recordDay(
+        req.auth,
+        req.params.employeeUid,
+        req.params.date,
+        req.body,
+      );
+      success(res, data, 'บันทึกการมาทำงาน');
+    }),
     daily: asyncRoute(async (req, res) => {
       success(res, await attendanceService.daily(req.auth, req.params.date), 'การมาทำงานรายวัน');
     }),
