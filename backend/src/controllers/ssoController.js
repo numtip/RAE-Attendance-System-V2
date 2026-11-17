@@ -42,18 +42,31 @@ function readCookie(req, name) {
  * pass-through value closes that. This control narrows the window; it does not close it.
  */
 function createSsoController(ssoService, { config }) {
-  const isProduction = config.env === 'production';
+  const isProduction =
+    String(config?.app?.env ?? config?.env ?? process.env.NODE_ENV ?? 'development')
+      .trim()
+      .toLowerCase() === 'production';
   const cookieName = config.sso.loginBindingCookie;
   const ttlMs = config.sso.loginBindingTtlMs;
+  const handoffCookieName = config.sso.handoffCookie || 'rae_sso_handoff';
+  const handoffTtlMs = Number(config.sso.handoffTtlMs || 45_000);
 
   // SameSite=Lax: the provider returns with a top-level GET, which Lax cookies accompany.
-  // Path is narrow: the binding is only ever needed by the two SSO endpoints.
+  // Path is narrow: the binding is only ever needed by the SSO endpoints.
   const cookieOptions = {
     httpOnly: true,
     sameSite: 'lax',
     secure: isProduction, // the dev server is http, so Secure would make the cookie unsettable
     path: '/api/v1/auth/sso',
     maxAge: ttlMs,
+  };
+
+  const handoffCookieOptions = {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: isProduction,
+    path: '/api/v1/auth/sso',
+    maxAge: handoffTtlMs,
   };
 
   function setBindingCookie(res, value) {
@@ -64,12 +77,28 @@ function createSsoController(ssoService, { config }) {
     res.clearCookie(cookieName, { ...cookieOptions, maxAge: undefined });
   }
 
+  function setHandoffCookie(res, value) {
+    res.cookie(handoffCookieName, value, handoffCookieOptions);
+  }
+
+  function clearHandoffCookie(res) {
+    res.clearCookie(handoffCookieName, { ...handoffCookieOptions, maxAge: undefined });
+  }
+
+  function clientIpFromReq(req) {
+    return req?.ip || req?.socket?.remoteAddress || undefined;
+  }
+
   return {
     login: asyncRoute(async (req, res) => {
       // Always a fresh server-generated value. A client-supplied one is never adopted, which
       // removes session-fixation style attacks on the binding itself.
       const browserBinding = randomBytes(32).toString('base64url');
-      const url = await ssoService.beginLogin({ browserBinding });
+      const url = await ssoService.beginLogin({
+        browserBinding,
+        clientIp: clientIpFromReq(req),
+        correlationId: req.headers?.['x-request-id'],
+      });
       setBindingCookie(res, browserBinding);
       res.set('Cache-Control', 'no-store');
       res.set('Referrer-Policy', 'no-referrer');
@@ -82,27 +111,61 @@ function createSsoController(ssoService, { config }) {
       res.set('Cache-Control', 'no-store');
       res.set('Referrer-Policy', 'no-referrer');
 
-      await ssoService.handleCallback({
-        code: req.query.code,
-        state: req.query.state,
-        error: req.query.error,
-        error_description: req.query.error_description,
+      const session = await ssoService.handleCallback({
+        ac: req.query?.ac,
+        code: req.query?.code,
+        state: req.query?.state,
+        error: req.query?.error,
+        error_description: req.query?.error_description,
         rawQuery: req.query,
         method: req.method,
         rawBody: req.body,
         cookieNames: cookieNames(req),
         browserBinding,
+        clientIp: clientIpFromReq(req),
+        userAgent: req.headers?.['user-agent'],
+        correlationId: req.headers?.['x-request-id'],
       });
       const redirectBase = config.app.url.replace(/\/$/, '');
+      if (
+        typeof ssoService.issueLoginHandoff === 'function' &&
+        session?.accessToken &&
+        session?.refreshToken &&
+        session?.employee
+      ) {
+        const handoffBinding = randomBytes(32).toString('base64url');
+        const handoffCode = ssoService.issueLoginHandoff(session, {
+          browserBinding: handoffBinding,
+        });
+        setHandoffCookie(res, handoffBinding);
+        const target = new URL(`${redirectBase}/auth/sso/complete`);
+        target.searchParams.set('sso', 'success');
+        target.searchParams.set('code', handoffCode);
+        res.redirect(302, target.toString());
+        return;
+      }
       const target = new URL(`${redirectBase}/`);
       target.searchParams.set('sso', 'success');
       res.redirect(302, target.toString());
     }),
+    exchange: asyncRoute(async (req, res) => {
+      const handoffBinding = readCookie(req, handoffCookieName);
+      clearHandoffCookie(res);
+      res.set('Cache-Control', 'no-store');
+      res.set('Referrer-Policy', 'no-referrer');
+      const data = await ssoService.exchangeLoginHandoff({
+        code: req.body?.code,
+        browserBinding: handoffBinding,
+      });
+      success(res, data, 'เข้าสู่ระบบ SSO สำเร็จ');
+    }),
     me: asyncRoute(async (req, res) => {
+      res.set('Cache-Control', 'no-store');
       const data = await ssoService.me(req.auth);
       success(res, data, 'ข้อมูลผู้ใช้ SSO');
     }),
     logout: asyncRoute(async (req, res) => {
+      res.set('Cache-Control', 'no-store');
       const data = await ssoService.logout({
         refreshToken: req.body?.refreshToken,
         auth: req.auth,
@@ -110,6 +173,9 @@ function createSsoController(ssoService, { config }) {
       // A logout ends the browser's login attempt too, so a half-finished login cannot be
       // resumed after the user asked to be signed out.
       clearBindingCookie(res);
+      if (readCookie(req, handoffCookieName) !== undefined) {
+        clearHandoffCookie(res);
+      }
       success(res, data, 'ออกจาก SSO แล้ว');
     }),
     /**

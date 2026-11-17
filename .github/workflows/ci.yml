@@ -46,6 +46,9 @@ jobs:
       - name: National-ID key-version audit tests
         run: node --test scripts/nationalIdKeyVersions.test.mjs
 
+      - name: MJU SSO preflight tests
+        run: node --test scripts/ssoPreflight.test.mjs
+
   backend-mariadb:
     runs-on: ubuntu-latest
     services:

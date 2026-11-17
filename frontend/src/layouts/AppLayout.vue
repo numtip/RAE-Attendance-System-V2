@@ -28,13 +28,17 @@ async function logout() {
   try {
     if (refreshToken) {
       // The server revokes the access + refresh tokens before returning, so the session is dead server-side
-      // before the browser navigates away. This is the ordering the MJU sample gets right with Session.RemoveAll.
-      const result = await api.ssoLogout(refreshToken);
-      signoutUrl = result.signoutUrl;
+      // before the browser navigates away. When SSO is disabled on this deployment, fall back to `/auth/logout`
+      // so password sessions still revoke both server-side tokens cleanly.
+      try {
+        const result = await api.ssoLogout(refreshToken);
+        signoutUrl = result.signoutUrl;
+      } catch {
+        await api.logout(refreshToken);
+      }
     }
   } catch {
-    // Already logged out, expired, or SSO disabled: a repeated logout must stay safe. Fall through and clear
-    // local state regardless, then use the public signout endpoint to end the IdP session.
+    // Already logged out or expired: a repeated logout must stay safe.
   } finally {
     // Only application-owned keys are removed. RAE V2 sets no auth cookie, so nothing else is touched.
     clearSession();

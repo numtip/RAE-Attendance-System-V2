@@ -1,7 +1,16 @@
 const { HttpError } = require('../../utils/httpError');
 
+function isPortalProvider(provider) {
+  const normalized = String(provider || '').trim().toLowerCase();
+  return normalized === 'portal' || normalized === 'mju';
+}
+
 function portalConfigReady(sso) {
   return Boolean(sso.signinUrl && sso.signoutUrl && sso.clientId && sso.callbackUrl);
+}
+
+function portalAdapterConfigReady(sso) {
+  return Boolean(sso.signinUrl && sso.signoutUrl && sso.tokenUrl && sso.clientId);
 }
 
 function oauthConfigReady(sso) {
@@ -10,6 +19,9 @@ function oauthConfigReady(sso) {
 }
 
 function requiredConfig(config) {
+  if (isPortalProvider(config?.sso?.provider)) {
+    return portalAdapterConfigReady(config.sso);
+  }
   return portalConfigReady(config.sso) || oauthConfigReady(config.sso);
 }
 
@@ -52,7 +64,9 @@ function isSsoOperational(config) {
 module.exports = {
   assertLiveIdentityGate,
   assertSsoGate,
+  isPortalProvider,
   isSsoOperational,
-  requiredConfig,
+  portalAdapterConfigReady,
   portalConfigReady,
+  requiredConfig,
 };

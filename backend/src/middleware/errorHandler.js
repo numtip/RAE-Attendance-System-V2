@@ -2,6 +2,12 @@ const { HttpError } = require('../utils/httpError');
 
 function errorHandler(err, _req, res, _next) {
   if (err instanceof HttpError) {
+    if (err.status === 405 && err.details?.allow) {
+      res.set('Allow', String(err.details.allow));
+    }
+    if (err.status === 429 && err.details?.retryAfterSeconds) {
+      res.set('Retry-After', String(err.details.retryAfterSeconds));
+    }
     res.status(err.status).json({
       success: false,
       error: {
