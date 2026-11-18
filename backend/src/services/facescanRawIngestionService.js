@@ -7,6 +7,10 @@ const {
   normalizeScanDatetime,
   normalizeScanType,
 } = require('../domain/facescanRaw');
+const { parseFacescanCsvExport, FacescanFileError } = require('../imports/facescanCsvExport');
+
+const FILE_SOURCE_SYSTEM = 'hip_csv_export';
+const SOURCE_REFERENCE_MAX = 255; // facescan_import_batches.source_reference VARCHAR(255)
 
 function createFacescanRawIngestionService({ repositories, nationalIdProtector = null }) {
   const facescanRaw = repositories.facescanRaw;
@@ -23,14 +27,45 @@ function createFacescanRawIngestionService({ repositories, nationalIdProtector =
     }
   }
 
+  async function startBatch(input = {}) {
+    const id = input.id || randomUUID();
+    return facescanRaw.createBatch({
+      id,
+      sourceSystem: input.sourceSystem || 'facescan_db',
+      sourceLabel: input.sourceLabel ?? null,
+    });
+  }
+
   return {
-    async startBatch(input = {}) {
-      const id = input.id || randomUUID();
-      return facescanRaw.createBatch({
-        id,
-        sourceSystem: input.sourceSystem || 'facescan_db',
-        sourceLabel: input.sourceLabel ?? null,
+    startBatch,
+
+    /**
+     * HIP export file -> staging_facescan_raw, through the existing batch path.
+     *
+     * The whole file is validated before a batch exists, so a refused file leaves no trace and a
+     * batch is never half-imported. Re-importing the same file yields only duplicates (the existing
+     * idempotency key). Unknown facescan_ids are stored as `unmapped` — quarantined: the facescan
+     * derivation reads only `resolved` rows, and `reResolveUnmapped` promotes them once an
+     * employee_identifier is approved. Nothing here derives attendance.
+     */
+    async ingestFile(content, { sourceLabel = null } = {}) {
+      let parsed;
+      try {
+        parsed = parseFacescanCsvExport(content);
+      } catch (error) {
+        if (error instanceof FacescanFileError) {
+          throw new HttpError(400, error.code, error.message, { issues: error.issues });
+        }
+        throw error;
+      }
+      // The content hash makes the batch traceable to the exact file without storing the file.
+      const reference = [sourceLabel, `sha256:${parsed.contentSha256}`].filter(Boolean).join(' ');
+      const batch = await startBatch({
+        sourceSystem: FILE_SOURCE_SYSTEM,
+        sourceLabel: reference.slice(-SOURCE_REFERENCE_MAX),
       });
+      const result = await this.ingestBatch(batch.id, parsed.rows);
+      return { ...result, contentSha256: parsed.contentSha256 };
     },
 
     async ingestBatch(batchId, rawRows) {
@@ -75,6 +110,8 @@ function createFacescanRawIngestionService({ repositories, nationalIdProtector =
         const resolutionStatus = employeeUid ? 'resolved' : 'unmapped';
         const row = await facescanRaw.insertRawRow({
           batchId,
+          // The row carries the batch's provenance; it used to default to 'facescan_db' regardless.
+          sourceSystem: batch.sourceSystem,
           facescanId,
           scanDatetime,
           scanType,
@@ -107,10 +144,11 @@ function createFacescanRawIngestionService({ repositories, nationalIdProtector =
         unmappedCount,
         resolvedCount,
       });
-      await facescanRaw.commitBatch(batchId);
+      // Return the batch as committed: the counters snapshot above still says 'open'.
+      const committed = await facescanRaw.commitBatch(batchId);
 
       return {
-        batch: updatedBatch,
+        batch: committed || updatedBatch,
         results,
       };
     },

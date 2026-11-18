@@ -44,12 +44,32 @@ Duplicate inserts increment `duplicate_count` and return `resolution_status: dup
 - `startBatch()` — open batch
 - `ingestBatch(batchId, rawRows)` — ingest, resolve, commit batch
 - `reResolveUnmapped({ batchId? })` — after new identifier links, promote unmapped rows
+- `ingestFile(content, { sourceLabel? })` — HIP `csvExport` file → the same batch path (below)
 
 No HTTP routes in Phase A (internal/service layer only).
 
+### File ingestion (`csvExport` seam, `backend/src/imports/facescanCsvExport.js`)
+
+The file uses the seam's canonical columns from `HIP_DEVICE_INGESTION.md` §6, by header name:
+`facescan_id`, `scan_datetime`, optional `scan_type`. All other columns are dropped.
+
+- UTF-8 (BOM allowed). A non-UTF-8 file is refused.
+- `scan_datetime` is Asia/Bangkok wall clock: `YYYY-MM-DD HH:MM[:SS]` (CE) or `DD/MM/BBBB HH:MM[:SS]`
+  (Buddhist era, −543). A zone suffix, an impossible date or an ambiguous era is refused.
+- The whole file is validated before a batch exists. One bad line, an empty file or a header with no rows
+  refuses the file with the offending line numbers. Nothing is half-imported.
+- Batch `source_system = hip_csv_export`, and `source_reference` records the label plus the file's SHA-256.
+  `raw_payload` holds only the source line number.
+
+**Still open (owner, `HIP_DEVICE_INGESTION.md` §8 Q3):** the vendor's own export layout. Until a
+PII-stripped sample is reviewed, a vendor file must be mapped to these three headers first. This module
+does not guess the vendor columns.
+
 ## Tests
 
-`backend/tests/facescanRawIngestion.test.js` — mapped, unmapped, duplicate, re-resolution.
+- `backend/tests/facescanRawIngestion.test.js` — mapped, unmapped, duplicate, re-resolution.
+- `backend/tests/facescanFileIngestion.test.js` — parser rules, refusal, quarantine, re-import, fixture chain.
+- `backend/tests/facescanFileChain.mariadb.test.js` — file → staging → events → daily → monthly on MariaDB.
 
 ## Next (Phase B)
 
