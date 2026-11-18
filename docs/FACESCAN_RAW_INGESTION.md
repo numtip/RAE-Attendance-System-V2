@@ -67,6 +67,30 @@ The file uses the seam's canonical columns from `HIP_DEVICE_INGESTION.md` §6, b
 PII-stripped sample is reviewed, a vendor file must be mapped to these three headers first. This module
 does not guess the vendor columns.
 
+### HIP daily report (`backend/src/imports/hipDailyReport.js`)
+
+The HIP Premium Time daily report (`รหัสที่เครื่อง`, `วัน/เวลา` as `DD/MM/BBBB`, slot pairs `เข้า [n]` / `ออก [n]`)
+is read directly: each non-empty slot time becomes one `in` / `out` scan row. These are **report-derived**
+times, not device punches: the batch, its staging rows and their events carry
+`source_system = hip_daily_report`, and each row's payload says `origin: report_derived`. Names and every
+other report column are dropped. A day with no times creates nothing. Same fail-closed rules as above, plus:
+a time inside the date cell, two rows for the same code and date, or an `ออก` before its `เข้า` refuses the file.
+
+### Operator entry point: `facescan:import`
+
+```bash
+# dry run (default): parse, idempotency and identity checks, no write; aggregates only
+docker exec -i <backend> node src/imports/facescanImportCli.js - --format hip-daily < report.csv
+# import into staging (needs DATA_SOURCE=mariadb)
+… --format hip-daily --label <text> --confirm
+# import, then derive each resolved employee-day through the AR-0001 record path
+… --format hip-daily --confirm --derive --operator <employee_uid>
+```
+
+`--derive` acts as that employee with their own role and grants (the HTTP route's RBAC); without data scope
+it is refused before anything is written. Exit codes: 0 ok, 2 usage, 3 file refused, 4 not authorised,
+5 some employee-days not derived. Unmapped codes stay quarantined until a `facescan_id` identifier exists.
+
 ## Tests
 
 - `backend/tests/facescanRawIngestion.test.js` — mapped, unmapped, duplicate, re-resolution.

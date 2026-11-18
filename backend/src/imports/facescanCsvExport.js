@@ -179,4 +179,13 @@ function parseFacescanCsvExport(input) {
   return { rows, contentSha256 };
 }
 
-module.exports = { parseFacescanCsvExport, parseScanDatetime, FacescanFileError };
+module.exports = {
+  parseFacescanCsvExport,
+  parseScanDatetime,
+  FacescanFileError,
+  // Shared with the HIP daily-report adapter so both formats decode and split files identically.
+  decodeBuffer,
+  parseCsv,
+  MAX_REPORTED_ISSUES,
+  FACESCAN_ID_MAX,
+};

@@ -8,9 +8,39 @@ const {
   normalizeScanType,
 } = require('../domain/facescanRaw');
 const { parseFacescanCsvExport, FacescanFileError } = require('../imports/facescanCsvExport');
+const { parseHipDailyReport } = require('../imports/hipDailyReport');
 
-const FILE_SOURCE_SYSTEM = 'hip_csv_export';
 const SOURCE_REFERENCE_MAX = 255; // facescan_import_batches.source_reference VARCHAR(255)
+
+/**
+ * File formats and the provenance each one stamps on its batch. `source_system` travels from the batch to
+ * every staging row and attendance event, which is how report-derived times stay distinguishable from
+ * original device punches downstream.
+ */
+const FILE_FORMATS = Object.freeze({
+  canonical: { parse: parseFacescanCsvExport, sourceSystem: 'hip_csv_export' },
+  hip_daily_report: { parse: parseHipDailyReport, sourceSystem: 'hip_daily_report' },
+});
+
+function parseFile(content, format) {
+  const entry = FILE_FORMATS[format];
+  if (!entry) {
+    throw new HttpError(400, 'VALIDATION_ERROR', `unknown file format: ${format}`);
+  }
+  try {
+    return { ...entry.parse(content), sourceSystem: entry.sourceSystem };
+  } catch (error) {
+    if (error instanceof FacescanFileError) {
+      throw new HttpError(400, error.code, error.message, { issues: error.issues });
+    }
+    throw error;
+  }
+}
+
+function dateSpan(rows) {
+  const dates = rows.map((row) => row.scanDatetime.slice(0, 10)).sort();
+  return { dateFrom: dates[0] ?? null, dateTo: dates[dates.length - 1] ?? null };
+}
 
 function createFacescanRawIngestionService({ repositories, nationalIdProtector = null }) {
   const facescanRaw = repositories.facescanRaw;
@@ -48,24 +78,64 @@ function createFacescanRawIngestionService({ repositories, nationalIdProtector =
      * derivation reads only `resolved` rows, and `reResolveUnmapped` promotes them once an
      * employee_identifier is approved. Nothing here derives attendance.
      */
-    async ingestFile(content, { sourceLabel = null } = {}) {
-      let parsed;
-      try {
-        parsed = parseFacescanCsvExport(content);
-      } catch (error) {
-        if (error instanceof FacescanFileError) {
-          throw new HttpError(400, error.code, error.message, { issues: error.issues });
-        }
-        throw error;
-      }
+    async ingestFile(content, { sourceLabel = null, format = 'canonical' } = {}) {
+      const parsed = parseFile(content, format);
       // The content hash makes the batch traceable to the exact file without storing the file.
       const reference = [sourceLabel, `sha256:${parsed.contentSha256}`].filter(Boolean).join(' ');
       const batch = await startBatch({
-        sourceSystem: FILE_SOURCE_SYSTEM,
+        sourceSystem: parsed.sourceSystem,
         sourceLabel: reference.slice(-SOURCE_REFERENCE_MAX),
       });
       const result = await this.ingestBatch(batch.id, parsed.rows);
-      return { ...result, contentSha256: parsed.contentSha256 };
+      return {
+        ...result,
+        contentSha256: parsed.contentSha256,
+        sourceSystem: parsed.sourceSystem,
+        rows: parsed.rows,
+        summary: parsed.summary ?? null,
+      };
+    },
+
+    /**
+     * Dry run of `ingestFile`: the same parse, idempotency key and identity resolution, and no write —
+     * no batch, no staging row. Returns aggregates only (no facescan_id values).
+     */
+    async previewFile(content, { format = 'canonical' } = {}) {
+      const parsed = parseFile(content, format);
+      const codes = new Map();
+      let alreadyImported = 0;
+      let newResolved = 0;
+      let newUnmapped = 0;
+      for (const raw of parsed.rows) {
+        const facescanId = normalizeFacescanId(raw.facescanId);
+        const idempotencyKey = buildIdempotencyKey({
+          facescanId,
+          scanDatetime: normalizeScanDatetime(raw.scanDatetime),
+          scanType: normalizeScanType(raw.scanType),
+        });
+        if (await facescanRaw.findByIdempotencyKey(idempotencyKey)) {
+          alreadyImported += 1;
+          continue;
+        }
+        if (!codes.has(facescanId)) codes.set(facescanId, await resolveFacescanUid(facescanId));
+        if (codes.get(facescanId)) newResolved += 1;
+        else newUnmapped += 1;
+      }
+      const resolvedCodes = [...codes.values()].filter(Boolean);
+      return {
+        format,
+        sourceSystem: parsed.sourceSystem,
+        contentSha256: parsed.contentSha256,
+        summary: parsed.summary ?? null,
+        scanRows: parsed.rows.length,
+        ...dateSpan(parsed.rows),
+        alreadyImported,
+        newResolved,
+        newUnmapped,
+        distinctCodes: codes.size,
+        unmappedCodes: codes.size - resolvedCodes.length,
+        employees: new Set(resolvedCodes).size,
+      };
     },
 
     async ingestBatch(batchId, rawRows) {
@@ -193,4 +263,4 @@ function createFacescanRawIngestionService({ repositories, nationalIdProtector =
   };
 }
 
-module.exports = { createFacescanRawIngestionService };
+module.exports = { createFacescanRawIngestionService, FILE_FORMATS };
