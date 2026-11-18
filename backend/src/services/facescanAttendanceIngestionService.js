@@ -1,6 +1,7 @@
 const { randomUUID } = require('node:crypto');
 const { HttpError } = require('../utils/httpError');
 const { assertCanRecordDay } = require('./attendanceRecordService');
+const { isCalendarDate } = require('../domain/attendanceRuleEngine');
 
 /**
  * FaceScan raw -> attendance_events -> daily attendance.
@@ -13,9 +14,18 @@ const { assertCanRecordDay } = require('./attendanceRecordService');
  */
 
 function assertDate(date) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+  if (!isCalendarDate(date)) {
     throw new HttpError(400, 'VALIDATION_ERROR', 'date must be YYYY-MM-DD');
   }
+}
+
+/**
+ * Event times come back as zone-less Bangkok wall clock (`2026-11-16T08:30:00`). `new Date()` on that
+ * string uses the process timezone, which is UTC in the containers, so the stored first/last event
+ * would land seven hours after the check-in written from the same scan. Pin the offset explicitly.
+ */
+function bangkokInstant(wallClock) {
+  return new Date(`${String(wallClock).slice(0, 19)}+07:00`);
 }
 
 /**
@@ -90,8 +100,8 @@ function createFacescanAttendanceIngestionService({ repositories, recordService 
           source: 'FACESCAN',
           sourceSystem: 'FACESCAN',
           eventCount: events.length,
-          firstEventAt: events[0].eventTime,
-          lastEventAt: events[events.length - 1].eventTime,
+          firstEventAt: bangkokInstant(events[0].eventTime),
+          lastEventAt: bangkokInstant(events[events.length - 1].eventTime),
         },
       );
 

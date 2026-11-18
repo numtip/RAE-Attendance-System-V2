@@ -26,7 +26,7 @@ const LEAVE_TYPES = new Set(['sick', 'personal', 'vacation', 'other']);
 const NOTE_MAX = 500;
 
 function assertDate(date) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+  if (!engine.isCalendarDate(date)) {
     throw new HttpError(400, 'VALIDATION_ERROR', 'date must be YYYY-MM-DD');
   }
 }

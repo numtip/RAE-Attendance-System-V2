@@ -54,6 +54,20 @@ function minutesOfDay(hhmm) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+/**
+ * True only for a `YYYY-MM-DD` that exists on the calendar. `Date.parse` is not enough: V8 accepts
+ * day 29-31 for any month and silently rolls it into the next month.
+ */
+function isCalendarDate(dateOnly) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateOnly ?? ''));
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day;
+}
+
 /** ISO weekday from a `YYYY-MM-DD` string, without constructing a local Date. */
 function isoWeekday(dateOnly) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateOnly ?? ''));
@@ -63,6 +77,12 @@ function isoWeekday(dateOnly) {
     throw error;
   }
   const [, year, month, day] = match.map(Number);
+  if (!isCalendarDate(dateOnly)) {
+    // Date.UTC rolls 2026-02-31 over to 2026-03-03; evaluating that day instead would be invented.
+    const error = new Error('RULE_INPUT_INVALID: the date is not on the calendar');
+    error.code = 'RULE_INPUT_INVALID';
+    throw error;
+  }
   const utc = Date.UTC(year, month - 1, day);
   const weekday = new Date(utc).getUTCDay(); // 0 = Sunday
   return weekday === 0 ? 7 : weekday;
@@ -152,6 +172,7 @@ module.exports = {
   POLICY,
   STATUS,
   minutesOfDay,
+  isCalendarDate,
   isoWeekday,
   evaluateDay,
 };
