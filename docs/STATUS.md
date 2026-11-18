@@ -1,4 +1,39 @@
-# Status — 2026-11-17 (current)
+# Status — 2026-11-18 (current)
+
+**Gate:** `DAY_20261118_CLOSED`
+**Production:** **LIVE** at https://raeservice.mju.ac.th/attendance-v2/, with real HIP attendance for 49 employees (Jan, Mar–Oct 2026)
+**Report:** [`reports/EOD_2026-11-18.md`](reports/EOD_2026-11-18.md) · decision **D-2026-11-18-01**
+
+Today's work: PRs #94–#98 merged, the backend deployed as `dark-21dea10`, and 9 months of HIP files imported and derived.
+The 2026-11-17 section below is kept as the historical record. Superseded rows are marked there; nothing was deleted.
+
+## Where production is
+
+| Item | Value | Label |
+|---|---|---|
+| `origin/main` | `21dea10` (PR #98) | VERIFIED |
+| Deployed image | `rae-attendance-v2-backend:dark-21dea10` | VERIFIED |
+| Workforce | 52: 49 onboarded, 3 pending (`1032`, `2019`, `3009`); 2 former (`1013`, `1015`) | OWNER_DECISION |
+| Identity | employees 49 · `facescan_id` 49 · approved SSO links 49 · grants 1. Unchanged by the import | VERIFIED |
+| HIP preflight | 12 CSVs, 22,950 scans (dry-run) | VERIFIED |
+| Imported | 17,188 scans: 15,976 resolved, 1,212 unmapped (the 3 pending people and `1013`) | VERIFIED |
+| Derived | 15,976 events · 8,245 `daily_attendance` · 441 `monthly_summary` (49 × 9 months), AR-0001 | VERIFIED |
+| Backup | Taken before the import; restore checked in a throwaway container | VERIFIED |
+| Report path | 49/49 employees have data in all 9 months through `reportService.personal`; cross-employee queries are refused | VERIFIED |
+
+## Pending
+
+1. Onboard the 3 pending people. This needs HR details and owner approval; it is blocked on evidence, not code.
+2. SSO for the 3: HMAC subject plus owner approval (`1032` has no 2027 ID card).
+3. Source gaps: February 2026 (xlsx only) and November 2026 (no export).
+4. Oct–Dec 2025 needs a policy decision; AR-0001 covers only 2026.
+5. Holiday calendar: `attendance_holiday` is empty and not read.
+6. Missing-scan days are not derived, so `total_absent` is 0 (9,653 expected employee-days vs 8,245 rows).
+7. Check a real employee's SSO login and report on the current dataset.
+
+---
+
+# Status — 2026-11-17 (historical, superseded)
 
 **Gate:** `DAY_20261117_CLOSED`
 **Production:** **LIVE** at https://raeservice.mju.ac.th/attendance-v2/ — `PRODUCTION_LIVE = YES`
@@ -18,7 +53,7 @@ Everything below this section is the preserved 2026-10-21 record: superseded for
 | Employees | 49 from the owner roster, department `สำนักวิจัยและบริการวิชาการ` | VERIFIED |
 | Identity links | 49 approved · 0 candidate · 0 email-derived (`subject = HMAC-SHA256(citizenID)`) | VERIFIED |
 | SSO | real MJU login end to end: provider → callback → session → authenticated read → logout | VERIFIED |
-| Attendance data | `attendance_events=0`, `daily_attendance=0`, `monthly_summary=0` — no real scan data yet | VERIFIED |
+| Attendance data | `attendance_events=0`, `daily_attendance=0`, `monthly_summary=0` — no real scan data yet | VERIFIED (2026-11-17; superseded 2026-11-18) |
 | Provider contract | `C-13 UNKNOWN`, `providerCertified=false`, owner risk acceptance v2 (12 items) | VERIFIED |
 | Original database | `attendance_v2` untouched: 10 tables, 0 employees | VERIFIED |
 | Legacy services | `attendance-api` and `rae-v2-*` still running and healthy | VERIFIED |
