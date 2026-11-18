@@ -290,3 +290,30 @@ against the repository that owns that column.
 **Implementation:** `backend/src/domain/identityLink.js`, `backend/tests/identityLinkEnrichmentGuard.test.js`,
 `backend/tests/identityLinkEnrichment.mariadb.test.js`, `docs/IDENTITY_MAPPING_CONTRACT.md` F3/F4.
 **Not approved by this entry:** merge, deploy, migration `025`, any enrichment of real people.
+
+---
+
+## 2026-11-18
+
+### D-2026-11-18-01 — `1032`, `2019`, `3009` are current employees; the working system proceeds without them
+
+**Decision:** `1032`, `2019` and `3009` are **active employees**. The current workforce is **52**: 49 onboarded
+(roster, HIP `facescan_id` and approved MJU SSO link) plus these 3 pending onboarding. `1013` and `1015` are
+**former employees**. Owner direction the same day: attendance goes live for the 49, and the 3 pending people
+must not block it.
+**Why:** each of the 3 has 11–12 months of FY2569 HIP evidence and an `active` workbook status
+(`docs/EMPLOYEE_MASTER_F4_IDENTITY_POLICY.md` §4), but none of them is in the 49-row roster, which is
+authoritative only for the records it contains (D-2026-10-21-02).
+**Consequences:**
+- Their HIP scans are imported as `unmapped` and stay quarantined. No `employee_uid`, `facescan_id` or SSO
+  link is created or inferred from a HIP code, a device name, an email or a raw citizen ID.
+- Onboarding needs HR-sourced first and last name, email and employee type (the bundle validator requires
+  them), followed by a 3-row bundle. The 49-row bundle must **never** be re-applied, because `apply-import`
+  is an upsert.
+- SSO for these 3 needs an HMAC subject from ID-card evidence and attributable owner approval. `1032` has no
+  2027 ID card.
+- `1013` and `1015` keep their historical scans as `unmapped` and never get an SSO identity.
+
+**Grade:** `OWNER_DECISION`. Evidence of active status is `VERIFIED` against the documents above; the HR
+details are **not** on the VPS.
+**Not approved by this entry:** writing any of the 3 employee records, any identity link, or any SSO approval.
