@@ -57,7 +57,9 @@ The file uses the seam's canonical columns from `HIP_DEVICE_INGESTION.md` §6, b
 - `scan_datetime` is Asia/Bangkok wall clock: `YYYY-MM-DD HH:MM[:SS]` (CE) or `DD/MM/BBBB HH:MM[:SS]`
   (Buddhist era, −543). A zone suffix, an impossible date or an ambiguous era is refused.
 - The whole file is validated before a batch exists. One bad line, an empty file or a header with no rows
-  refuses the file with the offending line numbers. Nothing is half-imported.
+  refuses the file with the offending line numbers, and no batch is created. A database error part-way
+  through can still leave an `open` batch with some rows; re-importing the same file is safe, because the
+  rows already stored come back as duplicates.
 - Batch `source_system = hip_csv_export`, and `source_reference` records the label plus the file's SHA-256.
   `raw_payload` holds only the source line number.
 

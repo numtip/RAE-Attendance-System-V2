@@ -173,7 +173,9 @@ function createFacescanRawMariaDbRepository(pool) {
           input.batchId,
           input.payloadJson ? JSON.stringify(input.payloadJson) : null,
           now,
-          input.resolvedAt ?? null,
+          // The service hands an ISO string ('...T04:49:47.648Z'); strict MariaDB refuses that for a
+          // DATETIME, so every scan that resolved at ingest failed. A Date goes through the 'Z' pool.
+          input.resolvedAt ? new Date(input.resolvedAt) : null,
           now,
         ],
       );
