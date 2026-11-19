@@ -7,6 +7,7 @@ process.env.DATA_SOURCE = 'fixture';
 
 const { createApp } = require('../src/app');
 const { createAttendanceComputeService } = require('../src/services/attendanceComputeService');
+const { createFixtureRepositories } = require('../src/repositories/fixtureRepositories');
 
 function listen(app) {
   const server = http.createServer(app);
@@ -35,11 +36,20 @@ async function login(port, email = 'admin@example.test') {
   return result.body.data;
 }
 
-test('attendance compute service delegates to core client without identity repos', async () => {
+test('attendance compute service delegates to core client for an executive with organization scope', async () => {
+  const repositories = createFixtureRepositories();
+  const executive = { role: 'executive', employeeUid: '11111111-1111-1111-1111-111111111111' };
+  repositories.authorization = {
+    async grantsFor(uid) {
+      return uid === executive.employeeUid ? [{ employeeUid: uid, role: 'EXECUTIVE', scopeType: 'organization' }] : [];
+    },
+    async uidsInOrgUnits() { return []; },
+  };
   const service = createAttendanceComputeService({
+    repositories,
     coreClient: {
       async evaluateDay(payload) {
-        assert.equal(payload.employee_id, 'E-100');
+        assert.equal(payload.employee_id, 'E-USER');
         assert.equal(payload.date, '2026-08-03');
         return {
           employee_id: payload.employee_id,
@@ -55,21 +65,18 @@ test('attendance compute service delegates to core client without identity repos
       },
     },
   });
-  const result = await service.evaluateDay(
-    { role: 'admin', employeeUid: '11111111-1111-1111-1111-111111111111' },
-    {
-      employee_id: 'E-100',
-      date: '2026-08-03',
-      check_in: '08:11:00',
-      check_out: '16:36:00',
-      source: 'API',
-    },
-  );
+  const result = await service.evaluateDay(executive, {
+    employee_id: 'E-USER',
+    date: '2026-08-03',
+    check_in: '08:11:00',
+    check_out: '16:36:00',
+    source: 'API',
+  });
   assert.equal(result.attendance_status, 'PRESENT');
   assert.equal(result.explainedBy, 'attendance-core');
 });
 
-test('evaluate-day route requires manager/admin and configured core', async () => {
+test('evaluate-day route requires a data scope; a bare admin role is not one', async () => {
   const app = createApp();
   const { server, port } = await listen(app);
   try {
@@ -81,12 +88,11 @@ test('evaluate-day route requires manager/admin and configured core', async () =
     assert.equal(forbidden.status, 403);
 
     const admin = await login(port, 'admin@example.test');
-    const unavailable = await api(port, 'POST', '/api/v1/attendance/evaluate-day', {
+    const bareAdmin = await api(port, 'POST', '/api/v1/attendance/evaluate-day', {
       token: admin.accessToken,
       body: { employee_id: 'E-USER', date: '2026-08-03' },
     });
-    assert.equal(unavailable.status, 503);
-    assert.equal(unavailable.body.error.code, 'ATTENDANCE_CORE_UNAVAILABLE');
+    assert.equal(bareAdmin.status, 403);
   } finally {
     server.close();
   }
