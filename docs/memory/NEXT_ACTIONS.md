@@ -1,4 +1,34 @@
-# Next actions
+# Next actions — as of 2026-11-19 closeout (current)
+
+**Gate:** `RELEASE1_PRODUCTION_ACCEPTED`; Release 2 live on `dark-c9e856f` (`main` `c9e856f`). Resume from here; do not repeat completed work.
+
+## Owner / evidence first (nothing below needs code)
+
+| # | Action | Who | Notes |
+|---|---|---|---|
+| 1 | Executive Production click-through: dashboard, monthly leave, leave review | executive | Closes the REAL_USER_QA gap; all Release 2 QA so far is SYNTHETIC_QA |
+| 2 | Decide the 29 `needs_review` leave records via the review screen | executive / HR | Each needs an explicit part of day to be approved; rejection excludes it from totals |
+| 3 | Approve or leave the 30 leave records of the unmapped device code | owner | D-2026-11-19-08: matches a former employee; default = stay unmapped/skipped |
+| 4 | Provide HIP export for 19–30 Nov 2026 | owner | Import with `facescan:import … --derive` then `leave:import-hip`; both are idempotent |
+| 5 | Approve SSO links for the 3 pending employees | owner | HMAC subject from ID-card evidence; one employee has no 2027 card |
+| 6 | Decide executive self-approval policy | owner | Today an executive can approve their own leave (audited, single executive) |
+
+## Candidate engineering (only on request)
+
+1. Block self-approval or add a second approver (RBAC change — needs a PR + security tests).
+2. R2 M2: org-unit/multi-month filters; effective-dated division membership (membership table has no dates).
+3. Per-record audit view in the review screen; export of decisions.
+4. Mobile card layout for tables; WOFF2 fonts; dark mode.
+5. Absence derivation / holiday calendar / 2025 rules — **policy first**; presentation of absence stays off.
+
+## Operating rules
+
+Production first: Build → CI → PR → Deploy → Test → Fix → Improve. PR-only merge, backup before every DB write, rollback ready.
+Use `--confirm` only after a dry-run. Node 22 is at `$HOME/.nvm/versions/node/v22.23.2/bin`. Verify with a throwaway restore, never by impersonating a real user.
+
+---
+
+# Historical — next actions as of 2026-10-19 (superseded, preserved)
 
 **Gate:** `DAY_20261019_CLOSED — RELEASE1_IN_PROGRESS`
 

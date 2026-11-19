@@ -1,4 +1,45 @@
-# STATUS — 2026-10-20 (one page)
+# STATUS — 2026-11-19 closeout (one page, current)
+
+**Gate:** `RELEASE1_PRODUCTION_ACCEPTED`; Release 2 live. **GitHub `main`** `c9e856f` (PR #113) · **Production** `dark-c9e856f`.
+**Production is LIVE** at https://raeservice.mju.ac.th/attendance-v2/ (the 2026-10-20 / 10-21 "FROZEN" state below is superseded).
+
+> Session-level one-pager. Release-level page: `docs/STATUS.md`. Full day: `docs/reports/DAY_SUMMARY_2026-11-19.md`.
+
+## Evidence levels
+
+* **CODE_MERGED** — PR #100–#113 on `main`, CI green.
+* **PROD_DEPLOYED** — live on Production, health/ready 200, backups + rollback kept.
+* **SYNTHETIC_QA** — headless UI/RBAC runs on a throwaway restore with synthetic users; Production untouched.
+* **REAL_USER_QA** — a real session on Production. Done only for the Release 1 UAT (2 accounts). **Not done** for Release 2 screens.
+
+## What is true now (counts only)
+
+| Item | Value |
+|---|---|
+| Employees / org memberships / identity links | 52 / 52 (15·17·20 across 3 divisions) / 49 |
+| Events / daily / monthly | 19,896 / 10,275 / 569 — November partial (1–18 Nov 2026) |
+| HIP-recorded leave | 670 records: 641 candidate (607.5 days, incl. 0.5-day AM/PM) + 29 needs_review; all `unverified` |
+| Approvals / audit rows | 0 / 0 — nobody has used the review screen yet |
+| Official leave / balances | 0 / 0 (no approval source; nothing deducted) |
+| Schema | through migration 031 |
+
+## Shipped on 2026-11-19
+
+Release 1 accepted · Release 2 M1 org/team report (PDF/XLSX) · Thai-first UX · official org name · no absence presentation ·
+daily attendance with names · monthly leave report · 3-division executive dashboard · 52 division memberships imported ·
+HIP leave recovery (0.5/1.0 day, AM/PM, review flags) · November HIP imported through 18 Nov · partial-month notice ·
+executive leave review/approval with audit.
+
+## Do not
+
+* Re-import any HIP file that is already imported (idempotent, but pointless); re-run completed audits.
+* Treat HIP-recorded leave as approved leave, deduct balances, or present absence.
+* Add or change employees, identity links, grants or memberships without a separate owner approval.
+* Commit raw HIP data, rosters, names, review queues or anything under `database/local/`; never `git add docs`.
+
+---
+
+# Historical — STATUS 2026-10-20 (superseded, preserved)
 
 **Gate:** `EMPLOYEE_MASTER_SCHEMA_RESOLUTION` (attendance evidence complete; employee schema blocked)
 **Production:** **FROZEN.** Not claimed: Production Ready, BASELINE_VERIFIED, ARCHITECTURE_APPROVED.

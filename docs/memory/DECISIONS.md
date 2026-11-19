@@ -317,3 +317,36 @@ authoritative only for the records it contains (D-2026-10-21-02).
 **Grade:** `OWNER_DECISION`. Evidence of active status is `VERIFIED` against the documents above; the HR
 details are **not** on the VPS.
 **Not approved by this entry:** writing any of the 3 employee records, any identity link, or any SSO approval.
+
+
+## 2026-11-19
+
+Owner decisions given today. Grades: `OWNER_DECISION`. None of them is a source of employee personal data.
+
+### D-2026-11-19-01 — Real-user UAT with two accounts is sufficient; Release 1 is accepted
+**Decision:** `OWNER_UAT_ACCEPTED` and `RELEASE1_PRODUCTION_ACCEPTED`. Testing all 52 employees is not required.
+
+### D-2026-11-19-02 — Official display name
+**Decision:** the organization is displayed as `สำนักวิจัยและส่งเสริมวิชาการการเกษตร` (institution `มหาวิทยาลัยแม่โจ้` kept), held in one central constant. It is the organization identity, **not** an employee's department/org-unit, and historical department records are not overwritten.
+
+### D-2026-11-19-03 — Employees are not classified as absent
+**Decision:** no screen, dashboard, PDF or XLSX shows an absence KPI, column or "not calculated" note. API compatibility is kept (`absent: null`); the rule engine is unchanged; missing scans are not turned into present days. Supersedes the 2026-11-19 morning wording ("absence shown as ยังไม่คำนวณ").
+
+### D-2026-11-19-04 — Three divisions and their membership
+**Decision:** the divisions are `กองบริหารงานสำนักวิจัยฯ`, `กองบริหารงานวิจัย` (HIP spelling; the request wrote `กองบริหารวิจัย`) and `กองบริหารงานบริการวิชาการ`. The owner approved importing the 52 memberships (15 / 17 / 20) validated from the HIP roster; 0 ambiguous, 0 unassigned. Membership is the current assignment (the table has no effective dates).
+
+### D-2026-11-19-05 — Leave is recovered from HIP remarks as *recorded*, not approved
+**Decision:** `กิจ`→personal, `ป่วย`→sick, `พักผ่อน`→vacation. Leave remark + check-in only → candidate PM 0.5; + check-out only → candidate AM 0.5; + no scan → candidate FULL 1.0. A missing-punch remark without a leave word is not leave. These are HIP-derived classifications, not proof of HR approval: contradictory/ambiguous rows are `needs_review`, `approval_status` stays `unverified`, nothing deducts a balance or invents an approval. Official `employee_leave` / `leave_balance` stay separate.
+
+### D-2026-11-19-06 — November 2026 HIP file covers 1–18 November only
+**Decision:** imported as given; reports state the data reaches only 18 Nov and that later days are "no data", not zero. Further days arrive with a later export.
+
+### D-2026-11-19-07 — The sole executive keeps the executive role; leave review is built instead of an "admin" switch
+**Decision:** the role column holds one value and `admin` sees only the employee directory, so changing the executive to `admin` would remove their data access. Owner chose: keep the role and build an executive-only review/approval screen (organization grant required; audited; approval never deducts balances). Three leave entries the owner stated directly were recorded with source `owner_manual_entry`, still `unverified`.
+**Open:** whether an executive may approve their own leave (currently allowed and audited) — owner to decide.
+
+### D-2026-11-19-08 — The unmapped leave device code is not onboarded
+**Finding:** 30 leave records belong to one device code that is not in the roster, the identity mappings or any onboarding file and matches no employee. Its profile (scans every month Oct 2025 – Sep 2026, absent from Oct 2026) and a second unmapped code with 28 February-only rows match the two former employees in D-2026-11-18-01, whose scans stay `unmapped` and who never get an identity.
+**Decision (default, no new approval given):** nothing is mapped or onboarded; those records stay skipped. Recording a former employee's leave would need a new owner decision plus authoritative HR evidence.
+**Grade:** `VERIFIED` (profile) / `OWNER_DECISION` (D-2026-11-18-01 stands).
+

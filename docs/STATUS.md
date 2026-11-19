@@ -1,4 +1,48 @@
-# Status — 2026-11-19 (current)
+# Status — 2026-11-19 (current, closeout)
+
+**Gate:** `RELEASE1_PRODUCTION_ACCEPTED` · Release 2 (M1 + leave + division dashboard + leave review) **LIVE**
+**GitHub `main`:** `c9e856f` (PR #113) · **Production:** backend `dark-c9e856f`, frontend built from `c9e856f` · health/ready 200
+**Day summary:** [`reports/DAY_SUMMARY_2026-11-19.md`](reports/DAY_SUMMARY_2026-11-19.md) · decisions **D-2026-11-19-01 … -08** in [`memory/DECISIONS.md`](memory/DECISIONS.md) · next actions [`memory/NEXT_ACTIONS.md`](memory/NEXT_ACTIONS.md)
+
+## Evidence levels (read this before trusting a line below)
+
+| Level | Meaning | Applies to |
+|---|---|---|
+| **CODE_MERGED** | on `main`, CI green | PR #100 – #113 |
+| **PROD_DEPLOYED** | running on Production, health/ready verified, log 0 error, backups + rollback kept | everything below unless marked otherwise |
+| **SYNTHETIC_QA** | UI and RBAC driven headlessly (1280/390 px) on a throwaway restore of Production with *synthetic* users; Production not touched | dashboard, leave report, leave review, exports |
+| **REAL_USER_QA** | a real executive/employee session on Production | **only** the 2-account Release 1 UAT (`OWNER_UAT_ACCEPTED`). **Not yet done** for any Release 2 screen |
+
+## Where Production is (counts only, no PII)
+
+| Item | Value | Label |
+|---|---|---|
+| Workforce | employees **52** · org memberships **52** (3 divisions: 15 / 17 / 20) · approved SSO/identity links **49** · grants 1 (the sole executive) | PROD_DEPLOYED |
+| Attendance | events **19,896** · daily **10,275** · monthly **569** (Jan–Nov 2026, AR-0001). **November is partial: HIP data covers 1–18 Nov 2026 only** | PROD_DEPLOYED |
+| HIP-recorded leave | `employee_leave_record` **670** = **641 candidate** (607.5 days; 0.5-day AM/PM supported) + **29 needs_review**; `approval_status` all `unverified`; approvals/audit rows **0** | PROD_DEPLOYED |
+| Official leave | `employee_leave` 0 · `leave_balance` 0 — no approval source exists; nothing is deducted | PROD_DEPLOYED |
+| Schema | migrations through `031_leave_record_review.sql` (030: leave records + coverage; 031: reviewer columns + audit table) | PROD_DEPLOYED |
+| UX | Thai-first design system, official org name `สำนักวิจัยและส่งเสริมวิชาการการเกษตร`, no absence KPI/column anywhere (API keeps `absent:null`) | PROD_DEPLOYED · SYNTHETIC_QA |
+| Reports | personal, organization/team (PDF/XLSX), monthly leave (PDF/XLSX), executive dashboard by division, executive leave review; partial months show "ข้อมูลถึงวันที่ …" | PROD_DEPLOYED · SYNTHETIC_QA |
+| Rollback | `prod-dark/frontend-dist.prev-<sha>`, `docker-compose.yml.bak-pre-<sha>`, `database/rollbacks/030_*.down.sql`, `031_*.down.sql`; a DB backup is taken before every write (backups directory on the host) | VERIFIED |
+
+## Release 2 shipped today (PR → deployed SHA)
+
+#106 org/team report → #107 Thai-first UX → #108 org name / no absence / daily names → #109 monthly leave + division dashboard → #110 HIP leave recovery (migration 030) → #111 recorded leave in dashboard + fixes → #112 "data through" notice → #113 leave review/approval (migration 031). Detail: day summary.
+
+## Pending (owner / evidence, not code)
+
+1. Executive Production click-through (REAL_USER_QA) of dashboard, leave report and leave review.
+2. Review the 29 `needs_review` leave records (HR queue file is local and gitignored).
+3. 30 leave records belong to one unmapped device code — see D-2026-11-19-08: consistent with a former employee, scans stay unmapped unless the owner decides otherwise.
+4. HIP export for 19–30 Nov 2026.
+5. Approve SSO links for the 3 pending employees (HMAC subject).
+6. Decide the executive self-approval policy (an executive can approve their own leave; audited; there is one executive).
+7. Policies still open: absence derivation (presentation is off by owner policy), holiday calendar, 2025 rules, official leave approval source and balances.
+
+---
+
+# Status — 2026-11-19 (morning checkpoint `dark-9578d77`, superseded by the section above)
 
 **Gate:** `RELEASE1_PRODUCTION_ACCEPTED` (`OWNER_UAT_ACCEPTED`)
 **Production:** **LIVE**, backend `dark-9578d77` (`origin/main` `9578d77`), frontend bundle `index-Bb-qr0aB`
