@@ -1,5 +1,11 @@
 # Context index
 
+> **Start here (2026-11-19 closeout).** Production is **LIVE**: `main` `c9e856f`, backend `dark-c9e856f`. Read, in order:
+> [`../STATUS.md`](../STATUS.md) → [`STATUS.md`](STATUS.md) → [`NEXT_ACTIONS.md`](NEXT_ACTIONS.md) →
+> [`../reports/DAY_SUMMARY_2026-11-19.md`](../reports/DAY_SUMMARY_2026-11-19.md) → `DECISIONS.md` (D-2026-11-19-01 … -08).
+> Everything below this block is the 2026-10-21 index: **historical, superseded** (including "FROZEN" and the open-P0 line),
+> kept for the record.
+
 **Latest session:** [`SESSION_2026-10-21.md`](SESSION_2026-10-21.md) — **read this first.**
 It supersedes the 2026-10-20 restart point entirely: F4 is merged, the migrations are rehearsed on a real engine,
 and a new P0 is open.
