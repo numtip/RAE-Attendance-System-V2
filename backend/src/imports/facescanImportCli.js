@@ -176,7 +176,7 @@ async function readInput(file) {
   return Buffer.concat(chunks);
 }
 
-module.exports = { runFacescanImport, parseArgs, EXIT };
+module.exports = { runFacescanImport, parseArgs, operatorAuth, EXIT };
 
 if (require.main === module) {
   // The image ships only backend/src, so the operator entry point lives here rather than in scripts/.

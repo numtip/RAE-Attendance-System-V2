@@ -9,6 +9,26 @@ const { mapRows } = require('./rowMapper');
  */
 function createAttendanceEventMariaDbRepository(pool) {
   return {
+    /**
+     * Employee-days that have resolved staging scans but no `daily_attendance` row yet: the work a
+     * late identifier link leaves behind. Never lists a day that is already derived.
+     */
+    async listUnderivedResolvedDays(employeeUid) {
+      const [rows] = await pool.query(
+        `SELECT DISTINCT DATE_FORMAT(r.check_time, '%Y-%m-%d') AS day
+           FROM staging_facescan_raw r
+          WHERE r.employee_uid = ?
+            AND r.resolution_status = 'resolved'
+            AND NOT EXISTS (
+              SELECT 1 FROM daily_attendance d
+               WHERE d.employee_uid = r.employee_uid AND d.date = DATE(r.check_time)
+            )
+          ORDER BY day`,
+        [employeeUid],
+      );
+      return rows.map((row) => row.day);
+    },
+
     async findResolvedStagingForDay(employeeUid, date) {
       const [rows] = await pool.query(
         `SELECT r.id,
