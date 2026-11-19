@@ -788,3 +788,9 @@ code {
 
 /* Expanded row inside a horizontally scrolling table: keep the text in view and wrapping. */
 .detail-box { position: sticky; left: 0; width: min(100%, calc(100vw - 3.5rem)); white-space: normal; overflow-wrap: anywhere; }
+
+/* Leave review */
+.bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0.5rem 0 1rem; }
+.decide { min-width: 17rem; display: grid; gap: 0.4rem; }
+.decide select, .decide .note { width: 100%; min-height: 44px; padding: 0 0.75rem; border: 1px solid var(--border-strong); border-radius: 0.5rem; background: var(--surface); color: var(--text); font: inherit; }
+.decide .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }

@@ -28,6 +28,24 @@ class LeaveRecordRepository {
     return this.records.filter((row) => row.leaveDate >= start && row.leaveDate <= end);
   }
 
+  async findByUid(recordUid) {
+    return this.records.find((row) => row.recordUid === recordUid) || null;
+  }
+
+  async applyDecision(recordUid, patch, audit) {
+    const row = this.records.find((entry) => entry.recordUid === recordUid);
+    const clash = this.records.some((entry) => entry !== row && entry.employeeUid === row.employeeUid
+      && entry.leaveDate === row.leaveDate && entry.dayPart === patch.dayPart && entry.sourceSystem === row.sourceSystem);
+    if (clash) return { conflict: true };
+    Object.assign(row, {
+      leaveType: patch.leaveType, dayPart: patch.dayPart, dayFraction: patch.dayFraction, reviewStatus: patch.reviewStatus,
+      reviewReason: patch.reviewReason, approvalStatus: patch.approvalStatus, reviewedByUid: audit.actorUid, reviewNote: audit.note,
+    });
+    this.audit = this.audit || [];
+    this.audit.push({ recordUid, ...audit });
+    return { conflict: false };
+  }
+
   async coveredPeriods() {
     return this.coverage.map((row) => row.sourcePeriod);
   }

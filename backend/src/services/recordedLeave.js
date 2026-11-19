@@ -10,6 +10,7 @@ async function recordedLeaveByEmployee(repositories, year, month, start, end) {
   const byUid = new Map();
   if (!covered) return { covered, byUid };
   for (const row of await repositories.leaveRecords.listBetween(start, end)) {
+    if (row.approvalStatus === 'rejected') continue; // an explicit rejection is never counted
     const entry = byUid.get(row.employeeUid) || { days: 0, needsReview: 0 };
     if (row.reviewStatus === 'candidate') entry.days += Number(row.dayFraction);
     else entry.needsReview += 1;

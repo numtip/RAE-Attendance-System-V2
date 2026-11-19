@@ -13,6 +13,7 @@ const { createEmployeeService } = require('../../services/employeeService');
 const { createAttendanceService } = require('../../services/attendanceService');
 const { createAttendanceRecordService } = require('../../services/attendanceRecordService');
 const { createFacescanAttendanceIngestionService } = require('../../services/facescanAttendanceIngestionService');
+const { createLeaveReviewService } = require('../../services/leaveReviewService');
 const { createDivisionReportService } = require('../../services/divisionReportService');
 const { createLeaveMonthlyReportService } = require('../../services/leaveMonthlyReportService');
 const { createLeaveService } = require('../../services/leaveService');
@@ -63,6 +64,7 @@ function createV1Router(container) {
     organizationReports,
     createLeaveMonthlyReportService(container),
     createDivisionReportService({ ...container, organizationReportService: organizationReports }),
+    createLeaveReviewService(container),
   );
   const authenticate = createAuthenticate(container.repositories.accessTokenRevocations);
 
@@ -120,6 +122,8 @@ function createV1Router(container) {
 
   router.get('/reports/organization/export', authenticate, reports.organizationExport);
   router.get('/reports/organization', authenticate, reports.organization);
+  router.get('/leave-review', authenticate, reports.leaveReviewList);
+  router.post('/leave-review/decisions', authenticate, reports.leaveReviewDecide);
   router.get('/reports/divisions', authenticate, reports.divisions);
   router.get('/reports/leave-monthly/export', authenticate, reports.leaveMonthlyExport);
   router.get('/reports/leave-monthly', authenticate, reports.leaveMonthly);

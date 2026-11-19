@@ -63,6 +63,11 @@ const router = createRouter({
           component: () => import('../views/ExecutiveDashboardView.vue'),
         },
         {
+          path: 'leave/review',
+          name: 'leave-review',
+          component: () => import('../views/LeaveReviewView.vue'),
+        },
+        {
           path: 'leave/monthly',
           name: 'leave-monthly',
           component: () => import('../views/LeaveMonthlyView.vue'),

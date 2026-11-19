@@ -182,6 +182,10 @@ export const api = {
     apiRequest<import('./types').OrganizationReport>(`/reports/organization?year=${year}&month=${month}`),
   divisionReport: (year: number, month: number) =>
     apiRequest<import('./types').DivisionReport>(`/reports/divisions?year=${year}&month=${month}`),
+  leaveReviewList: (year: number, month: number, filter: string) =>
+    apiRequest<import('./types').LeaveReviewList>(`/leave-review?year=${year}&month=${month}&filter=${filter}`),
+  leaveReviewDecide: (decisions: import('./types').LeaveDecisionInput[]) =>
+    apiRequest<import('./types').LeaveDecisionResult>('/leave-review/decisions', { method: 'POST', body: { decisions } }),
   leaveMonthlyReport: (year: number, month: number) =>
     apiRequest<import('./types').LeaveMonthlyReport>(`/reports/leave-monthly?year=${year}&month=${month}`),
   personalReport: (year: number, month: number) =>

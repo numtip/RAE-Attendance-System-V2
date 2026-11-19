@@ -170,7 +170,7 @@ export interface LeaveMonthlyDetail {
   crossesMonth: boolean;
   counted: boolean;
 }
-export interface RecordedBucket { days: number; records: number; fullDays: number; halfDays: number }
+export interface RecordedBucket { days: number; approvedDays: number; records: number; fullDays: number; halfDays: number }
 export interface RecordedDetail {
   date: string;
   dateLabel: string;
@@ -182,6 +182,48 @@ export interface RecordedDetail {
   reviewStatus: 'candidate' | 'needs_review';
   reasonLabels: string[];
   approvalStatus: string;
+  approvalLabel?: string;
+}
+
+export type ReviewBucket = 'needs_review' | 'unverified' | 'approved' | 'rejected';
+export interface LeaveReviewRow {
+  recordUid: string;
+  employeeId: string | null;
+  employeeName: string | null;
+  date: string;
+  dateLabel: string;
+  leaveType: string;
+  typeLabel: string;
+  dayPart: 'FULL' | 'AM' | 'PM' | 'UNKNOWN';
+  partLabel: string;
+  dayFraction: number | null;
+  bucket: ReviewBucket;
+  approvalStatus: string;
+  approvalLabel: string;
+  reasonLabels: string[];
+  source: 'hip' | 'owner';
+  reviewedAt: string | null;
+  reviewNote: string | null;
+}
+export interface LeaveReviewList {
+  year: number;
+  month: number;
+  buddhistYear: number;
+  periodLabel: string;
+  filter: ReviewBucket | 'all';
+  counts: Record<ReviewBucket, number>;
+  rows: LeaveReviewRow[];
+}
+export interface LeaveDecisionInput {
+  recordUid: string;
+  action: 'approve' | 'reject';
+  dayPart?: 'FULL' | 'AM' | 'PM';
+  note?: string;
+}
+export interface LeaveDecisionResult {
+  applied: number;
+  failed: number;
+  results: { recordUid: string; ok: boolean; error?: string }[];
 }
 export interface LeaveMonthlyRow {
   /** HIP-recorded leave (not approval). null = that month was never imported (NOT zero). */

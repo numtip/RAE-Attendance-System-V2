@@ -118,8 +118,8 @@ test('recorded leave sums 0.5/1.0 days per type, keeps review items out of total
   ], ['2026-03']);
   const report = await createLeaveMonthlyReportService({ repositories: repos }).monthly(exec, { year: '2026', month: '3' });
   const a = report.rows.find((r) => r.employeeId === '1001');
-  assert.deepEqual(a.recorded.personal, { days: 1.5, records: 2, fullDays: 1, halfDays: 1 });
-  assert.deepEqual(a.recorded.sick, { days: 0.5, records: 1, fullDays: 0, halfDays: 1 });
+  assert.deepEqual(a.recorded.personal, { days: 1.5, approvedDays: 0, records: 2, fullDays: 1, halfDays: 1 });
+  assert.deepEqual(a.recorded.sick, { days: 0.5, approvedDays: 0, records: 1, fullDays: 0, halfDays: 1 });
   assert.equal(a.recorded.vacation.days, 0, 'the needs_review record is not counted');
   assert.equal(a.recordedNeedsReview, 1);
   assert.equal(report.recordedTotals.byType.vacation.days, 1, 'only the other employee full day counts');
@@ -128,7 +128,7 @@ test('recorded leave sums 0.5/1.0 days per type, keeps review items out of total
   assert.equal(review.dayFraction, null);
   assert.ok(review.reasonLabels.length === 1);
   assert.ok(a.recordedDetails.every((d) => d.approvalStatus === 'unverified'));
-  assert.match(report.notices.recorded, /ไม่ใช่หลักฐานการอนุมัติ/);
+  assert.match(report.notices.recorded, /ยังไม่ผ่านการอนุมัติ/);
   assert.equal(report.totals, null, 'official approved leave is still "no data", separate from HIP-recorded');
 });
 
