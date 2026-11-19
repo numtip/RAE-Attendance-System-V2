@@ -207,7 +207,7 @@ export interface LeaveMonthlyReport {
   coverage: { leaveRecordsInSystem: number; hasLeaveData: boolean; unmatchedRecordsExcluded: number; note: string | null };
   totals: { byType: Record<LeaveKind, LeaveBucket>; pendingRequests: number; rejectedRequests: number; otherApprovedRequests: number } | null;
   rows: LeaveMonthlyRow[];
-  notices: { dayCounting: string; recorded: string };
+  notices: { dayCounting: string; recorded: string; recordedCounting: string };
 }
 
 export interface OrganizationReportRow {

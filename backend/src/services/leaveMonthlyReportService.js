@@ -29,6 +29,8 @@ const RECORDED_NOTE = 'ข้อมูลที่บันทึกจากร
   + 'และไม่ใช้หักวันลาคงเหลือ; ครึ่งวัน = 0.5 วัน (เช้า = มีเวลาออกอย่างเดียว, บ่าย = มีเวลาเข้าอย่างเดียว); '
   + 'รายการที่ขัดแย้งหรือคลุมเครือแยกไว้ให้ตรวจสอบและไม่รวมในยอด';
 
+const RECORDED_COUNTING = 'จำนวนวันที่บันทึกจาก HIP นับตามวันที่มีหมายเหตุลา: เต็มวัน = 1 วัน, ครึ่งวัน = 0.5 วัน; ไม่หักเสาร์-อาทิตย์/วันหยุดนักขัตฤกษ์';
+
 const DAY_MS = 86400000;
 function utcDay(iso) {
   const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
@@ -202,7 +204,7 @@ function createLeaveMonthlyReportService({ repositories }) {
         },
         recordedTotals: covered ? recordedTotals : null,
         rows,
-        notices: { dayCounting: NOTICE, recorded: RECORDED_NOTE },
+        notices: { dayCounting: NOTICE, recorded: RECORDED_NOTE, recordedCounting: RECORDED_COUNTING },
       };
     },
   };

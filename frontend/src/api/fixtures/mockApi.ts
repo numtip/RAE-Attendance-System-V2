@@ -327,7 +327,7 @@ function handleLeaveMonthly(role: string, year: number, month: number): import('
     coverage: { leaveRecordsInSystem: 0, hasLeaveData: false, unmatchedRecordsExcluded: 0, note: 'ยังไม่มีข้อมูลการลาในระบบ' },
     totals: null,
     rows,
-    notices: { dayCounting: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น', recorded: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น — ไม่ใช่หลักฐานการอนุมัติ' },
+    notices: { dayCounting: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น', recorded: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น — ไม่ใช่หลักฐานการอนุมัติ', recordedCounting: 'ข้อมูลตัวอย่าง' },
   };
 }
 

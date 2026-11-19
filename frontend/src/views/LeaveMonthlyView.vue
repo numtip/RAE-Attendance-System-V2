@@ -165,7 +165,8 @@ onMounted(load);
             </tbody>
           </table>
         </div>
-        <p v-if="report.recordedCoverage.periodCovered" class="muted">{{ report.notices.dayCounting }}</p>
+        <p v-if="report.recordedCoverage.periodCovered" class="muted">{{ report.notices.recordedCounting }}</p>
+        <p v-if="report.coverage.hasLeaveData" class="muted">{{ report.notices.dayCounting }}</p>
       </template>
     </AsyncState>
   </section>
