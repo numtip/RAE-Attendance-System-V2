@@ -11,6 +11,7 @@
     "db:migrate:seed": "node scripts/migrate.mjs --seed",
     "db:seed": "node scripts/migrate.mjs --seed-only",
     "facescan:import": "node backend/src/imports/facescanImportCli.js",
+    "facescan:derive": "node backend/src/imports/facescanDeriveCli.js",
     "db:hash-dev-password": "node scripts/hash-dev-password.mjs",
     "contract:smoke": "node scripts/contract-smoke.mjs",
     "sso:preflight": "node scripts/sso-preflight.mjs",

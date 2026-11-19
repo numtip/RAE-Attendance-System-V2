@@ -26,6 +26,14 @@ function createAttendanceEventRepository(initial = []) {
         .sort((a, b) => String(a.checkTime).localeCompare(String(b.checkTime)));
     },
 
+    /** Fixture twin of the MariaDB method: resolved staging days (the fixture has no daily table to subtract). */
+    async listUnderivedResolvedDays(employeeUid) {
+      const days = new Set((this.stagingRows || [])
+        .filter((row) => row.employeeUid === employeeUid && row.resolutionStatus === 'resolved')
+        .map((row) => String(row.checkTime).slice(0, 10)));
+      return [...days].sort();
+    },
+
     /** Test helper: seed resolved staging rows without running the ingest service. */
     seedResolvedStaging(stagingRows) {
       this.stagingRows = stagingRows.map((row) => ({
