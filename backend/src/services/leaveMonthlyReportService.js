@@ -5,6 +5,8 @@ const { dataThrough } = require('./dataThrough');
 const { resolveScope } = require('./authorizationService');
 const { reportHelpers } = require('./reportService');
 
+const { PART_LABEL, REASON_LABEL, APPROVAL_LABEL } = require('./leaveLabels');
+
 const { assertPeriod, monthBounds, thaiDate } = reportHelpers;
 
 const TYPES = [
@@ -15,19 +17,8 @@ const TYPES = [
 const TYPE_LABEL = { ...Object.fromEntries(TYPES.map((t) => [t.type, t.labelTh])), other: 'ลาอื่น ๆ' };
 const STATUS_LABEL = { approved: 'อนุมัติ', pending: 'รออนุมัติ', rejected: 'ไม่อนุมัติ' };
 
-const PART_LABEL = { FULL: 'เต็มวัน', AM: 'ครึ่งวันเช้า', PM: 'ครึ่งวันบ่าย', UNKNOWN: 'ไม่ทราบช่วงเวลา' };
-const REASON_LABEL = {
-  both_scans_present: 'มีหมายเหตุลา แต่มีเวลาสแกนทั้งเข้าและออก',
-  scan_contradicts_remark: 'เวลาสแกนขัดกับหมายเหตุ',
-  scan_time_implausible: 'เวลาสแกนไม่สอดคล้องกับช่วงที่ลา',
-  non_working_day: 'ตรงกับวันหยุด/วันที่ไม่ใช่วันทำงาน',
-  multiple_leave_types: 'มีหมายเหตุการลามากกว่าหนึ่งประเภทในวันเดียว',
-  conflicts_with_absent_flag: 'ขัดแย้งกับหมายเหตุอื่นของ HIP ในวันเดียวกัน',
-  conflicts_with_official_duty: 'มีหมายเหตุไปราชการในวันเดียวกัน',
-  duplicate_source_conflict: 'พบรายการซ้ำที่จัดประเภทไม่ตรงกัน',
-};
-const RECORDED_NOTE = 'ข้อมูลที่บันทึกจากรายงาน HIP (หมายเหตุ) เป็นผลการจัดประเภทจากข้อมูลการสแกน ไม่ใช่หลักฐานการอนุมัติ '
-  + 'และไม่ใช้หักวันลาคงเหลือ; ครึ่งวัน = 0.5 วัน (เช้า = มีเวลาออกอย่างเดียว, บ่าย = มีเวลาเข้าอย่างเดียว); '
+const RECORDED_NOTE = 'ข้อมูลที่บันทึกจากรายงาน HIP (หมายเหตุ) เป็นผลการจัดประเภทจากข้อมูลการสแกน ยอดรวมจึงรวมรายการที่ยังไม่ผ่านการอนุมัติ '
+  + '(ส่วนที่ผู้บริหารอนุมัติแล้วแสดงแยก) และไม่ใช้หักวันลาคงเหลือ; ครึ่งวัน = 0.5 วัน (เช้า = มีเวลาออกอย่างเดียว, บ่าย = มีเวลาเข้าอย่างเดียว); '
   + 'รายการที่ขัดแย้งหรือคลุมเครือแยกไว้ให้ตรวจสอบและไม่รวมในยอด';
 
 const RECORDED_COUNTING = 'จำนวนวันที่บันทึกจาก HIP นับตามวันที่มีหมายเหตุลา: เต็มวัน = 1 วัน, ครึ่งวัน = 0.5 วัน; ไม่หักเสาร์-อาทิตย์/วันหยุดนักขัตฤกษ์';
@@ -97,7 +88,7 @@ function createLeaveMonthlyReportService({ repositories }) {
       const recordedRows = covered
         ? (await repositories.leaveRecords.listBetween(start, end)).filter((row) => inScope.has(row.employeeUid))
         : [];
-      const emptyRecorded = () => Object.fromEntries(TYPES.map((t) => [t.type, { days: 0, records: 0, fullDays: 0, halfDays: 0 }]));
+      const emptyRecorded = () => Object.fromEntries(TYPES.map((t) => [t.type, { days: 0, approvedDays: 0, records: 0, fullDays: 0, halfDays: 0 }]));
       const recordedTotals = { byType: emptyRecorded(), needsReviewRecords: 0 };
       const recordedByUid = new Map();
       for (const record of recordedRows) {
@@ -154,9 +145,11 @@ function createLeaveMonthlyReportService({ repositories }) {
         const recordedBy = emptyRecorded();
         let needsReview = 0;
         for (const record of myRecorded) {
+          if (record.approvalStatus === 'rejected') continue; // a decision, shown in the detail, never counted
           if (record.reviewStatus !== 'candidate') { needsReview += 1; recordedTotals.needsReviewRecords += 1; continue; }
           for (const bucket of [recordedBy[record.leaveType], recordedTotals.byType[record.leaveType]]) {
             bucket.days += Number(record.dayFraction);
+            if (record.approvalStatus === 'approved') bucket.approvedDays += Number(record.dayFraction);
             bucket.records += 1;
             if (record.dayPart === 'FULL') bucket.fullDays += 1; else bucket.halfDays += 1;
           }
@@ -175,6 +168,7 @@ function createLeaveMonthlyReportService({ repositories }) {
             reviewStatus: record.reviewStatus,
             reasonLabels: record.reviewReason ? record.reviewReason.split(',').map((code) => REASON_LABEL[code] || code) : [],
             approvalStatus: record.approvalStatus || 'unverified',
+            approvalLabel: APPROVAL_LABEL[record.approvalStatus || 'unverified'],
           })),
           employeeId: employee.employeeId,
           employeeName: `${employee.firstNameTh} ${employee.lastNameTh}`.trim(),

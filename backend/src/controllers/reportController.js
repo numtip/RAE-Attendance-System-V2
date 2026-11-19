@@ -9,7 +9,7 @@ function sendFile(res, file) {
   res.end(file.buffer);
 }
 
-function createReportController(reportService, organizationReportService, leaveMonthlyReportService, divisionReportService) {
+function createReportController(reportService, organizationReportService, leaveMonthlyReportService, divisionReportService, leaveReviewService) {
   return {
     personal: asyncRoute(async (req, res) => {
       success(res, await reportService.personal(req.auth, req.query), 'รายงานของฉัน');
@@ -19,6 +19,12 @@ function createReportController(reportService, organizationReportService, leaveM
     }),
     organization: asyncRoute(async (req, res) => {
       success(res, await organizationReportService.organization(req.auth, req.query), 'รายงานองค์กร/ทีม');
+    }),
+    leaveReviewList: asyncRoute(async (req, res) => {
+      success(res, await leaveReviewService.list(req.auth, req.query), 'รายการลารอตรวจสอบ');
+    }),
+    leaveReviewDecide: asyncRoute(async (req, res) => {
+      success(res, await leaveReviewService.decide(req.auth, req.body && req.body.decisions), 'บันทึกผลการตรวจสอบการลา');
     }),
     divisions: asyncRoute(async (req, res) => {
       success(res, await divisionReportService.divisions(req.auth, req.query), 'แดชบอร์ดผู้บริหารรายกอง');

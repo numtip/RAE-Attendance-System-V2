@@ -30,10 +30,12 @@ const managementNav = computed(() => (['executive', 'manager'].includes(employee
     { name: 'reports-organization', label: 'รายงานองค์กร / ทีม' },
   ]
   : []));
+// Leave review is limited to executives (the server also requires the organization grant).
+const reviewNav = computed(() => (employee.value?.role === 'executive' ? [{ name: 'leave-review', label: 'ตรวจสอบ/อนุมัติการลา' }] : []));
 const groups = computed(() => [
   { title: 'งานของฉัน', items: myNav },
   { title: 'การลา', items: leaveNav },
-  ...(managementNav.value.length ? [{ title: 'ผู้บริหาร / หัวหน้างาน', items: managementNav.value }] : []),
+  ...(managementNav.value.length ? [{ title: 'ผู้บริหาร / หัวหน้างาน', items: [...managementNav.value, ...reviewNav.value] }] : []),
 ]);
 
 function isActive(name: string): boolean {

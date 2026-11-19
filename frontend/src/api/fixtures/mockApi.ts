@@ -297,7 +297,7 @@ function handleLeaveMonthly(role: string, year: number, month: number): import('
     return {
       employeeId: `S${String(index + 1).padStart(3, '0')}`,
       employeeName,
-      recorded: { personal: { days: index === 3 ? 1.5 : 0, records: index === 3 ? 2 : 0, fullDays: index === 3 ? 1 : 0, halfDays: index === 3 ? 1 : 0 }, sick: { days: index === 1 ? 0.5 : 0, records: index === 1 ? 1 : 0, fullDays: 0, halfDays: index === 1 ? 1 : 0 }, vacation: { days: index === 4 ? 3 : 0, records: index === 4 ? 1 : 0, fullDays: index === 4 ? 3 : 0, halfDays: 0 } },
+      recorded: { personal: { approvedDays: 0, days: index === 3 ? 1.5 : 0, records: index === 3 ? 2 : 0, fullDays: index === 3 ? 1 : 0, halfDays: index === 3 ? 1 : 0 }, sick: { approvedDays: 0, days: index === 1 ? 0.5 : 0, records: index === 1 ? 1 : 0, fullDays: 0, halfDays: index === 1 ? 1 : 0 }, vacation: { approvedDays: 0, days: index === 4 ? 3 : 0, records: index === 4 ? 1 : 0, fullDays: index === 4 ? 3 : 0, halfDays: 0 } },
       recordedNeedsReview: index === 2 ? 1 : 0,
       recordedDetails: index === 1
         ? [{ date: '2026-05-04', dateLabel: '4 พฤษภาคม 2569', leaveType: 'sick', typeLabel: 'ลาป่วย', dayPart: 'AM' as const, partLabel: 'ครึ่งวันเช้า', dayFraction: 0.5, reviewStatus: 'candidate' as const, reasonLabels: [], approvalStatus: 'unverified' }]
@@ -323,12 +323,23 @@ function handleLeaveMonthly(role: string, year: number, month: number): import('
     periodLabel: `${thaiDate(start)} – ${thaiDate(end)}`,
     types: [{ type: 'personal', labelTh: 'ลากิจ' }, { type: 'sick', labelTh: 'ลาป่วย' }, { type: 'vacation', labelTh: 'ลาพักผ่อน' }],
     recordedCoverage: { periodCovered: true, note: null },
-    recordedTotals: { byType: { personal: { days: 1.5, records: 2, fullDays: 1, halfDays: 1 }, sick: { days: 0.5, records: 1, fullDays: 0, halfDays: 1 }, vacation: { days: 3, records: 1, fullDays: 3, halfDays: 0 } }, needsReviewRecords: 1 },
+    recordedTotals: { byType: { personal: { approvedDays: 0, days: 1.5, records: 2, fullDays: 1, halfDays: 1 }, sick: { approvedDays: 0, days: 0.5, records: 1, fullDays: 0, halfDays: 1 }, vacation: { approvedDays: 0, days: 3, records: 1, fullDays: 3, halfDays: 0 } }, needsReviewRecords: 1 },
     coverage: { leaveRecordsInSystem: 0, hasLeaveData: false, unmatchedRecordsExcluded: 0, note: 'ยังไม่มีข้อมูลการลาในระบบ' },
     totals: null,
     rows,
     notices: { dayCounting: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น', recorded: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น — ไม่ใช่หลักฐานการอนุมัติ', recordedCounting: 'ข้อมูลตัวอย่าง' },
   };
+}
+
+const reviewState: Record<string, 'approved' | 'rejected'> = {};
+function handleLeaveReview(filter: string, year: number, month: number): import('../types').LeaveReviewList {
+  const base = [
+    { recordUid: 'r1', employeeId: 'S002', employeeName: 'สมหญิง ทดสอบ', date: `${year}-${String(month).padStart(2, '0')}-04`, dateLabel: '4 ตัวอย่าง', leaveType: 'sick', typeLabel: 'ลาป่วย', dayPart: 'AM' as const, partLabel: 'ครึ่งวันเช้า', dayFraction: 0.5, bucket: 'unverified' as const, approvalStatus: 'unverified', approvalLabel: 'ยังไม่ยืนยันอนุมัติ', reasonLabels: [], source: 'hip' as const, reviewedAt: null, reviewNote: null },
+    { recordUid: 'r2', employeeId: 'S003', employeeName: 'วิชัย สมมติ', date: `${year}-${String(month).padStart(2, '0')}-06`, dateLabel: '6 ตัวอย่าง', leaveType: 'personal', typeLabel: 'ลากิจ', dayPart: 'UNKNOWN' as const, partLabel: 'ไม่ทราบช่วงเวลา', dayFraction: null, bucket: 'needs_review' as const, approvalStatus: 'unverified', approvalLabel: 'ยังไม่ยืนยันอนุมัติ', reasonLabels: ['มีหมายเหตุลา แต่มีเวลาสแกนทั้งเข้าและออก'], source: 'hip' as const, reviewedAt: null, reviewNote: null },
+  ].map((row) => (reviewState[row.recordUid] ? { ...row, bucket: reviewState[row.recordUid], approvalStatus: reviewState[row.recordUid] } : row));
+  const counts = { needs_review: 0, unverified: 0, approved: 0, rejected: 0 };
+  for (const row of base) counts[row.bucket] += 1;
+  return { year, month, buddhistYear: year + 543, periodLabel: 'ข้อมูลตัวอย่าง', filter: filter as import('../types').ReviewBucket, counts, rows: base.filter((row) => filter === 'all' || row.bucket === filter) };
 }
 
 function handleDivisions(role: string, year: number, month: number): import('../types').DivisionReport {
@@ -482,6 +493,17 @@ export async function fixtureApiRequest<T>(
   const leaveMonthlyMatch = path.match(/^\/reports\/leave-monthly\?year=(\d+)&month=(\d+)$/);
   if (auth && method === 'GET' && leaveMonthlyMatch) {
     return handleLeaveMonthly(authFromSession().role, Number(leaveMonthlyMatch[1]), Number(leaveMonthlyMatch[2])) as T;
+  }
+
+  const reviewMatch = path.match(/^\/leave-review\?year=(\d+)&month=(\d+)&filter=(\w+)$/);
+  if (auth && method === 'GET' && reviewMatch) {
+    if (authFromSession().role !== 'executive') throw new ApiError(403, 'FORBIDDEN', 'Only an executive with an organization grant can review leave');
+    return handleLeaveReview(reviewMatch[3], Number(reviewMatch[1]), Number(reviewMatch[2])) as T;
+  }
+  if (auth && method === 'POST' && path === '/leave-review/decisions') {
+    const decisions = (options.body as { decisions: { recordUid: string; action: string }[] }).decisions;
+    for (const d of decisions) reviewState[d.recordUid] = d.action === 'approve' ? 'approved' : 'rejected';
+    return { applied: decisions.length, failed: 0, results: decisions.map((d) => ({ recordUid: d.recordUid, ok: true })) } as T;
   }
 
   const divMatch = path.match(/^\/reports\/divisions\?year=(\d+)&month=(\d+)$/);

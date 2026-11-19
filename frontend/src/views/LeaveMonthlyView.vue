@@ -93,11 +93,11 @@ onMounted(load);
             :key="t.type"
             :label="t.labelTh"
             :value="`${days(report.recordedTotals.byType[t.type].days)} วัน`"
-            :hint="`เต็มวัน ${report.recordedTotals.byType[t.type].fullDays} · ครึ่งวัน ${report.recordedTotals.byType[t.type].halfDays}`"
+            :hint="`เต็มวัน ${report.recordedTotals.byType[t.type].fullDays} · ครึ่งวัน ${report.recordedTotals.byType[t.type].halfDays} · อนุมัติแล้ว ${days(report.recordedTotals.byType[t.type].approvedDays)} วัน`"
           />
           <KpiTile label="รอตรวจสอบ" :value="report.recordedTotals.needsReviewRecords" hint="รายการ — ไม่รวมในยอด" tone="info" />
         </dl>
-        <p v-if="report.recordedTotals" class="muted">ยอดข้างต้นคือข้อมูลที่บันทึกจากรายงาน HIP — ยังไม่ใช่ข้อมูลที่ผ่านการอนุมัติ</p>
+        <p v-if="report.recordedTotals" class="muted">ยอดข้างต้นคือข้อมูลที่บันทึกจากรายงาน HIP รวมรายการที่ยังไม่ผ่านการอนุมัติ — ส่วนที่ผู้บริหารอนุมัติแล้วแสดงแยกในแต่ละกล่อง</p>
 
         <p v-if="!report.coverage.hasLeaveData" class="muted">ลาที่อนุมัติอย่างเป็นทางการ: ยังไม่มีข้อมูลในระบบ</p>
         <dl v-else-if="report.totals" class="kpi-grid">
@@ -156,7 +156,7 @@ onMounted(load);
                         {{ d.typeLabel }} · {{ d.dateLabel }} · {{ d.partLabel }}
                         <template v-if="d.dayFraction !== null"> · {{ days(d.dayFraction) }} วัน</template>
                         <span v-if="d.reviewStatus === 'needs_review'" class="chip chip--late">รอตรวจสอบ</span>
-                        <span v-else class="muted"> · บันทึกจาก HIP (ยังไม่ยืนยันอนุมัติ)</span>
+                        <span v-else class="muted"> · {{ d.approvalLabel ?? 'ยังไม่ยืนยันอนุมัติ' }}</span>
                         <span v-if="d.reasonLabels.length" class="muted"> — {{ d.reasonLabels.join('; ') }} (ไม่รวมในยอด)</span>
                       </li>
                     </ul>
