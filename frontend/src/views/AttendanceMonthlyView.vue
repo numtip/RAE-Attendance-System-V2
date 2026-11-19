@@ -4,6 +4,9 @@ import { ApiError, api } from '../api/client';
 import type { AttendanceRecord, MonthlySummary } from '../api/types';
 import { getStoredEmployee } from '../auth/session';
 import AsyncState from '../components/AsyncState.vue';
+import KpiTile from '../components/KpiTile.vue';
+import PeriodPicker from '../components/PeriodPicker.vue';
+import StatusChip from '../components/StatusChip.vue';
 
 const now = new Date();
 const employeeUid = computed(() => getStoredEmployee()?.employeeUid ?? '');
@@ -22,13 +25,14 @@ function inMonth(date: string): boolean {
 
 function label(row: AttendanceRecord): string {
   if (row.status === 'late') return 'สาย';
+  if (row.status === 'present') return 'มาทำงาน';
   if (!row.checkIn && row.checkOut) return 'กลับก่อน';
   return row.status;
 }
 
 async function load() {
   if (!employeeUid.value) {
-    error.value = 'Missing employee context. Sign in again.';
+    error.value = 'ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่';
     return;
   }
   loading.value = true;
@@ -39,7 +43,7 @@ async function load() {
     summary.value = await api.attendanceMonthly(employeeUid.value, year.value, month.value);
   } catch (e) {
     if (!(e instanceof ApiError) || e.status !== 404) {
-      error.value = e instanceof ApiError ? e.message : 'Failed to load monthly summary';
+      error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดสรุปรายเดือนได้';
       loading.value = false;
       return;
     }
@@ -49,7 +53,7 @@ async function load() {
     events.value = rows.filter((row) => inMonth(row.date));
   } catch (e) {
     if (!(e instanceof ApiError) || e.status !== 404) {
-      error.value = e instanceof ApiError ? e.message : 'Failed to load attendance';
+      error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดรายการลงเวลาได้';
     }
   } finally {
     loading.value = false;
@@ -61,35 +65,36 @@ onMounted(load);
 
 <template>
   <section class="card">
-    <div class="card-head">
-      <h2>Monthly attendance</h2>
-      <div class="inline-controls">
-        <label class="field field--inline">
-          <span>Year</span>
-          <input v-model.number="year" type="number" min="2000" max="2100" />
-        </label>
-        <label class="field field--inline">
-          <span>Month</span>
-          <input v-model.number="month" type="number" min="1" max="12" />
-        </label>
-        <button type="button" class="btn btn--primary" :disabled="loading" @click="load">Load</button>
-      </div>
+    <div class="page-head">
+      <h2>สรุปรายเดือน</h2>
     </div>
+    <PeriodPicker v-model:year="year" v-model:month="month" :loading="loading" submit-label="แสดงสรุป" @submit="load" />
     <AsyncState :loading="loading" :error="error" :empty="false">
-      <p v-if="!summary && !loading && !error">ไม่มีสรุปรายเดือนที่บันทึกไว้</p>
-      <dl v-if="summary" class="detail-grid">
-        <div><dt>Present</dt><dd>{{ summary.totalPresent }} / {{ summary.totalWorkDays }}</dd></div>
-        <div><dt>Late</dt><dd>{{ summary.totalLate }} ({{ summary.totalLateMinutes }} min)</dd></div>
-        <div><dt>Absent</dt><dd>{{ summary.totalAbsent }}</dd></div>
-        <div><dt>Leave</dt><dd>{{ summary.totalLeave }}</dd></div>
-        <div><dt>Work hours</dt><dd>{{ summary.totalWorkHours }}</dd></div>
-      </dl>
-      <p v-if="!loading && !error && events.length === 0">ไม่มีรายการที่บันทึกไว้ในเดือนนี้</p>
-      <ul v-else-if="events.length">
-        <li v-for="row in events" :key="row.date">
-          {{ row.date }} {{ label(row) }}
-        </li>
-      </ul>
+      <p v-if="!summary && !loading && !error" class="state state--empty">ไม่มีสรุปรายเดือนที่บันทึกไว้</p>
+      <template v-if="summary">
+        <p class="callout" role="note">
+          ยอดขายังไม่คำนวณ: วันที่ไม่มีการสแกนยังไม่ถูกจัดเป็นวันขาด และยังไม่หักวันหยุดนักขัตฤกษ์ (รอนโยบาย)
+        </p>
+        <dl class="kpi-grid">
+          <KpiTile label="มาทำงาน" :value="summary.totalPresent" :hint="`จาก ${summary.totalWorkDays} วันทำงาน`" />
+          <KpiTile label="มาสาย" :value="summary.totalLate" :hint="`รวม ${summary.totalLateMinutes} นาที`" />
+          <KpiTile label="ลา" :value="summary.totalLeave" hint="วัน" />
+          <KpiTile label="ขาด" value="ยังไม่คำนวณ" hint="รอนโยบายของหน่วยงาน" tone="info" />
+          <KpiTile label="ชั่วโมงทำงานรวม" :value="summary.totalWorkHours" hint="ชั่วโมง" />
+        </dl>
+      </template>
+      <p v-if="!loading && !error && events.length === 0" class="muted">ไม่มีรายการที่บันทึกไว้ในเดือนนี้</p>
+      <div v-else-if="events.length" class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>วันที่</th><th>สถานะ</th></tr></thead>
+          <tbody>
+            <tr v-for="row in events" :key="row.date">
+              <td>{{ row.date }}</td>
+              <td><StatusChip :label="label(row)" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </AsyncState>
   </section>
 </template>

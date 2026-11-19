@@ -60,34 +60,41 @@ async function submit() {
 
 <template>
   <div class="login-page">
-    <section class="card login-card">
+    <section class="card login-card" aria-labelledby="login-title">
+      <div class="login-brand">
+        <span class="brand-mark" aria-hidden="true">RAE</span>
+        <div>
+          <p class="brand-name">ระบบลงเวลาปฏิบัติงาน</p>
+          <p class="brand-sub">สำนักวิจัยและบริการวิชาการ · มหาวิทยาลัยแม่โจ้</p>
+        </div>
+      </div>
       <p v-if="isReviewFixtureMode" class="review-banner" role="status">
         {{ reviewModeBannerText }}
       </p>
-      <h1>Sign in</h1>
+      <h1 id="login-title">เข้าสู่ระบบ</h1>
       <p class="muted">
         <template v-if="isReviewFixtureMode">Fixture review build — API calls are mocked in the browser.</template>
-        <template v-else-if="showLocalLogin">Sign in with MJU SSO or local V2 credentials (<code>/api/v1/auth/*</code>).</template>
+        <template v-else-if="showLocalLogin">เข้าสู่ระบบด้วยบัญชี MJU (MJU SSO) หรือบัญชีภายในของระบบ</template>
         <template v-else>เข้าสู่ระบบด้วยบัญชี MJU (MJU SSO) ของท่าน</template>
       </p>
       <p v-if="ssoQueryError" class="form-error" role="alert">{{ ssoQueryError }}</p>
       <div v-if="!isReviewFixtureMode" class="form">
-        <button type="button" class="btn btn--primary" :disabled="loading" @click="beginMjuSsoLogin">
+        <button type="button" class="btn btn--primary btn--wide" :disabled="loading" @click="beginMjuSsoLogin">
           เข้าสู่ระบบด้วย MJU SSO
         </button>
       </div>
       <form v-if="showLocalLogin" class="form" @submit.prevent="submit">
         <label class="field">
-          <span>Email</span>
+          <span>อีเมล</span>
           <input v-model="email" type="email" autocomplete="username" required />
         </label>
         <label class="field">
-          <span>Password</span>
+          <span>รหัสผ่าน</span>
           <input v-model="password" type="password" autocomplete="current-password" required />
         </label>
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
         <button type="submit" class="btn btn--ghost" :disabled="loading">
-          {{ loading ? 'Signing in…' : 'Sign in with email' }}
+          {{ loading ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบด้วยอีเมล' }}
         </button>
       </form>
       <p v-if="isReviewFixtureMode" class="hint muted">Fixture user: user@example.test / valid-pass (admin: admin@example.test)</p>
