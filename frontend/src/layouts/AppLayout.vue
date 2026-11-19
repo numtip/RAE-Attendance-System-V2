@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ORGANIZATION_LINE, SYSTEM_NAME_TH } from '../config/organization';
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api/client';
@@ -73,8 +74,8 @@ async function logout() {
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">RAE</span>
           <div>
-            <p class="brand-name">ระบบลงเวลาปฏิบัติงาน</p>
-            <p class="brand-sub">สำนักวิจัยและบริการวิชาการ · มหาวิทยาลัยแม่โจ้</p>
+            <p class="brand-name">{{ SYSTEM_NAME_TH }}</p>
+            <p class="brand-sub">{{ ORGANIZATION_LINE }}</p>
           </div>
         </div>
         <div v-if="employee" class="app-user">

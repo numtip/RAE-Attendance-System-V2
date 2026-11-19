@@ -8,11 +8,11 @@ const THAI_MONTHS = [
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
 ];
 
-const STATUS_TH = { late: 'สาย', present: 'มาทำงาน', absent: 'ขาด', leave: 'ลา' };
+const STATUS_TH = { late: 'สาย', present: 'มาทำงาน', leave: 'ลา' };
 const LEAVE_TH = { personal: 'ลากิจ' };
 const LEAVE_STATUS_TH = { approved: 'อนุมัติ', pending: 'รออนุมัติ', rejected: 'ไม่อนุมัติ' };
 
-const ABSENCE_NOTE = 'ยอดขาดยังไม่คำนวณ: วันที่ไม่มีการสแกนยังไม่ถูกจัดเป็นวันขาด และยังไม่หักวันหยุดนักขัตฤกษ์ (รอนโยบาย)';
+const HOLIDAY_NOTE = 'จำนวนวันทำงานยังไม่หักวันหยุดนักขัตฤกษ์';
 
 function assertPeriod(year, month) {
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {
@@ -114,8 +114,8 @@ function createReportService({ repositories }) {
         hasMonthlySummary,
         present: hasMonthlySummary ? monthly.totalPresent : null,
         late: hasMonthlySummary ? monthly.totalLate : null,
-        // Absence is policy-pending: derivation only creates days that have scans, so the stored
-        // total_absent is always 0 and would read as "no absences". Report it as not derived.
+        // Kept for API compatibility only. Owner policy: employees are not classified as absent, so
+        // no screen or export presents it.
         absent: null,
         leaveDaysOnSummary: hasMonthlySummary ? monthly.totalLeave : null,
         workDays: hasMonthlySummary ? monthly.totalWorkDays : null,
@@ -127,9 +127,8 @@ function createReportService({ repositories }) {
           : null,
         source: 'stored-monthly-and-leave',
         notices: {
-          absenceDerived: false,
           holidaysApplied: false,
-          absenceNote: ABSENCE_NOTE,
+          holidayNote: HOLIDAY_NOTE,
         },
       };
     },
@@ -165,7 +164,7 @@ function summaryRows(report) {
     ['ตำแหน่ง', report.position],
     ['ช่วงวันที่', report.periodLabel],
     ['ปี พ.ศ.', report.buddhistYear],
-    ['หมายเหตุ', report.notices.absenceNote],
+    ['หมายเหตุ', report.notices.holidayNote],
   ];
   if (report.empty) {
     rows.push(['สถานะ', 'ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้']);
@@ -177,7 +176,6 @@ function summaryRows(report) {
       ['มาทำงาน', report.present],
       ['สาย', report.late],
       ['นาทีที่สาย', report.lateMinutes],
-      ['ขาด', 'ยังไม่คำนวณ'],
       ['ลาตามสรุป', report.leaveDaysOnSummary],
     );
   } else {
@@ -227,7 +225,7 @@ function writePersonalXlsx(report) {
 }
 
 const reportHelpers = {
-  ABSENCE_NOTE, assertPeriod, monthBounds, thaiDate, THAI_MONTHS,
+  HOLIDAY_NOTE, assertPeriod, monthBounds, thaiDate, THAI_MONTHS,
 };
 
 module.exports = { createReportService, reportHelpers };

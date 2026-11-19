@@ -17,6 +17,29 @@ function assertMonth(year, month) {
   }
 }
 
+/**
+ * Attach the Thai full name and employee ID to rows that are ALREADY scope-filtered. Resolution is
+ * limited to the uids present in those rows, so an out-of-scope employee is never looked up or
+ * exposed. A uid with no employee record keeps null names (the UI says so, it does not guess).
+ */
+async function withIdentity(repositories, rows) {
+  if (rows.length === 0) return rows;
+  const wanted = new Set(rows.map((row) => row.employeeUid));
+  const byUid = new Map(
+    (await repositories.employees.list())
+      .filter((employee) => wanted.has(employee.employeeUid))
+      .map((employee) => [employee.employeeUid, employee]),
+  );
+  return rows.map((row) => {
+    const employee = byUid.get(row.employeeUid);
+    return {
+      ...row,
+      employeeId: employee ? employee.employeeId : null,
+      employeeName: employee ? `${employee.firstNameTh} ${employee.lastNameTh}`.trim() : null,
+    };
+  });
+}
+
 function createAttendanceService({ repositories }) {
   return {
     async daily(auth, date) {
@@ -26,8 +49,8 @@ function createAttendanceService({ repositories }) {
         throw new HttpError(403, 'FORBIDDEN', 'Daily attendance for other employees is outside your scope');
       }
       const rows = await repositories.attendance.findDaily(date);
-      if (scope.all) return rows;
-      return rows.filter((row) => scope.uids.has(row.employeeUid));
+      const visible = scope.all ? rows : rows.filter((row) => scope.uids.has(row.employeeUid));
+      return withIdentity(repositories, visible);
     },
     /**
      * The caller's own day. `auth.employeeUid` is the only subject, so there is no argument that
@@ -36,7 +59,7 @@ function createAttendanceService({ repositories }) {
     async meDaily(auth, date) {
       assertDate(date);
       const rows = await repositories.attendance.findDaily(date);
-      return rows.filter((row) => row.employeeUid === auth.employeeUid);
+      return withIdentity(repositories, rows.filter((row) => row.employeeUid === auth.employeeUid));
     },
 
     async monthly(auth, employeeUid, year, month) {

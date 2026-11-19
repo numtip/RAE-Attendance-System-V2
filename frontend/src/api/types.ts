@@ -48,6 +48,9 @@ export interface AttendanceRecord {
   isLate?: boolean;
   lateMinutes?: number;
   workDuration?: number;
+  /** Resolved server-side for in-scope rows; null when no employee record matches. */
+  employeeId?: string | null;
+  employeeName?: string | null;
 }
 
 export interface MonthlySummary {
@@ -112,9 +115,8 @@ export interface PersonalReport {
   remainingLeaveDays: number | null;
   source: string;
   notices: {
-    absenceDerived: boolean;
     holidaysApplied: boolean;
-    absenceNote: string;
+    holidayNote: string;
   };
 }
 
@@ -148,7 +150,7 @@ export interface OrganizationReport {
     absent: null;
   };
   rows: OrganizationReportRow[];
-  notices: { absenceDerived: boolean; holidaysApplied: boolean; absenceNote: string };
+  notices: { holidaysApplied: boolean; holidayNote: string };
 }
 
 export interface LeaveBalanceRow {

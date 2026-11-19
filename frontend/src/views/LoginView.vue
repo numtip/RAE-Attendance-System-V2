@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ORGANIZATION_LINE, SYSTEM_NAME_TH } from '../config/organization';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ApiError, api } from '../api/client';
@@ -64,8 +65,8 @@ async function submit() {
       <div class="login-brand">
         <span class="brand-mark" aria-hidden="true">RAE</span>
         <div>
-          <p class="brand-name">ระบบลงเวลาปฏิบัติงาน</p>
-          <p class="brand-sub">สำนักวิจัยและบริการวิชาการ · มหาวิทยาลัยแม่โจ้</p>
+          <p class="brand-name">{{ SYSTEM_NAME_TH }}</p>
+          <p class="brand-sub">{{ ORGANIZATION_LINE }}</p>
         </div>
       </div>
       <p v-if="isReviewFixtureMode" class="review-banner" role="status">
