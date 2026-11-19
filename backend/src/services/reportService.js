@@ -12,6 +12,8 @@ const STATUS_TH = { late: 'สาย', present: 'มาทำงาน', absent:
 const LEAVE_TH = { personal: 'ลากิจ' };
 const LEAVE_STATUS_TH = { approved: 'อนุมัติ', pending: 'รออนุมัติ', rejected: 'ไม่อนุมัติ' };
 
+const ABSENCE_NOTE = 'ยอดขาดยังไม่คำนวณ: วันที่ไม่มีการสแกนยังไม่ถูกจัดเป็นวันขาด และยังไม่หักวันหยุดนักขัตฤกษ์ (รอนโยบาย)';
+
 function assertPeriod(year, month) {
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {
     throw new HttpError(400, 'VALIDATION_ERROR', 'year is invalid');
@@ -112,7 +114,9 @@ function createReportService({ repositories }) {
         hasMonthlySummary,
         present: hasMonthlySummary ? monthly.totalPresent : null,
         late: hasMonthlySummary ? monthly.totalLate : null,
-        absent: hasMonthlySummary ? monthly.totalAbsent : null,
+        // Absence is policy-pending: derivation only creates days that have scans, so the stored
+        // total_absent is always 0 and would read as "no absences". Report it as not derived.
+        absent: null,
         leaveDaysOnSummary: hasMonthlySummary ? monthly.totalLeave : null,
         workDays: hasMonthlySummary ? monthly.totalWorkDays : null,
         lateMinutes: hasMonthlySummary ? monthly.totalLateMinutes : null,
@@ -122,11 +126,10 @@ function createReportService({ repositories }) {
           ? balances.reduce((sum, row) => sum + Number(row.remainingDays || 0), 0)
           : null,
         source: 'stored-monthly-and-leave',
-        exclusions: {
-          status: 'RESOLVED_BY_OWNER',
-          nonMasterCodes: 19,
-          nameMismatchEvents: 5,
-          acceptedPersonMonthGaps: 24,
+        notices: {
+          absenceDerived: false,
+          holidaysApplied: false,
+          absenceNote: ABSENCE_NOTE,
         },
       };
     },
@@ -162,9 +165,7 @@ function summaryRows(report) {
     ['ตำแหน่ง', report.position],
     ['ช่วงวันที่', report.periodLabel],
     ['ปี พ.ศ.', report.buddhistYear],
-    ['รหัสนอกมาสเตอร์', 'ไม่นำเข้า 19 รหัส'],
-    ['ชื่อไม่ตรง', 'กักกัน 5 แถว'],
-    ['คน-เดือนที่ยอดไม่ตรง', 24],
+    ['หมายเหตุ', report.notices.absenceNote],
   ];
   if (report.empty) {
     rows.push(['สถานะ', 'ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้']);
@@ -176,7 +177,7 @@ function summaryRows(report) {
       ['มาทำงาน', report.present],
       ['สาย', report.late],
       ['นาทีที่สาย', report.lateMinutes],
-      ['ขาด', report.absent],
+      ['ขาด', 'ยังไม่คำนวณ'],
       ['ลาตามสรุป', report.leaveDaysOnSummary],
     );
   } else {

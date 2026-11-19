@@ -68,14 +68,14 @@ onMounted(load);
     <AsyncState :loading="loading" :error="error" :empty="false">
       <template v-if="report">
         <p class="muted">{{ report.employeeName }} ({{ report.employeeId }}) · {{ report.periodLabel }}</p>
-        <p class="muted">ไม่นำเข้ารหัสนอกมาสเตอร์ {{ report.exclusions.nonMasterCodes }} รหัส กักกันชื่อไม่ตรง {{ report.exclusions.nameMismatchEvents }} แถว ใช้คน-เดือนที่ยอดไม่ตรง {{ report.exclusions.acceptedPersonMonthGaps }} ราย</p>
+        <p class="muted">{{ report.notices.absenceNote }}</p>
         <p v-if="report.empty" class="state state--empty">ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้</p>
         <template v-else>
           <p v-if="!report.hasMonthlySummary" class="state state--empty">ไม่มีสรุปรายเดือนที่บันทึกไว้</p>
           <dl v-else class="detail-grid">
             <div><dt>มาทำงาน</dt><dd>{{ report.present }} / {{ report.workDays }}</dd></div>
             <div><dt>สาย</dt><dd>{{ report.late }} ({{ report.lateMinutes }} นาที)</dd></div>
-            <div><dt>ขาด</dt><dd>{{ report.absent }}</dd></div>
+            <div><dt>ขาด</dt><dd>{{ report.absent ?? 'ยังไม่คำนวณ' }}</dd></div>
             <div><dt>ลาตามสรุป</dt><dd>{{ report.leaveDaysOnSummary }}</dd></div>
             <div><dt>วันลาคงเหลือ</dt><dd>{{ report.remainingLeaveDays ?? '—' }}</dd></div>
           </dl>

@@ -99,7 +99,7 @@ test('personal report is self-only and does not invent a missing month', async (
     assert.equal(report.body.data.present, 20);
     assert.equal(report.body.data.workDays, 22);
     assert.equal(report.body.data.late, 1);
-    assert.equal(report.body.data.absent, 0);
+    assert.equal(report.body.data.absent, null);
     assert.equal(report.body.data.leaveDaysOnSummary, 1);
     assert.equal(report.body.data.remainingLeaveDays, 5);
     assert.equal(report.body.data.scans.length, 1);
@@ -109,9 +109,10 @@ test('personal report is self-only and does not invent a missing month', async (
     assert.equal(report.body.data.scans[0].statusLabel, 'สาย');
     assert.equal(report.body.data.leaveRows.length, 1);
     assert.equal(report.body.data.leaveRows[0].typeLabel, 'ลากิจ');
-    assert.equal(report.body.data.exclusions.nonMasterCodes, 19);
-    assert.equal(report.body.data.exclusions.nameMismatchEvents, 5);
-    assert.equal(report.body.data.exclusions.acceptedPersonMonthGaps, 24);
+    assert.equal(report.body.data.exclusions, undefined);
+    assert.equal(report.body.data.notices.absenceDerived, false);
+    assert.equal(report.body.data.notices.holidaysApplied, false);
+    assert.match(report.body.data.notices.absenceNote, /ยังไม่คำนวณ/);
 
     const empty = await getJson(port, '/api/v1/reports/personal?year=2026&month=1', user);
     assert.equal(empty.status, 200);
@@ -165,7 +166,8 @@ test('personal export renders Thai identity, Buddhist dates and stored totals', 
     assert.match(xml, /<v>22<\/v>/);
     assert.match(xml, /08:35/);
     assert.match(xml, /ลากิจ/);
-    assert.match(xml, /ไม่นำเข้า 19 รหัส/);
+    assert.match(xml, /ยอดขาดยังไม่คำนวณ/);
+    assert.doesNotMatch(xml, /ไม่นำเข้า 19 รหัส|กักกัน 5 แถว/);
     assert.doesNotMatch(xml, /2026-03-03/);
 
     const empty = await getFile(port, '/api/v1/reports/personal/export?year=2026&month=1&format=xlsx', user);
