@@ -3,6 +3,7 @@
 interface ImportMetaEnv {
   readonly VITE_REVIEW_MODE?: string;
   readonly VITE_BASE_PATH?: string;
+  readonly VITE_LOCAL_LOGIN?: string;
 }
 
 interface ImportMeta {

@@ -8,8 +8,13 @@ import { isReviewFixtureMode, reviewModeBannerText } from '../config/reviewMode'
 const route = useRoute();
 const router = useRouter();
 
-const email = ref('user@example.test');
-const password = ref('valid-pass');
+// Local email/password sign-in exists for the fixture review build and, behind VITE_LOCAL_LOGIN, for
+// operator-created local accounts. Production employees are SSO-only (no local password is ever
+// issued), so offering that form there only produces a login that cannot succeed, and the fixture
+// credentials must never be pre-filled for a real user.
+const showLocalLogin = isReviewFixtureMode || import.meta.env.VITE_LOCAL_LOGIN === 'true';
+const email = ref(isReviewFixtureMode ? 'user@example.test' : '');
+const password = ref(isReviewFixtureMode ? 'valid-pass' : '');
 const loading = ref(false);
 const error = ref<string | null>(null);
 
@@ -62,7 +67,8 @@ async function submit() {
       <h1>Sign in</h1>
       <p class="muted">
         <template v-if="isReviewFixtureMode">Fixture review build — API calls are mocked in the browser.</template>
-        <template v-else>Sign in with MJU SSO or local V2 credentials (<code>/api/v1/auth/*</code>).</template>
+        <template v-else-if="showLocalLogin">Sign in with MJU SSO or local V2 credentials (<code>/api/v1/auth/*</code>).</template>
+        <template v-else>เข้าสู่ระบบด้วยบัญชี MJU (MJU SSO) ของท่าน</template>
       </p>
       <p v-if="ssoQueryError" class="form-error" role="alert">{{ ssoQueryError }}</p>
       <div v-if="!isReviewFixtureMode" class="form">
@@ -70,7 +76,7 @@ async function submit() {
           เข้าสู่ระบบด้วย MJU SSO
         </button>
       </div>
-      <form class="form" @submit.prevent="submit">
+      <form v-if="showLocalLogin" class="form" @submit.prevent="submit">
         <label class="field">
           <span>Email</span>
           <input v-model="email" type="email" autocomplete="username" required />
@@ -84,7 +90,7 @@ async function submit() {
           {{ loading ? 'Signing in…' : 'Sign in with email' }}
         </button>
       </form>
-      <p class="hint muted">Fixture user: user@example.test / valid-pass (admin: admin@example.test)</p>
+      <p v-if="isReviewFixtureMode" class="hint muted">Fixture user: user@example.test / valid-pass (admin: admin@example.test)</p>
     </section>
   </div>
 </template>
