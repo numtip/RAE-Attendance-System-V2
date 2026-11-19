@@ -155,12 +155,22 @@ function signSsoSessionAccessToken(config, employee, jti) {
   );
 }
 
+/**
+ * `auth_logs.event_type` is ENUM('login','logout','refresh','failed_login','locked') (migration 009).
+ * SSO events reuse `login` / `failed_login` and are told apart by this marker in `error_message`:
+ * the earlier `sso_login` / `sso_login_failed` values are not in the enum, so under strict SQL mode
+ * every insert failed and was swallowed — no SSO login was ever audited.
+ */
+const SSO_AUDIT_MARK = 'via=mju_sso';
+
 async function appendAuthLog(repositories, entry) {
   if (!repositories?.authLogs?.append) return;
   try {
     await repositories.authLogs.append(entry);
-  } catch {
-    // Audit logging failures must not turn a valid decision into an unhandled crash.
+  } catch (error) {
+    // Audit logging failures must not turn a valid decision into an unhandled crash, but they must
+    // not be silent either. Class and code only: a driver message can echo SQL values.
+    console.error(JSON.stringify({ authLogAppendFailed: true, code: error?.code ?? null }));
   }
 }
 
@@ -451,10 +461,11 @@ function createMjuPortalAdapterBridge({
                 await appendAuthLog(repositories, {
                   employeeUid: resolvedEmployee.employeeUid,
                   email: resolvedEmployee.email,
-                  eventType: 'sso_login',
+                  eventType: 'login',
                   success: true,
                   ipAddress: clientIp ?? null,
                   userAgent: sanitizeUserAgent(userAgent),
+                  errorMessage: SSO_AUDIT_MARK,
                 });
 
                 issuedSession = {
@@ -507,11 +518,11 @@ function createMjuPortalAdapterBridge({
         await appendAuthLog(repositories, {
           employeeUid: null,
           email: null,
-          eventType: 'sso_login_failed',
+          eventType: 'failed_login',
           success: false,
           ipAddress: clientIp ?? null,
           userAgent: sanitizeUserAgent(userAgent),
-          errorMessage: error?.code ? String(error.code).slice(0, 64) : 'SSO_CALLBACK_FAILED',
+          errorMessage: `${SSO_AUDIT_MARK}:${error?.code ? String(error.code).slice(0, 48) : 'SSO_CALLBACK_FAILED'}`,
         });
         throw toHttpError(error, standard);
       }
