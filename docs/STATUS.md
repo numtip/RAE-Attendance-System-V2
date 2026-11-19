@@ -1,4 +1,22 @@
-# Status — 2026-11-18 (current)
+# Status — 2026-11-19 (current)
+
+**Gate:** `DAY_20261119_PROGRESS`
+**Production:** **LIVE**, backend `dark-e15cb6d` (`origin/main` `e15cb6d`), frontend bundle from PR #100
+**Report:** [`reports/EOD_2026-11-19.md`](reports/EOD_2026-11-19.md)
+
+| Item | Value | Label |
+|---|---|---|
+| Workforce | 52 employees (49 original + `1032`, `2019`, `3009` as `contract`), 52 `facescan_id`; approved SSO links 49 | VERIFIED |
+| Attendance | 18,642 events · 9,627 daily · 517 monthly (Jan–Oct 2026, AR-0001); February 2026 imported | VERIFIED |
+| Reports | stale legacy exclusions removed; absence shown as "ยังไม่คำนวณ" (PR #100) | VERIFIED (code + bundle); real SSO session check pending |
+| Tooling | `facescan:derive` (PR #101) derives days left by a late identifier link | VERIFIED |
+| Backups | `…pre-feb2026…`, `…pre-deploy-a6765b0…`, `…pre-derive3…` in `/home/rae_admin/backups` | VERIFIED |
+
+Pending: real-employee SSO report check (Web/JSON/PDF/XLSX, Feb + Mar) · SSO links for the 3 new employees (owner approval) · November 2026 HIP export · holidays, absence derivation and 2025 policy.
+
+---
+
+# Status — 2026-11-18 (previous)
 
 **Gate:** `DAY_20261118_CLOSED`
 **Production:** **LIVE** at https://raeservice.mju.ac.th/attendance-v2/, with real HIP attendance for 49 employees (Jan, Mar–Oct 2026)
