@@ -17,6 +17,7 @@ const myNav = [
   { name: 'reports', label: 'รายงานของฉัน' },
 ];
 const leaveNav = [
+  { name: 'leave-monthly', label: 'สรุปการลารายเดือน' },
   { name: 'leave-list', label: 'รายการลา' },
   { name: 'leave-balance', label: 'วันลาคงเหลือ' },
   { name: 'leave-history', label: 'ประวัติการลา' },

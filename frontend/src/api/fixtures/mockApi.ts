@@ -281,6 +281,45 @@ async function handlePersonalReport(search: string): Promise<PersonalReport> {
 }
 
 /** Review build only: synthetic people and numbers, so the page can be shown without any real record. */
+function handleLeaveMonthly(role: string, year: number, month: number): import('../types').LeaveMonthlyReport {
+  const wide = ['executive', 'manager', 'admin'].includes(role);
+  const names = ['สมชาย ตัวอย่าง', 'สมหญิง ทดสอบ', 'วิชัย สมมติ', 'อรทัย จำลอง', 'ประเสริฐ ตัวอย่าง', 'มาลี ทดสอบ'];
+  const { start, end } = { start: `${year}-${String(month).padStart(2, '0')}-01`, end: `${year}-${String(month).padStart(2, '0')}-28` };
+  const rows = (wide ? names : names.slice(0, 1)).map((employeeName, index) => {
+    const bucket = (requests: number, days: number) => ({ requests, days });
+    const details = index === 1
+      ? [{ leaveType: 'sick', typeLabel: 'ลาป่วย', startLabel: '30 เมษายน 2569', endLabel: '2 พฤษภาคม 2569', status: 'approved', statusLabel: 'อนุมัติ', daysInMonth: 2, crossesMonth: true, counted: true }]
+      : index === 2
+        ? [{ leaveType: 'personal', typeLabel: 'ลากิจ', startLabel: '10 พฤษภาคม 2569', endLabel: '10 พฤษภาคม 2569', status: 'pending', statusLabel: 'รออนุมัติ', daysInMonth: 1, crossesMonth: false, counted: false }]
+        : [];
+    return {
+      employeeId: `S${String(index + 1).padStart(3, '0')}`,
+      employeeName,
+      hasLeaveData: true,
+      byType: { personal: bucket(index === 3 ? 1 : 0, index === 3 ? 2 : 0), sick: bucket(index === 1 ? 1 : 0, index === 1 ? 2 : 0), vacation: bucket(index === 4 ? 1 : 0, index === 4 ? 3 : 0) },
+      pendingRequests: index === 2 ? 1 : 0,
+      rejectedRequests: 0,
+      details,
+    };
+  });
+  const sum = (k: 'personal' | 'sick' | 'vacation') => ({
+    requests: rows.reduce((t, r) => t + (r.byType?.[k].requests ?? 0), 0),
+    days: rows.reduce((t, r) => t + (r.byType?.[k].days ?? 0), 0),
+  });
+  return {
+    scope: wide ? 'organization' : 'self',
+    year,
+    month,
+    buddhistYear: year + 543,
+    periodLabel: `${thaiDate(start)} – ${thaiDate(end)}`,
+    types: [{ type: 'personal', labelTh: 'ลากิจ' }, { type: 'sick', labelTh: 'ลาป่วย' }, { type: 'vacation', labelTh: 'ลาพักผ่อน' }],
+    coverage: { leaveRecordsInSystem: 4, hasLeaveData: true, unmatchedRecordsExcluded: 0, note: null },
+    totals: { byType: { personal: sum('personal'), sick: sum('sick'), vacation: sum('vacation') }, pendingRequests: 1, rejectedRequests: 0, otherApprovedRequests: 0 },
+    rows,
+    notices: { dayCounting: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น' },
+  };
+}
+
 function handleOrganizationReport(role: string, year: number, month: number): import('../types').OrganizationReport {
   if (!['executive', 'manager', 'admin'].includes(role)) {
     throw new ApiError(403, 'FORBIDDEN', 'Organization reports need an executive or manager scope');
@@ -398,6 +437,11 @@ export async function fixtureApiRequest<T>(
   const balanceMatch = path.match(/^\/leave\/balance\/([^/?]+)\?year=(\d+)$/);
   if (auth && method === 'GET' && balanceMatch) {
     return (await handleLeaveBalance(decodeURIComponent(balanceMatch[1]), Number(balanceMatch[2]))) as T;
+  }
+
+  const leaveMonthlyMatch = path.match(/^\/reports\/leave-monthly\?year=(\d+)&month=(\d+)$/);
+  if (auth && method === 'GET' && leaveMonthlyMatch) {
+    return handleLeaveMonthly(authFromSession().role, Number(leaveMonthlyMatch[1]), Number(leaveMonthlyMatch[2])) as T;
   }
 
   const orgMatch = path.match(/^\/reports\/organization\?year=(\d+)&month=(\d+)$/);

@@ -8,6 +8,14 @@ class LeaveRepository {
     return this.leaveRows.filter((row) => row.employeeUid === employeeUid);
   }
 
+  async countAll() {
+    return this.leaveRows.length;
+  }
+
+  async listOverlapping(start, end) {
+    return this.leaveRows.filter((row) => row.startDate <= end && row.endDate >= start);
+  }
+
   async history(employeeUid) {
     return this.list(employeeUid);
   }

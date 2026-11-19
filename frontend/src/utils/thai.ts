@@ -35,7 +35,8 @@ export type Tone = 'ok' | 'late' | 'leave' | 'muted';
 /** Visual tone for a Thai status label already produced by the API (`statusLabel`). */
 export function statusTone(label: string): Tone {
   if (label === 'มาทำงาน') return 'ok';
-  if (label === 'สาย') return 'late';
+  if (label === 'สาย' || label === 'รออนุมัติ') return 'late';
+  if (label === 'อนุมัติ') return 'ok';
   if (label === 'ลา' || label.startsWith('ลา')) return 'leave';
   return 'muted';
 }

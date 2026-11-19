@@ -120,6 +120,42 @@ export interface PersonalReport {
   };
 }
 
+export type LeaveKind = 'personal' | 'sick' | 'vacation';
+export interface LeaveBucket { requests: number; days: number }
+export interface LeaveMonthlyDetail {
+  leaveType: string;
+  typeLabel: string;
+  startLabel: string;
+  endLabel: string;
+  status: string;
+  statusLabel: string;
+  daysInMonth: number;
+  crossesMonth: boolean;
+  counted: boolean;
+}
+export interface LeaveMonthlyRow {
+  employeeId: string;
+  employeeName: string;
+  hasLeaveData: boolean;
+  /** null = the source has no leave data at all (NOT zero). */
+  byType: Record<LeaveKind, LeaveBucket> | null;
+  pendingRequests: number | null;
+  rejectedRequests: number | null;
+  details: LeaveMonthlyDetail[];
+}
+export interface LeaveMonthlyReport {
+  scope: 'organization' | 'team' | 'self';
+  year: number;
+  month: number;
+  buddhistYear: number;
+  periodLabel: string;
+  types: { type: LeaveKind; labelTh: string }[];
+  coverage: { leaveRecordsInSystem: number; hasLeaveData: boolean; unmatchedRecordsExcluded: number; note: string | null };
+  totals: { byType: Record<LeaveKind, LeaveBucket>; pendingRequests: number; rejectedRequests: number; otherApprovedRequests: number } | null;
+  rows: LeaveMonthlyRow[];
+  notices: { dayCounting: string };
+}
+
 export interface OrganizationReportRow {
   employeeId: string;
   employeeName: string;
