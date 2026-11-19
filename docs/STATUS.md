@@ -1,18 +1,20 @@
 # Status — 2026-11-19 (current)
 
-**Gate:** `DAY_20261119_PROGRESS`
-**Production:** **LIVE**, backend `dark-e15cb6d` (`origin/main` `e15cb6d`), frontend bundle from PR #100
-**Report:** [`reports/EOD_2026-11-19.md`](reports/EOD_2026-11-19.md)
+**Gate:** `DAY_20261119_ACCEPTANCE_PARTIAL`
+**Production:** **LIVE**, backend `dark-9578d77` (`origin/main` `9578d77`), frontend bundle `index-Bb-qr0aB`
+**Reports:** [`reports/EOD_2026-11-19.md`](reports/EOD_2026-11-19.md) · [`reports/EOD_2026-11-19-2.md`](reports/EOD_2026-11-19-2.md) · [`reports/EOD_2026-11-19-3.md`](reports/EOD_2026-11-19-3.md)
 
 | Item | Value | Label |
 |---|---|---|
 | Workforce | 52 employees (49 original + `1032`, `2019`, `3009` as `contract`), 52 `facescan_id`; approved SSO links 49 | VERIFIED |
-| Attendance | 18,642 events · 9,627 daily · 517 monthly (Jan–Oct 2026, AR-0001); February 2026 imported | VERIFIED |
-| Reports | stale legacy exclusions removed; absence shown as "ยังไม่คำนวณ" (PR #100) | VERIFIED (code + bundle); real SSO session check pending |
-| Tooling | `facescan:derive` (PR #101) derives days left by a late identifier link | VERIFIED |
-| Backups | `…pre-feb2026…`, `…pre-deploy-a6765b0…`, `…pre-derive3…` in `/home/rae_admin/backups` | VERIFIED |
+| Attendance | 18,642 events · 9,627 daily · 517 monthly (Jan–Oct 2026, AR-0001; February 2026 imported); DB unchanged by the 9578d77 deploy | VERIFIED |
+| Login page | MJU SSO only: rendered in a headless browser, 1 button, 0 inputs, no fixture text; `index.html` is `no-cache`, `/assets/` immutable (PR #103) | VERIFIED |
+| SSO audit | a failed SSO callback writes `failed_login` / `via=mju_sso:<code>` with no uid or email (PR #104); a successful login row is pending a real login | PARTIAL |
+| Reports | stale exclusions removed; absence shown as "ยังไม่คำนวณ" (PR #100); Feb/Mar in all four formats not yet checked on a real session | PARTIAL |
+| Tooling | `facescan:derive` (PR #101) | VERIFIED |
+| Rollback | images `dark-e15cb6d`/`dark-a6765b0`/`dark-21dea10`; `frontend-dist.prev-*`; compose backups; DB backups `…pre-deploy-9578d77…` and earlier | VERIFIED |
 
-Pending: real-employee SSO report check (Web/JSON/PDF/XLSX, Feb + Mar) · SSO links for the 3 new employees (owner approval) · November 2026 HIP export · holidays, absence derivation and 2025 policy.
+Pending: real-employee login → success audit row + Feb/Mar reports (Web, JSON, PDF, XLSX) · SSO links for the 3 new employees (owner approval) · November 2026 HIP export · holidays, absence derivation and 2025 policy.
 
 ---
 
