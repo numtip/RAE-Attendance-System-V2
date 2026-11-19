@@ -34,6 +34,7 @@ function renderOrganizationPdf(report) {
       doc.font('Sarabun-Bold').fontSize(16).text(report.scope === 'organization' ? 'รายงานการมาทำงาน — ทั้งองค์กร' : 'รายงานการมาทำงาน — ทีม', { width: 515 });
       doc.font('Sarabun').fontSize(11);
       doc.text(report.periodLabel, { width: 515 });
+      if (report.dataThrough && report.dataThrough.label) doc.text(report.dataThrough.partial ? report.dataThrough.note : report.dataThrough.label, { width: 515 });
       doc.text(`พนักงานในขอบเขต ${report.totals.employeesInScope} คน · มีสรุปรายเดือน ${report.totals.employeesWithData} · ไม่มี ${report.totals.employeesWithoutData}`, { width: 515 });
       doc.text(`รวม: มาทำงาน ${report.totals.present} · สาย ${report.totals.late} (${report.totals.lateMinutes} นาที) · ลา(HIP) ${report.totals.leaveRecordedDays === null ? 'ไม่มีข้อมูล' : report.totals.leaveRecordedDays} วัน`, { width: 515 });
       doc.text(report.notices.holidayNote, { width: 515 });

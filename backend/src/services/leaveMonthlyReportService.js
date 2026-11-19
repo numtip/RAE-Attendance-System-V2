@@ -1,6 +1,7 @@
 const { HttpError } = require('../utils/httpError');
 const { writeXlsx } = require('./export/xlsxWriter');
 const { renderLeaveMonthlyPdf } = require('./export/leaveMonthlyPdf');
+const { dataThrough } = require('./dataThrough');
 const { resolveScope } = require('./authorizationService');
 const { reportHelpers } = require('./reportService');
 
@@ -90,6 +91,7 @@ function createLeaveMonthlyReportService({ repositories }) {
       const overlapping = (await repositories.leave.listOverlapping(start, end))
         .filter((row) => inScope.has(row.employeeUid));
 
+      const coverageThrough = await dataThrough(repositories, start, end, thaiDate);
       const periodKey = `${year}-${String(month).padStart(2, '0')}`;
       const covered = (await repositories.leaveRecords.coveredPeriods()).includes(periodKey);
       const recordedRows = covered
@@ -198,6 +200,7 @@ function createLeaveMonthlyReportService({ repositories }) {
           note: recordsInSystem > 0 ? null : 'ยังไม่มีข้อมูลการลาในระบบ (ยังไม่ได้นำเข้าจากแหล่งข้อมูลการลา) — ไม่ได้หมายความว่าไม่มีผู้ลา',
         },
         totals: recordsInSystem > 0 ? totals : null,
+        dataThrough: coverageThrough,
         recordedCoverage: {
           periodCovered: covered,
           note: covered ? null : 'เดือนนี้ยังไม่มีข้อมูลการลาที่บันทึกจากรายงาน HIP — ไม่ได้หมายความว่าไม่มีผู้ลา',
@@ -220,6 +223,7 @@ function writeLeaveXlsx(report) {
         columns: [{ header: 'รายการ', width: 30 }, { header: 'ค่า', width: 60 }],
         rows: [
           ['ช่วงวันที่', report.periodLabel],
+          ['ข้อมูลถึงวันที่', report.dataThrough.through ? report.dataThrough.label.replace('ข้อมูลถึงวันที่ ', '') : 'ไม่มีข้อมูล'],
           ['ปี พ.ศ.', report.buddhistYear],
           ...report.types.map((t) => [`${t.labelTh} (วัน)`, report.recordedTotals ? report.recordedTotals.byType[t.type].days : none]),
           ['รายการรอตรวจสอบ (ไม่รวมในยอด)', report.recordedTotals ? report.recordedTotals.needsReviewRecords : none],

@@ -8,6 +8,11 @@ class AttendanceRepository {
     return this.dailyRows.filter((row) => row.date === date);
   }
 
+  async latestDailyDate(start, end) {
+    const dates = this.dailyRows.map((row) => row.date).filter((date) => date >= start && date <= end).sort();
+    return dates.length ? dates[dates.length - 1] : null;
+  }
+
   async findMonthly(employeeUid, year, month) {
     return this.monthlyRows.find((row) => (
       row.employeeUid === employeeUid && row.year === year && row.month === month

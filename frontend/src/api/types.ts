@@ -113,6 +113,7 @@ export interface PersonalReport {
   leaveNeedsReview: number | null;
   workDays: number | null;
   lateMinutes: number | null;
+  dataThrough?: DataThrough;
   scans: PersonalScan[];
   leaveRows: PersonalLeaveRow[];
   remainingLeaveDays: number | null;
@@ -142,6 +143,7 @@ export interface DivisionSummary extends DivisionBucket {
 }
 export interface DivisionReport {
   scope: 'organization' | 'team';
+  dataThrough?: DataThrough;
   recordedLeaveCovered: boolean;
   year: number;
   month: number;
@@ -201,6 +203,7 @@ export interface LeaveMonthlyReport {
   month: number;
   buddhistYear: number;
   periodLabel: string;
+  dataThrough?: DataThrough;
   types: { type: LeaveKind; labelTh: string }[];
   recordedCoverage: { periodCovered: boolean; note: string | null };
   recordedTotals: { byType: Record<LeaveKind, RecordedBucket>; needsReviewRecords: number } | null;
@@ -208,6 +211,14 @@ export interface LeaveMonthlyReport {
   totals: { byType: Record<LeaveKind, LeaveBucket>; pendingRequests: number; rejectedRequests: number; otherApprovedRequests: number } | null;
   rows: LeaveMonthlyRow[];
   notices: { dayCounting: string; recorded: string; recordedCounting: string };
+}
+
+/** How far the imported attendance reaches in the month; `partial` = the month is not fully covered. */
+export interface DataThrough {
+  through: string | null;
+  label: string | null;
+  partial: boolean;
+  note?: string | null;
 }
 
 export interface OrganizationReportRow {
@@ -244,6 +255,7 @@ export interface OrganizationReport {
     absent: null;
   };
   rows: OrganizationReportRow[];
+  dataThrough?: DataThrough;
   notices: { holidaysApplied: boolean; holidayNote: string };
 }
 

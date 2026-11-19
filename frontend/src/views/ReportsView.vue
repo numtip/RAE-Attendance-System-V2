@@ -64,6 +64,8 @@ onMounted(load);
       <template v-if="report">
         <h3 class="section-title">{{ report.employeeName }} <span class="muted">({{ report.employeeId }})</span></h3>
         <p class="muted">{{ report.periodLabel }}</p>
+        <p v-if="report.dataThrough?.partial" class="callout" role="alert">{{ report.dataThrough.note }}</p>
+        <p v-else-if="report.dataThrough?.label" class="muted">{{ report.dataThrough.label }}</p>
         <p class="callout" role="note">{{ report.notices.holidayNote }}</p>
         <p v-if="report.empty" class="state state--empty">ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้</p>
         <template v-else>

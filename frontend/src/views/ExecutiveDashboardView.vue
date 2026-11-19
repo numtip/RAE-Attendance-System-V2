@@ -86,6 +86,8 @@ onMounted(load);
           {{ report.scope === 'organization' ? 'ภาพรวมทั้งองค์กร' : 'ภาพรวมกองที่ท่านได้รับสิทธิ์' }}
           <span class="muted">· {{ report.periodLabel }}</span>
         </h3>
+        <p v-if="report.dataThrough?.partial" class="callout" role="alert">{{ report.dataThrough.note }}</p>
+        <p v-else-if="report.dataThrough?.label" class="muted">{{ report.dataThrough.label }}</p>
         <dl class="kpi-grid">
           <KpiTile label="พนักงาน" :value="report.totals.employeesInScope" :hint="`มีสรุปรายเดือน ${report.totals.employeesWithData} · ไม่มี ${report.totals.employeesWithoutData}`" />
           <KpiTile label="มาทำงาน (รวม)" :value="report.totals.present" hint="วัน-คน" />

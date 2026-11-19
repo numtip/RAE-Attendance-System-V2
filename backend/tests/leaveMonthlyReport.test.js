@@ -15,6 +15,7 @@ function makeRepos(leaveRows, grants = [], members = []) {
   return {
     authorization: { async grantsFor() { return grants; }, async uidsInOrgUnits() { return members; } },
     employees: { async list() { return employees; } },
+    attendance: { async latestDailyDate() { return null; } },
     leaveRecords: { async coveredPeriods() { return []; }, async listBetween() { return []; } },
     leave: {
       async countAll() { return leaveRows.length; },
