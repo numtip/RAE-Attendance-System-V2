@@ -178,24 +178,38 @@ export const api = {
     ),
   leaveHistory: (employeeUid: string) =>
     apiRequest<import('./types').LeaveRow[]>(`/leave/history/${employeeUid}`),
+  organizationReport: (year: number, month: number) =>
+    apiRequest<import('./types').OrganizationReport>(`/reports/organization?year=${year}&month=${month}`),
   personalReport: (year: number, month: number) =>
     apiRequest<import('./types').PersonalReport>(`/reports/personal?year=${year}&month=${month}`),
 };
 
 export async function downloadPersonalReport(year: number, month: number, format: 'pdf' | 'xlsx'): Promise<void> {
+  return downloadReport('personal', year, month, format);
+}
+
+export async function downloadOrganizationReport(year: number, month: number, format: 'pdf' | 'xlsx'): Promise<void> {
+  return downloadReport('organization', year, month, format);
+}
+
+async function downloadReport(kind: 'personal' | 'organization', year: number, month: number, format: 'pdf' | 'xlsx'): Promise<void> {
   const token = getAccessToken();
   const response = await fetch(
-    `${API_BASE}/reports/personal/export?year=${year}&month=${month}&format=${format}`,
+    `${API_BASE}/reports/${kind}/export?year=${year}&month=${month}&format=${format}`,
     { headers: token ? { Authorization: `Bearer ${token}` } : {} },
   );
   if (!response.ok) {
-    throw new ApiError(response.status, 'EXPORT_FAILED', 'Export failed');
+    throw new ApiError(
+      response.status,
+      'EXPORT_FAILED',
+      response.status === 403 ? 'ไม่มีสิทธิ์ส่งออกรายงานนี้' : 'Export failed',
+    );
   }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `attendance-${year + 543}-${String(month).padStart(2, '0')}.${format}`;
+  link.download = `attendance-${kind === 'organization' ? 'org-' : ''}${year + 543}-${String(month).padStart(2, '0')}.${format}`;
   link.click();
   URL.revokeObjectURL(url);
 }

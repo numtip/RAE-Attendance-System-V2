@@ -57,6 +57,11 @@ const router = createRouter({
           name: 'reports',
           component: () => import('../views/ReportsView.vue'),
         },
+        {
+          path: 'reports/organization',
+          name: 'reports-organization',
+          component: () => import('../views/OrganizationReportView.vue'),
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
