@@ -80,7 +80,7 @@ onMounted(load);
           />
           <KpiTile label="มาทำงาน (รวม)" :value="report.totals.present" hint="วัน-คน" />
           <KpiTile label="มาสาย (รวม)" :value="report.totals.late" :hint="`${report.totals.lateMinutes} นาที`" />
-          <KpiTile label="ลาตามสรุป (รวม)" :value="report.totals.leaveDaysOnSummary" hint="วัน" />
+          <KpiTile label="ลา — บันทึกจาก HIP (รวม)" :value="report.totals.leaveRecordedDays ?? '—'" :hint="report.totals.leaveRecordedDays === null ? 'เดือนนี้ยังไม่มีข้อมูลการลา' : `วัน — รอตรวจสอบ ${report.totals.leaveNeedsReview} รายการ (ไม่รวม)`" />
         </dl>
         <div class="toolbar">
           <input v-model="query" class="search" type="search" placeholder="ค้นหาชื่อหรือรหัสพนักงาน" aria-label="ค้นหาชื่อหรือรหัสพนักงาน" />
@@ -97,7 +97,7 @@ onMounted(load);
               <tr>
                 <th class="sticky-col">พนักงาน</th>
                 <th class="num">วันทำงาน</th><th class="num">มาทำงาน</th><th class="num">สาย</th>
-                <th class="num">นาทีสาย</th><th class="num">ลา</th>
+                <th class="num">นาทีสาย</th><th class="num">ลา (HIP)</th>
               </tr>
             </thead>
             <tbody>
@@ -111,7 +111,7 @@ onMounted(load);
                   <td class="num">{{ row.present }}</td>
                   <td class="num">{{ row.late }}</td>
                   <td class="num">{{ row.lateMinutes }}</td>
-                  <td class="num">{{ row.leaveDaysOnSummary }}</td>
+                  <td class="num">{{ row.leaveRecordedDays ?? '—' }}</td>
                 </template>
                 <td v-else colspan="5" class="muted">ไม่มีสรุปรายเดือนที่บันทึกไว้</td>
               </tr>

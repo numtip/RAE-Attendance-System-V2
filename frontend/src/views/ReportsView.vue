@@ -71,7 +71,7 @@ onMounted(load);
           <dl v-else class="kpi-grid">
             <KpiTile label="มาทำงาน" :value="report.present ?? '—'" :hint="`จาก ${report.workDays ?? '—'} วันทำงาน`" />
             <KpiTile label="มาสาย" :value="report.late ?? '—'" :hint="`รวม ${report.lateMinutes ?? 0} นาที`" />
-            <KpiTile label="ลาตามสรุป" :value="report.leaveDaysOnSummary ?? '—'" hint="วัน" />
+            <KpiTile label="ลา (บันทึกจาก HIP)" :value="report.leaveRecordedDays ?? '—'" :hint="report.leaveRecordedDays === null ? 'เดือนนี้ยังไม่มีข้อมูลการลา' : `วัน — ยังไม่ยืนยันอนุมัติ${report.leaveNeedsReview ? ` · รอตรวจสอบ ${report.leaveNeedsReview}` : ''}`" />
             <KpiTile label="วันลาคงเหลือ" :value="report.remainingLeaveDays ?? '—'" hint="วัน" />
           </dl>
           <h3 class="section-title">รายการสแกน</h3>

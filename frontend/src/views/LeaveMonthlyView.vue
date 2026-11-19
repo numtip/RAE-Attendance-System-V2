@@ -148,6 +148,7 @@ onMounted(load);
                 </tr>
                 <tr v-if="open === row.employeeId">
                   <td :colspan="kinds.length + 3">
+                    <div class="detail-box">
                     <ul class="plain-list">
                       <li v-for="(d, i) in row.recordedDetails" :key="i">
                         {{ d.typeLabel }} · {{ d.dateLabel }} · {{ d.partLabel }}
@@ -157,6 +158,7 @@ onMounted(load);
                         <span v-if="d.reasonLabels.length" class="muted"> — {{ d.reasonLabels.join('; ') }} (ไม่รวมในยอด)</span>
                       </li>
                     </ul>
+                    </div>
                   </td>
                 </tr>
               </template>

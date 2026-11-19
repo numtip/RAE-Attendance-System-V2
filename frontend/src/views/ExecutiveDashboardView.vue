@@ -16,12 +16,12 @@ const selected = ref<string>('all');
 const metric = ref<MetricKey>('avgPresentPerPerson');
 const query = ref('');
 
-type MetricKey = 'avgPresentPerPerson' | 'late' | 'lateMinutes' | 'leaveDaysOnSummary';
+type MetricKey = 'avgPresentPerPerson' | 'late' | 'lateMinutes' | 'leaveRecordedDays';
 const metrics: { key: MetricKey; label: string; unit: string }[] = [
   { key: 'avgPresentPerPerson', label: 'มาทำงานเฉลี่ย/คน', unit: 'วัน' },
   { key: 'late', label: 'มาสาย', unit: 'ครั้ง' },
   { key: 'lateMinutes', label: 'นาทีที่สาย', unit: 'นาที' },
-  { key: 'leaveDaysOnSummary', label: 'ลาตามสรุป', unit: 'วัน' },
+  { key: 'leaveRecordedDays', label: 'ลา (บันทึกจาก HIP)', unit: 'วัน' },
 ];
 const activeMetric = computed(() => metrics.find((m) => m.key === metric.value) ?? metrics[0]);
 
@@ -36,6 +36,7 @@ const entries = computed<Entry[]>(() => {
 });
 
 function value(e: DivisionBucket): number | null {
+  if (metric.value === 'leaveRecordedDays' && !report.value?.recordedLeaveCovered) return null;
   return e[metric.value];
 }
 const maxValue = computed(() => Math.max(0, ...entries.value.map((e) => value(e) ?? 0)));
@@ -89,7 +90,7 @@ onMounted(load);
           <KpiTile label="พนักงาน" :value="report.totals.employeesInScope" :hint="`มีสรุปรายเดือน ${report.totals.employeesWithData} · ไม่มี ${report.totals.employeesWithoutData}`" />
           <KpiTile label="มาทำงาน (รวม)" :value="report.totals.present" hint="วัน-คน" />
           <KpiTile label="มาสาย (รวม)" :value="report.totals.late" :hint="`${report.totals.lateMinutes} นาที`" />
-          <KpiTile label="ลาตามสรุป (รวม)" :value="report.totals.leaveDaysOnSummary" hint="วัน" />
+          <KpiTile label="ลา — บันทึกจาก HIP (รวม)" :value="report.recordedLeaveCovered ? report.totals.leaveRecordedDays ?? 0 : '—'" :hint="report.recordedLeaveCovered ? `วัน (ครึ่งวัน = 0.5) · รอตรวจสอบ ${report.totals.leaveNeedsReview ?? 0} รายการ ไม่รวมในยอด` : 'เดือนนี้ยังไม่มีข้อมูลการลา'" />
         </dl>
 
         <p v-if="report.reconciliation.reconciled && !report.reconciliation.unassigned && !report.reconciliation.ambiguous" class="callout" role="status">
@@ -122,18 +123,18 @@ onMounted(load);
           <table class="data-table">
             <caption class="sr-only">สรุปรายกอง</caption>
             <thead>
-              <tr><th class="sticky-col">กอง</th><th class="num">คน</th><th class="num">มาทำงาน</th><th class="num">เฉลี่ย/คน</th><th class="num">สาย</th><th class="num">นาทีสาย</th><th class="num">ลา</th></tr>
+              <tr><th class="sticky-col">กอง</th><th class="num">คน</th><th class="num">มาทำงาน</th><th class="num">เฉลี่ย/คน</th><th class="num">สาย</th><th class="num">นาทีสาย</th><th class="num">ลา (HIP)</th></tr>
             </thead>
             <tbody>
               <tr v-for="e in entries" :key="e.key">
                 <td class="sticky-col">{{ e.name }}</td>
                 <td class="num">{{ e.headcount }}</td><td class="num">{{ e.present }}</td><td class="num">{{ show(e.avgPresentPerPerson) }}</td>
-                <td class="num">{{ e.late }}</td><td class="num">{{ e.lateMinutes }}</td><td class="num">{{ e.leaveDaysOnSummary }}</td>
+                <td class="num">{{ e.late }}</td><td class="num">{{ e.lateMinutes }}</td><td class="num">{{ report.recordedLeaveCovered ? e.leaveRecordedDays : '—' }}</td>
               </tr>
               <tr class="total-row">
                 <td class="sticky-col">รวมทั้งหมด</td>
                 <td class="num">{{ report.totals.employeesInScope }}</td><td class="num">{{ report.totals.present }}</td><td class="num">—</td>
-                <td class="num">{{ report.totals.late }}</td><td class="num">{{ report.totals.lateMinutes }}</td><td class="num">{{ report.totals.leaveDaysOnSummary }}</td>
+                <td class="num">{{ report.totals.late }}</td><td class="num">{{ report.totals.lateMinutes }}</td><td class="num">{{ report.recordedLeaveCovered ? report.totals.leaveRecordedDays : '—' }}</td>
               </tr>
             </tbody>
           </table>
@@ -148,12 +149,12 @@ onMounted(load);
         <p v-if="drillRows.length === 0" class="state state--empty">ไม่พบรายการ</p>
         <div v-else class="table-scroll">
           <table class="data-table">
-            <thead><tr><th class="sticky-col">พนักงาน</th><th class="num">วันทำงาน</th><th class="num">มาทำงาน</th><th class="num">สาย</th><th class="num">นาทีสาย</th><th class="num">ลา</th></tr></thead>
+            <thead><tr><th class="sticky-col">พนักงาน</th><th class="num">วันทำงาน</th><th class="num">มาทำงาน</th><th class="num">สาย</th><th class="num">นาทีสาย</th><th class="num">ลา (HIP)</th></tr></thead>
             <tbody>
               <tr v-for="row in drillRows" :key="row.employeeId">
                 <td class="sticky-col"><strong>{{ row.employeeName }}</strong><br /><span class="muted">{{ row.employeeId }}</span></td>
                 <template v-if="row.hasMonthlySummary">
-                  <td class="num">{{ row.workDays }}</td><td class="num">{{ row.present }}</td><td class="num">{{ row.late }}</td><td class="num">{{ row.lateMinutes }}</td><td class="num">{{ row.leaveDaysOnSummary }}</td>
+                  <td class="num">{{ row.workDays }}</td><td class="num">{{ row.present }}</td><td class="num">{{ row.late }}</td><td class="num">{{ row.lateMinutes }}</td><td class="num">{{ row.leaveRecordedDays ?? '—' }}</td>
                 </template>
                 <td v-else colspan="5" class="muted">ไม่มีสรุปรายเดือนที่บันทึกไว้</td>
               </tr>

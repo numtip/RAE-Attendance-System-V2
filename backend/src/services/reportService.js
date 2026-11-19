@@ -1,3 +1,4 @@
+const { recordedLeaveByEmployee } = require('./recordedLeave');
 const { HttpError } = require('../utils/httpError');
 const { writeXlsx } = require('./export/xlsxWriter');
 const { renderPersonalPdf } = require('./export/personalPdf');
@@ -96,6 +97,8 @@ function createReportService({ repositories }) {
           statusLabel: LEAVE_STATUS_TH[row.status] || row.status,
         }));
       const balances = await repositories.leave.balance(auth.employeeUid, year);
+      const recorded = await recordedLeaveByEmployee(repositories, year, month, start, end);
+      const mineRecorded = recorded.byUid.get(auth.employeeUid);
       const hasMonthlySummary = Boolean(monthly);
       const empty = !hasMonthlySummary && scans.length === 0 && leaveRows.length === 0;
       return {
@@ -118,6 +121,9 @@ function createReportService({ repositories }) {
         // no screen or export presents it.
         absent: null,
         leaveDaysOnSummary: hasMonthlySummary ? monthly.totalLeave : null,
+        // HIP-recorded leave in days (0.5 precision), not approval; null = that month was never imported.
+        leaveRecordedDays: recorded.covered ? (mineRecorded ? mineRecorded.days : 0) : null,
+        leaveNeedsReview: recorded.covered ? (mineRecorded ? mineRecorded.needsReview : 0) : null,
         workDays: hasMonthlySummary ? monthly.totalWorkDays : null,
         lateMinutes: hasMonthlySummary ? monthly.totalLateMinutes : null,
         scans,
@@ -176,7 +182,8 @@ function summaryRows(report) {
       ['มาทำงาน', report.present],
       ['สาย', report.late],
       ['นาทีที่สาย', report.lateMinutes],
-      ['ลาตามสรุป', report.leaveDaysOnSummary],
+      ['ลา — บันทึกจาก HIP (วัน, ยังไม่ยืนยันอนุมัติ)', report.leaveRecordedDays === null ? 'ไม่มีข้อมูล' : report.leaveRecordedDays],
+      ['ลา — รอตรวจสอบ (รายการ, ไม่รวมในยอด)', report.leaveNeedsReview === null ? 'ไม่มีข้อมูล' : report.leaveNeedsReview],
     );
   } else {
     rows.push(['สรุปรายเดือน', 'ไม่มีสรุปรายเดือนที่บันทึกไว้']);

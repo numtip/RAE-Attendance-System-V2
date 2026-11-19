@@ -28,6 +28,19 @@ function build(grants) {
     },
     employees: { async list() { return people; } },
     attendance: { async findMonthly(u) { const n = Number(u.slice(-1)); return monthly(n); } },
+    leaveRecords: {
+      async coveredPeriods() { return ['2026-03']; },
+      async listBetween() {
+        const base = { leaveDate: '2026-03-04', reviewStatus: 'candidate', dayPart: 'FULL', dayFraction: 1, leaveType: 'sick' };
+        return [
+          { ...base, employeeUid: uid(1) },
+          { ...base, employeeUid: uid(2), dayPart: 'PM', dayFraction: 0.5 },
+          { ...base, employeeUid: uid(3), dayFraction: 1 },
+          { ...base, employeeUid: uid(5), reviewStatus: 'needs_review', dayPart: 'UNKNOWN', dayFraction: null },
+          { ...base, employeeUid: uid(6), dayFraction: 1 },
+        ];
+      },
+    },
   };
   const organizationReportService = createOrganizationReportService({ repositories });
   return createDivisionReportService({ repositories, organizationReportService });
@@ -50,6 +63,12 @@ test('executive: three divisions + unassigned + ambiguous reconcile to organizat
   assert.equal(report.divisions[0].avgPresentPerPerson, 11.5);
   assert.ok(report.divisions.every((d) => d.rows.every((row) => row.employeeUid === undefined)), 'uids are not exposed');
   assert.equal(report.unassigned.withoutData, 1, 'a missing monthly summary stays "no data"');
+  // HIP-recorded leave rolls up per division in 0.5-day units; review items are counted apart, never summed
+  assert.equal(report.recordedLeaveCovered, true);
+  assert.equal(report.divisions[0].leaveRecordedDays, 1.5);
+  assert.equal(report.unassigned.leaveNeedsReview, 1);
+  assert.equal(report.ambiguous.leaveRecordedDays, 1);
+  assert.equal(report.totals.leaveRecordedDays, 3.5);
 });
 
 test('manager sees only the granted division; other divisions and staff are absent', async () => {
