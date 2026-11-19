@@ -121,6 +121,7 @@ function createV1Router(container) {
   router.get('/reports/organization/export', authenticate, reports.organizationExport);
   router.get('/reports/organization', authenticate, reports.organization);
   router.get('/reports/divisions', authenticate, reports.divisions);
+  router.get('/reports/leave-monthly/export', authenticate, reports.leaveMonthlyExport);
   router.get('/reports/leave-monthly', authenticate, reports.leaveMonthly);
   router.get('/reports/personal/export', authenticate, reports.personalExport);
   router.get('/reports/personal', authenticate, reports.personal);

@@ -295,6 +295,13 @@ function handleLeaveMonthly(role: string, year: number, month: number): import('
     return {
       employeeId: `S${String(index + 1).padStart(3, '0')}`,
       employeeName,
+      recorded: { personal: { days: index === 3 ? 1.5 : 0, records: index === 3 ? 2 : 0, fullDays: index === 3 ? 1 : 0, halfDays: index === 3 ? 1 : 0 }, sick: { days: index === 1 ? 0.5 : 0, records: index === 1 ? 1 : 0, fullDays: 0, halfDays: index === 1 ? 1 : 0 }, vacation: { days: index === 4 ? 3 : 0, records: index === 4 ? 1 : 0, fullDays: index === 4 ? 3 : 0, halfDays: 0 } },
+      recordedNeedsReview: index === 2 ? 1 : 0,
+      recordedDetails: index === 1
+        ? [{ date: '2026-05-04', dateLabel: '4 พฤษภาคม 2569', leaveType: 'sick', typeLabel: 'ลาป่วย', dayPart: 'AM' as const, partLabel: 'ครึ่งวันเช้า', dayFraction: 0.5, reviewStatus: 'candidate' as const, reasonLabels: [], approvalStatus: 'unverified' }]
+        : index === 2
+          ? [{ date: '2026-05-06', dateLabel: '6 พฤษภาคม 2569', leaveType: 'personal', typeLabel: 'ลากิจ', dayPart: 'UNKNOWN' as const, partLabel: 'ไม่ทราบช่วงเวลา', dayFraction: null, reviewStatus: 'needs_review' as const, reasonLabels: ['มีหมายเหตุลา แต่มีเวลาสแกนทั้งเข้าและออก'], approvalStatus: 'unverified' }]
+          : [],
       hasLeaveData: true,
       byType: { personal: bucket(index === 3 ? 1 : 0, index === 3 ? 2 : 0), sick: bucket(index === 1 ? 1 : 0, index === 1 ? 2 : 0), vacation: bucket(index === 4 ? 1 : 0, index === 4 ? 3 : 0) },
       pendingRequests: index === 2 ? 1 : 0,
@@ -313,10 +320,12 @@ function handleLeaveMonthly(role: string, year: number, month: number): import('
     buddhistYear: year + 543,
     periodLabel: `${thaiDate(start)} – ${thaiDate(end)}`,
     types: [{ type: 'personal', labelTh: 'ลากิจ' }, { type: 'sick', labelTh: 'ลาป่วย' }, { type: 'vacation', labelTh: 'ลาพักผ่อน' }],
-    coverage: { leaveRecordsInSystem: 4, hasLeaveData: true, unmatchedRecordsExcluded: 0, note: null },
-    totals: { byType: { personal: sum('personal'), sick: sum('sick'), vacation: sum('vacation') }, pendingRequests: 1, rejectedRequests: 0, otherApprovedRequests: 0 },
+    recordedCoverage: { periodCovered: true, note: null },
+    recordedTotals: { byType: { personal: { days: 1.5, records: 2, fullDays: 1, halfDays: 1 }, sick: { days: 0.5, records: 1, fullDays: 0, halfDays: 1 }, vacation: { days: 3, records: 1, fullDays: 3, halfDays: 0 } }, needsReviewRecords: 1 },
+    coverage: { leaveRecordsInSystem: 0, hasLeaveData: false, unmatchedRecordsExcluded: 0, note: 'ยังไม่มีข้อมูลการลาในระบบ' },
+    totals: null,
     rows,
-    notices: { dayCounting: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น' },
+    notices: { dayCounting: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น', recorded: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น — ไม่ใช่หลักฐานการอนุมัติ' },
   };
 }
 

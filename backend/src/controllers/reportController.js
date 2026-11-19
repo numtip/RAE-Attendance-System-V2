@@ -23,6 +23,9 @@ function createReportController(reportService, organizationReportService, leaveM
     divisions: asyncRoute(async (req, res) => {
       success(res, await divisionReportService.divisions(req.auth, req.query), 'แดชบอร์ดผู้บริหารรายกอง');
     }),
+    leaveMonthlyExport: asyncRoute(async (req, res) => {
+      sendFile(res, await leaveMonthlyReportService.export(req.auth, req.query));
+    }),
     leaveMonthly: asyncRoute(async (req, res) => {
       success(res, await leaveMonthlyReportService.monthly(req.auth, req.query), 'สรุปการลารายเดือน');
     }),
