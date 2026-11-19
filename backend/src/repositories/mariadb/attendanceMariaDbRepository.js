@@ -11,6 +11,14 @@ function createAttendanceMariaDbRepository(pool) {
       return mapRows(rows);
     },
 
+    async latestDailyDate(start, end) {
+      const [rows] = await pool.query(
+        "SELECT DATE_FORMAT(MAX(date), '%Y-%m-%d') AS latest FROM daily_attendance WHERE date BETWEEN ? AND ?",
+        [start, end],
+      );
+      return rows[0].latest || null;
+    },
+
     async findMonthly(employeeUid, year, month) {
       const [rows] = await pool.query(
         `SELECT employee_uid, year, month, total_work_days, total_present, total_late, total_absent,

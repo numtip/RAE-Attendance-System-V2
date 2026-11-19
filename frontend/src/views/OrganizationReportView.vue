@@ -71,6 +71,8 @@ onMounted(load);
           {{ report.scope === 'organization' ? 'ภาพรวมทั้งองค์กร' : 'ภาพรวมทีมของท่าน' }}
           <span class="muted">· {{ report.periodLabel }}</span>
         </h3>
+        <p v-if="report.dataThrough?.partial" class="callout" role="alert">{{ report.dataThrough.note }}</p>
+        <p v-else-if="report.dataThrough?.label" class="muted">{{ report.dataThrough.label }}</p>
         <p class="callout" role="note">{{ report.notices.holidayNote }}</p>
         <dl class="kpi-grid">
           <KpiTile

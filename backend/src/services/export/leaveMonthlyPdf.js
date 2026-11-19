@@ -32,6 +32,7 @@ function renderLeaveMonthlyPdf(report) {
       doc.font('Sarabun').fontSize(11).text(`${ORGANIZATION_NAME_TH} · ${INSTITUTION_NAME_TH}`, { width: 515 });
       doc.font('Sarabun-Bold').fontSize(16).text('สรุปการลารายเดือน', { width: 515 });
       doc.font('Sarabun').fontSize(11).text(report.periodLabel, { width: 515 });
+      if (report.dataThrough && report.dataThrough.label) doc.text(report.dataThrough.partial ? report.dataThrough.note : report.dataThrough.label, { width: 515 });
       if (report.recordedTotals) {
         const t = report.recordedTotals;
         doc.text(`รวม: ลากิจ ${t.byType.personal.days} · ลาป่วย ${t.byType.sick.days} · ลาพักผ่อน ${t.byType.vacation.days} วัน · รอตรวจสอบ ${t.needsReviewRecords} รายการ`, { width: 515 });

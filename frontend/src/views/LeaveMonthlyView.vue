@@ -82,6 +82,8 @@ onMounted(load);
           <span class="muted">· {{ report.periodLabel }}</span>
         </h3>
 
+        <p v-if="report.dataThrough?.partial" class="callout" role="alert">{{ report.dataThrough.note }}</p>
+        <p v-else-if="report.dataThrough?.label" class="muted">{{ report.dataThrough.label }}</p>
         <p v-if="!report.recordedCoverage.periodCovered" class="callout" role="status">{{ report.recordedCoverage.note }}</p>
         <p v-else class="callout" role="note">{{ report.notices.recorded }}</p>
 

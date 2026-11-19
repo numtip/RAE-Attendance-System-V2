@@ -1,4 +1,5 @@
 const { recordedLeaveByEmployee } = require('./recordedLeave');
+const { dataThrough } = require('./dataThrough');
 const { HttpError } = require('../utils/httpError');
 const { writeXlsx } = require('./export/xlsxWriter');
 const { renderPersonalPdf } = require('./export/personalPdf');
@@ -99,6 +100,7 @@ function createReportService({ repositories }) {
       const balances = await repositories.leave.balance(auth.employeeUid, year);
       const recorded = await recordedLeaveByEmployee(repositories, year, month, start, end);
       const mineRecorded = recorded.byUid.get(auth.employeeUid);
+      const coverageThrough = await dataThrough(repositories, start, end, thaiDate);
       const hasMonthlySummary = Boolean(monthly);
       const empty = !hasMonthlySummary && scans.length === 0 && leaveRows.length === 0;
       return {
@@ -131,6 +133,7 @@ function createReportService({ repositories }) {
         remainingLeaveDays: balances.length
           ? balances.reduce((sum, row) => sum + Number(row.remainingDays || 0), 0)
           : null,
+        dataThrough: coverageThrough,
         source: 'stored-monthly-and-leave',
         notices: {
           holidaysApplied: false,

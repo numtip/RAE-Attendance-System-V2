@@ -27,7 +27,7 @@ function build(grants) {
       async listMemberships() { return memberships; },
     },
     employees: { async list() { return people; } },
-    attendance: { async findMonthly(u) { const n = Number(u.slice(-1)); return monthly(n); } },
+    attendance: { async findMonthly(u) { const n = Number(u.slice(-1)); return monthly(n); }, async latestDailyDate() { return '2026-03-31'; } },
     leaveRecords: {
       async coveredPeriods() { return ['2026-03']; },
       async listBetween() {

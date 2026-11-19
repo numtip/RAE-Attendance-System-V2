@@ -2,6 +2,7 @@ const { HttpError } = require('../utils/httpError');
 const { resolveScope } = require('./authorizationService');
 const { reportHelpers } = require('./reportService');
 const { recordedLeaveByEmployee } = require('./recordedLeave');
+const { dataThrough } = require('./dataThrough');
 const { writeXlsx } = require('./export/xlsxWriter');
 const { renderOrganizationPdf } = require('./export/organizationPdf');
 
@@ -34,6 +35,7 @@ function createOrganizationReportService({ repositories }) {
 
     const { start, end } = monthBounds(year, month);
     const recorded = await recordedLeaveByEmployee(repositories, year, month, start, end);
+    const coverage = await dataThrough(repositories, start, end, thaiDate);
     const rows = await Promise.all(employees.map(async (employee) => {
       const monthly = await repositories.attendance.findMonthly(employee.employeeUid, year, month);
       return {
@@ -77,6 +79,7 @@ function createOrganizationReportService({ repositories }) {
         absent: null,
       },
       rows,
+      dataThrough: coverage,
       source: 'stored-monthly',
       notices: { holidaysApplied: false, holidayNote: HOLIDAY_NOTE },
     };
@@ -116,6 +119,7 @@ function writeOrganizationXlsx(report) {
         rows: [
           ['ขอบเขต', report.scope === 'organization' ? 'ทั้งองค์กร' : 'ทีม'],
           ['ช่วงวันที่', report.periodLabel],
+          ['ข้อมูลถึงวันที่', report.dataThrough.through ? report.dataThrough.label.replace('ข้อมูลถึงวันที่ ', '') : 'ไม่มีข้อมูล'],
           ['ปี พ.ศ.', report.buddhistYear],
           ['จำนวนพนักงานในขอบเขต', report.totals.employeesInScope],
           ['มีสรุปรายเดือน', report.totals.employeesWithData],

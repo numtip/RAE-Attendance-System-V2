@@ -75,6 +75,7 @@ function createDivisionReportService({ repositories, organizationReportService }
       return {
         scope: org.scope,
         recordedLeaveCovered: org.totals.leaveRecordedDays !== null,
+        dataThrough: org.dataThrough,
         year: org.year,
         month: org.month,
         buddhistYear: org.buddhistYear,
