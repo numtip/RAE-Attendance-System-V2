@@ -82,12 +82,18 @@ onMounted(load);
         <table class="data-table">
           <thead>
             <tr>
-              <th>พนักงาน</th><th>วันที่</th><th>เวลาเข้า</th><th>เวลาออก</th><th>สถานะ</th><th class="num">สาย (นาที)</th>
+              <th class="sticky-col">พนักงาน</th><th>วันที่</th><th>เวลาเข้า</th><th>เวลาออก</th><th>สถานะ</th><th class="num">สาย (นาที)</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="row in rows" :key="`${row.employeeUid}-${row.date}`">
-              <td><code>{{ row.employeeUid.slice(0, 8) }}…</code></td>
+              <td class="sticky-col">
+                <template v-if="row.employeeName">
+                  <strong>{{ row.employeeName }}</strong><br />
+                  <span class="muted">{{ row.employeeId }}</span>
+                </template>
+                <span v-else class="muted">ไม่พบข้อมูลพนักงาน</span>
+              </td>
               <td>{{ row.date }}</td>
               <td>{{ bangkokTime(row.checkIn) }}</td>
               <td>{{ bangkokTime(row.checkOut) }}</td>

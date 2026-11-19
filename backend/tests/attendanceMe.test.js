@@ -10,7 +10,7 @@ const DATE = '2026-11-16';
 
 function serviceWith(rows) {
   return createAttendanceService({
-    repositories: { attendance: new AttendanceRepository(rows, []) },
+    repositories: { attendance: new AttendanceRepository(rows, []), employees: { async list() { return []; } } },
   });
 }
 

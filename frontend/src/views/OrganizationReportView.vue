@@ -71,7 +71,7 @@ onMounted(load);
           {{ report.scope === 'organization' ? 'ภาพรวมทั้งองค์กร' : 'ภาพรวมทีมของท่าน' }}
           <span class="muted">· {{ report.periodLabel }}</span>
         </h3>
-        <p class="callout" role="note">{{ report.notices.absenceNote }}</p>
+        <p class="callout" role="note">{{ report.notices.holidayNote }}</p>
         <dl class="kpi-grid">
           <KpiTile
             label="พนักงานในขอบเขต"
@@ -81,7 +81,6 @@ onMounted(load);
           <KpiTile label="มาทำงาน (รวม)" :value="report.totals.present" hint="วัน-คน" />
           <KpiTile label="มาสาย (รวม)" :value="report.totals.late" :hint="`${report.totals.lateMinutes} นาที`" />
           <KpiTile label="ลาตามสรุป (รวม)" :value="report.totals.leaveDaysOnSummary" hint="วัน" />
-          <KpiTile label="ขาด" value="ยังไม่คำนวณ" hint="รอนโยบายของหน่วยงาน" tone="info" />
         </dl>
         <div class="toolbar">
           <input v-model="query" class="search" type="search" placeholder="ค้นหาชื่อหรือรหัสพนักงาน" aria-label="ค้นหาชื่อหรือรหัสพนักงาน" />
@@ -98,7 +97,7 @@ onMounted(load);
               <tr>
                 <th class="sticky-col">พนักงาน</th>
                 <th class="num">วันทำงาน</th><th class="num">มาทำงาน</th><th class="num">สาย</th>
-                <th class="num">นาทีสาย</th><th class="num">ลา</th><th>ขาด</th>
+                <th class="num">นาทีสาย</th><th class="num">ลา</th>
               </tr>
             </thead>
             <tbody>
@@ -115,7 +114,6 @@ onMounted(load);
                   <td class="num">{{ row.leaveDaysOnSummary }}</td>
                 </template>
                 <td v-else colspan="5" class="muted">ไม่มีสรุปรายเดือนที่บันทึกไว้</td>
-                <td class="muted">ยังไม่คำนวณ</td>
               </tr>
             </tbody>
           </table>

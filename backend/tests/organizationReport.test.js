@@ -65,8 +65,8 @@ test('organization report: an organization executive sees every employee with st
   assert.equal(staff.absent, null, 'absence is policy-pending, never derived');
   assert.equal(report.totals.absent, null);
   assert.equal(report.totals.present, report.rows.filter((row) => row.hasMonthlySummary).reduce((sum, row) => sum + row.present, 0));
-  assert.equal(report.notices.absenceDerived, false);
-  assert.match(report.notices.absenceNote, /ยังไม่คำนวณ/);
+  assert.match(report.notices.holidayNote, /ไม่หักวันหยุด/);
+  assert.equal(report.notices.absenceNote, undefined);
   // A month with no stored summary is reported as missing, not as zeros.
   const january = await service.organization(auth, { year: '2026', month: '1' });
   assert.ok(january.rows.every((row) => row.present === null || row.hasMonthlySummary));
@@ -111,7 +111,7 @@ test('organization export: PDF and XLSX are real files carrying the same totals 
   assert.equal(xlsx.filename, 'attendance-organization-2569-03.xlsx');
   const xml = xlsxText(xlsx.buffer);
   assert.ok(xml.includes('E-USER'));
-  assert.ok(xml.includes('ยังไม่คำนวณ'));
+  assert.ok(!xml.includes('ยังไม่คำนวณ') && !xml.includes('ขาด'), 'no absence column or notice in the export');
   assert.ok(!xml.includes('ไม่นำเข้า 19 รหัส'));
   assert.ok(xml.includes(`<v>${report.totals.employeesInScope}</v>`));
 });

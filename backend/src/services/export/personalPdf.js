@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const { ORGANIZATION_NAME_TH, INSTITUTION_NAME_TH } = require('../../config/organization');
 
 const REGULAR = require.resolve('../../assets/fonts/Sarabun-Regular.ttf');
 const BOLD = require.resolve('../../assets/fonts/Sarabun-Bold.ttf');
@@ -13,13 +14,14 @@ function renderPersonalPdf(report) {
     try {
       doc.registerFont('Sarabun', REGULAR);
       doc.registerFont('Sarabun-Bold', BOLD);
+      doc.font('Sarabun').fontSize(11).text(`${ORGANIZATION_NAME_TH} · ${INSTITUTION_NAME_TH}`, { width: 500 });
       doc.font('Sarabun-Bold').fontSize(16).text('รายงานการมาทำงานและการลา', { width: 500 });
       doc.moveDown(0.4);
       doc.font('Sarabun').fontSize(12);
       doc.text(`${report.employeeName} (${report.employeeId})`, { width: 500 });
       doc.text(`${report.department} · ${report.position}`, { width: 500 });
       doc.text(report.periodLabel, { width: 500 });
-      doc.text(report.notices.absenceNote, { width: 500 });
+      doc.text(report.notices.holidayNote, { width: 500 });
       doc.moveDown(0.6);
       if (report.empty) {
         doc.text('ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้', { width: 500 });
@@ -30,7 +32,6 @@ function renderPersonalPdf(report) {
           doc.text(`วันทำงาน ${report.workDays}`, { width: 500 });
           doc.text(`มาทำงาน ${report.present}`, { width: 500 });
           doc.text(`สาย ${report.late} (${report.lateMinutes} นาที)`, { width: 500 });
-          doc.text('ขาด ยังไม่คำนวณ', { width: 500 });
           doc.text(`ลาตามสรุป ${report.leaveDaysOnSummary} วัน`, { width: 500 });
         } else {
           doc.text('ไม่มีสรุปรายเดือนที่บันทึกไว้', { width: 500 });

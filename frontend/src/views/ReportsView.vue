@@ -64,7 +64,7 @@ onMounted(load);
       <template v-if="report">
         <h3 class="section-title">{{ report.employeeName }} <span class="muted">({{ report.employeeId }})</span></h3>
         <p class="muted">{{ report.periodLabel }}</p>
-        <p class="callout" role="note">{{ report.notices.absenceNote }}</p>
+        <p class="callout" role="note">{{ report.notices.holidayNote }}</p>
         <p v-if="report.empty" class="state state--empty">ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้</p>
         <template v-else>
           <p v-if="!report.hasMonthlySummary" class="state state--empty">ไม่มีสรุปรายเดือนที่บันทึกไว้</p>
@@ -72,7 +72,6 @@ onMounted(load);
             <KpiTile label="มาทำงาน" :value="report.present ?? '—'" :hint="`จาก ${report.workDays ?? '—'} วันทำงาน`" />
             <KpiTile label="มาสาย" :value="report.late ?? '—'" :hint="`รวม ${report.lateMinutes ?? 0} นาที`" />
             <KpiTile label="ลาตามสรุป" :value="report.leaveDaysOnSummary ?? '—'" hint="วัน" />
-            <KpiTile label="ขาด" value="ยังไม่คำนวณ" hint="รอนโยบายของหน่วยงาน" tone="info" />
             <KpiTile label="วันลาคงเหลือ" :value="report.remainingLeaveDays ?? '—'" hint="วัน" />
           </dl>
           <h3 class="section-title">รายการสแกน</h3>

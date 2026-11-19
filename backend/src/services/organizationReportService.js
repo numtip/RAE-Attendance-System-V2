@@ -4,7 +4,7 @@ const { reportHelpers } = require('./reportService');
 const { writeXlsx } = require('./export/xlsxWriter');
 const { renderOrganizationPdf } = require('./export/organizationPdf');
 
-const { ABSENCE_NOTE, assertPeriod, monthBounds, thaiDate } = reportHelpers;
+const { HOLIDAY_NOTE, assertPeriod, monthBounds, thaiDate } = reportHelpers;
 
 /**
  * Release 2 / M1 — organization and team attendance report.
@@ -70,7 +70,7 @@ function createOrganizationReportService({ repositories }) {
       },
       rows,
       source: 'stored-monthly',
-      notices: { absenceDerived: false, holidaysApplied: false, absenceNote: ABSENCE_NOTE },
+      notices: { holidaysApplied: false, holidayNote: HOLIDAY_NOTE },
     };
   }
 
@@ -114,8 +114,7 @@ function writeOrganizationXlsx(report) {
           ['สาย (รวม)', report.totals.late],
           ['นาทีที่สาย (รวม)', report.totals.lateMinutes],
           ['ลาตามสรุป (รวม)', report.totals.leaveDaysOnSummary],
-          ['ขาด', 'ยังไม่คำนวณ'],
-          ['หมายเหตุ', report.notices.absenceNote],
+          ['หมายเหตุ', report.notices.holidayNote],
         ],
       },
       {
@@ -128,11 +127,10 @@ function writeOrganizationXlsx(report) {
           { header: 'สาย', width: 10 },
           { header: 'นาทีที่สาย', width: 12 },
           { header: 'ลา', width: 10 },
-          { header: 'ขาด', width: 16 },
         ],
         rows: report.rows.map((row) => (row.hasMonthlySummary
-          ? [row.employeeId, row.employeeName, row.workDays, row.present, row.late, row.lateMinutes, row.leaveDaysOnSummary, 'ยังไม่คำนวณ']
-          : [row.employeeId, row.employeeName, notAvailable, '', '', '', '', 'ยังไม่คำนวณ'])),
+          ? [row.employeeId, row.employeeName, row.workDays, row.present, row.late, row.lateMinutes, row.leaveDaysOnSummary]
+          : [row.employeeId, row.employeeName, notAvailable, '', '', '', ''])),
       },
     ],
   });

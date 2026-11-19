@@ -73,13 +73,12 @@ onMounted(load);
       <p v-if="!summary && !loading && !error" class="state state--empty">ไม่มีสรุปรายเดือนที่บันทึกไว้</p>
       <template v-if="summary">
         <p class="callout" role="note">
-          ยอดขายังไม่คำนวณ: วันที่ไม่มีการสแกนยังไม่ถูกจัดเป็นวันขาด และยังไม่หักวันหยุดนักขัตฤกษ์ (รอนโยบาย)
+          จำนวนวันทำงานยังไม่หักวันหยุดนักขัตฤกษ์
         </p>
         <dl class="kpi-grid">
           <KpiTile label="มาทำงาน" :value="summary.totalPresent" :hint="`จาก ${summary.totalWorkDays} วันทำงาน`" />
           <KpiTile label="มาสาย" :value="summary.totalLate" :hint="`รวม ${summary.totalLateMinutes} นาที`" />
           <KpiTile label="ลา" :value="summary.totalLeave" hint="วัน" />
-          <KpiTile label="ขาด" value="ยังไม่คำนวณ" hint="รอนโยบายของหน่วยงาน" tone="info" />
           <KpiTile label="ชั่วโมงทำงานรวม" :value="summary.totalWorkHours" hint="ชั่วโมง" />
         </dl>
       </template>

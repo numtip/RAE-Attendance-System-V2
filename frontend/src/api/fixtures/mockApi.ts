@@ -274,9 +274,8 @@ async function handlePersonalReport(search: string): Promise<PersonalReport> {
     remainingLeaveDays: balances.length ? balances.reduce((sum, row) => sum + row.remainingDays, 0) : null,
     source: 'stored-monthly-and-leave',
     notices: {
-      absenceDerived: false,
       holidaysApplied: false,
-      absenceNote: 'ยอดขาดยังไม่คำนวณ: วันที่ไม่มีการสแกนยังไม่ถูกจัดเป็นวันขาด และยังไม่หักวันหยุดนักขัตฤกษ์ (รอนโยบาย)',
+      holidayNote: 'จำนวนวันทำงานยังไม่หักวันหยุดนักขัตฤกษ์',
     },
   };
 }
@@ -324,9 +323,8 @@ function handleOrganizationReport(role: string, year: number, month: number): im
     },
     rows,
     notices: {
-      absenceDerived: false,
       holidaysApplied: false,
-      absenceNote: 'ยอดขาดยังไม่คำนวณ: วันที่ไม่มีการสแกนยังไม่ถูกจัดเป็นวันขาด และยังไม่หักวันหยุดนักขัตฤกษ์ (รอนโยบาย)',
+      holidayNote: 'จำนวนวันทำงานยังไม่หักวันหยุดนักขัตฤกษ์',
     },
   };
 }

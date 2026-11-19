@@ -110,9 +110,9 @@ test('personal report is self-only and does not invent a missing month', async (
     assert.equal(report.body.data.leaveRows.length, 1);
     assert.equal(report.body.data.leaveRows[0].typeLabel, 'ลากิจ');
     assert.equal(report.body.data.exclusions, undefined);
-    assert.equal(report.body.data.notices.absenceDerived, false);
     assert.equal(report.body.data.notices.holidaysApplied, false);
-    assert.match(report.body.data.notices.absenceNote, /ยังไม่คำนวณ/);
+    assert.match(report.body.data.notices.holidayNote, /ไม่หักวันหยุด/);
+    assert.equal(report.body.data.notices.absenceNote, undefined, 'no absence notice is presented');
 
     const empty = await getJson(port, '/api/v1/reports/personal?year=2026&month=1', user);
     assert.equal(empty.status, 200);
@@ -150,8 +150,10 @@ test('personal export renders Thai identity, Buddhist dates and stored totals', 
     assert.equal(pdf.buffer.subarray(0, 5).toString(), '%PDF-');
     assert.ok(pdf.buffer.includes(Buffer.from('Sarabun')));
     const mapped = pdfMappedText(pdf.buffer);
-    assert.match(mapped, /ผู้ใช/);
-    assert.match(mapped, /ตัวอย่าง/);
+    // The embedded font subset lists each glyph once, so assert every glyph of a phrase is present.
+    const hasGlyphs = (text) => [...text.replace(/\s/g, '')].every((ch) => mapped.includes(ch));
+    assert.ok(hasGlyphs('ผู้ใช้ตัวอย่าง'));
+    assert.ok(hasGlyphs('สำนักวิจัยและส่งเสริมวิชาการการเกษตร'), 'organization name is in the header');
     assert.match(mapped, /E-USR/);
     assert.match(mapped, /2569/);
 
@@ -166,7 +168,8 @@ test('personal export renders Thai identity, Buddhist dates and stored totals', 
     assert.match(xml, /<v>22<\/v>/);
     assert.match(xml, /08:35/);
     assert.match(xml, /ลากิจ/);
-    assert.match(xml, /ยอดขาดยังไม่คำนวณ/);
+    assert.doesNotMatch(xml, /ขาด|ยังไม่คำนวณ/, 'owner policy: no absence presentation in exports');
+    assert.match(xml, /ไม่หักวันหยุด/);
     assert.doesNotMatch(xml, /ไม่นำเข้า 19 รหัส|กักกัน 5 แถว/);
     assert.doesNotMatch(xml, /2026-03-03/);
 
