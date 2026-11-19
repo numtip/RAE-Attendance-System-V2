@@ -111,11 +111,10 @@ export interface PersonalReport {
   leaveRows: PersonalLeaveRow[];
   remainingLeaveDays: number | null;
   source: string;
-  exclusions: {
-    status: string;
-    nonMasterCodes: number;
-    nameMismatchEvents: number;
-    acceptedPersonMonthGaps: number;
+  notices: {
+    absenceDerived: boolean;
+    holidaysApplied: boolean;
+    absenceNote: string;
   };
 }
 

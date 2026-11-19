@@ -19,7 +19,7 @@ function renderPersonalPdf(report) {
       doc.text(`${report.employeeName} (${report.employeeId})`, { width: 500 });
       doc.text(`${report.department} · ${report.position}`, { width: 500 });
       doc.text(report.periodLabel, { width: 500 });
-      doc.text('ไม่นำเข้ารหัสนอกมาสเตอร์ 19 รหัส กักกันชื่อไม่ตรง 5 แถว ใช้คน-เดือนที่ยอดไม่ตรง 24 ราย', { width: 500 });
+      doc.text(report.notices.absenceNote, { width: 500 });
       doc.moveDown(0.6);
       if (report.empty) {
         doc.text('ไม่มีข้อมูลการมาทำงานหรือการลาในช่วงนี้', { width: 500 });
@@ -30,7 +30,7 @@ function renderPersonalPdf(report) {
           doc.text(`วันทำงาน ${report.workDays}`, { width: 500 });
           doc.text(`มาทำงาน ${report.present}`, { width: 500 });
           doc.text(`สาย ${report.late} (${report.lateMinutes} นาที)`, { width: 500 });
-          doc.text(`ขาด ${report.absent}`, { width: 500 });
+          doc.text('ขาด ยังไม่คำนวณ', { width: 500 });
           doc.text(`ลาตามสรุป ${report.leaveDaysOnSummary} วัน`, { width: 500 });
         } else {
           doc.text('ไม่มีสรุปรายเดือนที่บันทึกไว้', { width: 500 });

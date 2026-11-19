@@ -265,7 +265,7 @@ async function handlePersonalReport(search: string): Promise<PersonalReport> {
     hasMonthlySummary: Boolean(summary),
     present: summary ? summary.totalPresent : null,
     late: summary ? summary.totalLate : null,
-    absent: summary ? summary.totalAbsent : null,
+    absent: null,
     leaveDaysOnSummary: summary ? summary.totalLeave : null,
     workDays: summary ? summary.totalWorkDays : null,
     lateMinutes: summary ? summary.totalLateMinutes : null,
@@ -273,11 +273,10 @@ async function handlePersonalReport(search: string): Promise<PersonalReport> {
     leaveRows: empty ? [] : leaveRows,
     remainingLeaveDays: balances.length ? balances.reduce((sum, row) => sum + row.remainingDays, 0) : null,
     source: 'stored-monthly-and-leave',
-    exclusions: {
-      status: 'RESOLVED_BY_OWNER',
-      nonMasterCodes: 19,
-      nameMismatchEvents: 5,
-      acceptedPersonMonthGaps: 24,
+    notices: {
+      absenceDerived: false,
+      holidaysApplied: false,
+      absenceNote: 'ยอดขาดยังไม่คำนวณ: วันที่ไม่มีการสแกนยังไม่ถูกจัดเป็นวันขาด และยังไม่หักวันหยุดนักขัตฤกษ์ (รอนโยบาย)',
     },
   };
 }
