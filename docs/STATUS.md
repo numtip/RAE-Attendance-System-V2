@@ -1,20 +1,20 @@
 # Status — 2026-11-19 (current)
 
-**Gate:** `DAY_20261119_ACCEPTANCE_PARTIAL`
+**Gate:** `RELEASE1_PRODUCTION_ACCEPTED` (`OWNER_UAT_ACCEPTED`)
 **Production:** **LIVE**, backend `dark-9578d77` (`origin/main` `9578d77`), frontend bundle `index-Bb-qr0aB`
-**Reports:** [`reports/EOD_2026-11-19.md`](reports/EOD_2026-11-19.md) · [`reports/EOD_2026-11-19-2.md`](reports/EOD_2026-11-19-2.md) · [`reports/EOD_2026-11-19-3.md`](reports/EOD_2026-11-19-3.md)
+**Reports:** [`reports/EOD_2026-11-19.md`](reports/EOD_2026-11-19.md) · [`reports/EOD_2026-11-19-2.md`](reports/EOD_2026-11-19-2.md) · [`reports/EOD_2026-11-19-3.md`](reports/EOD_2026-11-19-3.md) · [`reports/EOD_2026-11-19-4.md`](reports/EOD_2026-11-19-4.md)
 
 | Item | Value | Label |
 |---|---|---|
 | Workforce | 52 employees (49 original + `1032`, `2019`, `3009` as `contract`), 52 `facescan_id`; approved SSO links 49 | VERIFIED |
 | Attendance | 18,642 events · 9,627 daily · 517 monthly (Jan–Oct 2026, AR-0001; February 2026 imported); DB unchanged by the 9578d77 deploy | VERIFIED |
 | Login page | MJU SSO only: rendered in a headless browser, 1 button, 0 inputs, no fixture text; `index.html` is `no-cache`, `/assets/` immutable (PR #103) | VERIFIED |
-| SSO audit | a failed SSO callback writes `failed_login` / `via=mju_sso:<code>` with no uid or email (PR #104); a successful login row is pending a real login | PARTIAL |
-| Reports | stale exclusions removed; absence shown as "ยังไม่คำนวณ" (PR #100); Feb/Mar in all four formats not yet checked on a real session | PARTIAL |
+| SSO audit | a failed SSO callback writes `failed_login` / `via=mju_sso:<code>` with no uid or email (PR #104); a successful-login row is VERIFIED_BY_CODE_AND_SCHEMA; first real login after 9578d77 will confirm | VERIFIED |
+| Reports | stale exclusions removed; absence shown as "ยังไม่คำนวณ" (PR #100); Feb/Mar monthly totals reconcile with daily rows; 3 formats share one `personal()` source (automated); owner accepted 2-account UAT | VERIFIED |
 | Tooling | `facescan:derive` (PR #101) | VERIFIED |
 | Rollback | images `dark-e15cb6d`/`dark-a6765b0`/`dark-21dea10`; `frontend-dist.prev-*`; compose backups; DB backups `…pre-deploy-9578d77…` and earlier | VERIFIED |
 
-Pending: real-employee login → success audit row + Feb/Mar reports (Web, JSON, PDF, XLSX) · SSO links for the 3 new employees (owner approval) · November 2026 HIP export · holidays, absence derivation and 2025 policy.
+Pending: SSO links for the 3 new employees (owner approval) · November 2026 HIP export · holidays, absence derivation and 2025 policy.
 
 ---
 
