@@ -785,3 +785,6 @@ code {
   .division { grid-template-columns: 1fr auto; grid-template-areas: 'name value' 'meta value' 'bar bar'; }
 }
 @media (prefers-reduced-motion: reduce) { .bar-fill { transition: none; } }
+
+/* Expanded row inside a horizontally scrolling table: keep the text in view and wrapping. */
+.detail-box { position: sticky; left: 0; width: min(100%, calc(100vw - 3.5rem)); white-space: normal; overflow-wrap: anywhere; }

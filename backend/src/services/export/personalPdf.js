@@ -32,7 +32,7 @@ function renderPersonalPdf(report) {
           doc.text(`วันทำงาน ${report.workDays}`, { width: 500 });
           doc.text(`มาทำงาน ${report.present}`, { width: 500 });
           doc.text(`สาย ${report.late} (${report.lateMinutes} นาที)`, { width: 500 });
-          doc.text(`ลาตามสรุป ${report.leaveDaysOnSummary} วัน`, { width: 500 });
+          doc.text(report.leaveRecordedDays === null ? 'ลา (บันทึกจาก HIP) ไม่มีข้อมูล' : `ลา (บันทึกจาก HIP) ${report.leaveRecordedDays} วัน${report.leaveNeedsReview ? ` · รอตรวจสอบ ${report.leaveNeedsReview} รายการ` : ''}`, { width: 500 });
         } else {
           doc.text('ไม่มีสรุปรายเดือนที่บันทึกไว้', { width: 500 });
         }

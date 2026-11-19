@@ -1,6 +1,6 @@
 const { DIVISIONS } = require('../config/organization');
 
-const SUM_KEYS = ['present', 'late', 'lateMinutes', 'leaveDaysOnSummary'];
+const SUM_KEYS = ['present', 'late', 'lateMinutes', 'leaveDaysOnSummary', 'leaveRecordedDays', 'leaveNeedsReview'];
 
 const MEMBERSHIP_NOTE = 'สังกัดกองอ้างอิงตามข้อมูลสังกัดปัจจุบัน (ยังไม่เก็บวันที่มีผลของการย้ายสังกัด) '
   + 'จึงใช้สังกัดเดียวกันกับทุกเดือนที่เลือก';
@@ -20,6 +20,8 @@ function summarize(rows) {
     late: sum('late'),
     lateMinutes: sum('lateMinutes'),
     leaveDaysOnSummary: sum('leaveDaysOnSummary'),
+    leaveRecordedDays: rows.reduce((total, row) => total + (row.leaveRecordedDays || 0), 0),
+    leaveNeedsReview: rows.reduce((total, row) => total + (row.leaveNeedsReview || 0), 0),
     avgPresentPerPerson: withData.length ? round1(sum('present') / withData.length) : null,
   };
 }
@@ -68,10 +70,11 @@ function createDivisionReportService({ repositories, organizationReportService }
       const sumOf = (key) => bucketTotals.reduce((total, bucket) => total + bucket[key], 0);
       const headcountSum = sumOf('headcount');
       const reconciled = headcountSum === org.totals.employeesInScope
-        && SUM_KEYS.every((key) => sumOf(key) === org.totals[key]);
+        && SUM_KEYS.every((key) => sumOf(key) === (org.totals[key] ?? 0));
 
       return {
         scope: org.scope,
+        recordedLeaveCovered: org.totals.leaveRecordedDays !== null,
         year: org.year,
         month: org.month,
         buddhistYear: org.buddhistYear,

@@ -108,6 +108,9 @@ export interface PersonalReport {
   late: number | null;
   absent: number | null;
   leaveDaysOnSummary: number | null;
+  /** HIP-recorded leave days (0.5 precision, not approval). null = month never imported. */
+  leaveRecordedDays: number | null;
+  leaveNeedsReview: number | null;
   workDays: number | null;
   lateMinutes: number | null;
   scans: PersonalScan[];
@@ -128,6 +131,8 @@ export interface DivisionBucket {
   late: number;
   lateMinutes: number;
   leaveDaysOnSummary: number;
+  leaveRecordedDays: number;
+  leaveNeedsReview: number;
   avgPresentPerPerson: number | null;
 }
 export interface DivisionSummary extends DivisionBucket {
@@ -137,6 +142,7 @@ export interface DivisionSummary extends DivisionBucket {
 }
 export interface DivisionReport {
   scope: 'organization' | 'team';
+  recordedLeaveCovered: boolean;
   year: number;
   month: number;
   buddhistYear: number;
@@ -201,7 +207,7 @@ export interface LeaveMonthlyReport {
   coverage: { leaveRecordsInSystem: number; hasLeaveData: boolean; unmatchedRecordsExcluded: number; note: string | null };
   totals: { byType: Record<LeaveKind, LeaveBucket>; pendingRequests: number; rejectedRequests: number; otherApprovedRequests: number } | null;
   rows: LeaveMonthlyRow[];
-  notices: { dayCounting: string; recorded: string };
+  notices: { dayCounting: string; recorded: string; recordedCounting: string };
 }
 
 export interface OrganizationReportRow {
@@ -214,6 +220,8 @@ export interface OrganizationReportRow {
   late: number | null;
   lateMinutes: number | null;
   leaveDaysOnSummary: number | null;
+  leaveRecordedDays: number | null;
+  leaveNeedsReview: number | null;
   absent: null;
 }
 
@@ -231,6 +239,8 @@ export interface OrganizationReport {
     late: number;
     lateMinutes: number;
     leaveDaysOnSummary: number;
+    leaveRecordedDays: number | null;
+    leaveNeedsReview: number | null;
     absent: null;
   };
   rows: OrganizationReportRow[];

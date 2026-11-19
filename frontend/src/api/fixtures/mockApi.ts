@@ -267,6 +267,8 @@ async function handlePersonalReport(search: string): Promise<PersonalReport> {
     late: summary ? summary.totalLate : null,
     absent: null,
     leaveDaysOnSummary: summary ? summary.totalLeave : null,
+    leaveRecordedDays: 1.5,
+    leaveNeedsReview: 0,
     workDays: summary ? summary.totalWorkDays : null,
     lateMinutes: summary ? summary.totalLateMinutes : null,
     scans: empty ? [] : scans,
@@ -325,7 +327,7 @@ function handleLeaveMonthly(role: string, year: number, month: number): import('
     coverage: { leaveRecordsInSystem: 0, hasLeaveData: false, unmatchedRecordsExcluded: 0, note: 'ยังไม่มีข้อมูลการลาในระบบ' },
     totals: null,
     rows,
-    notices: { dayCounting: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น', recorded: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น — ไม่ใช่หลักฐานการอนุมัติ' },
+    notices: { dayCounting: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น', recorded: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น — ไม่ใช่หลักฐานการอนุมัติ', recordedCounting: 'ข้อมูลตัวอย่าง' },
   };
 }
 
@@ -333,10 +335,10 @@ function handleDivisions(role: string, year: number, month: number): import('../
   const org = handleOrganizationReport(role, year, month);
   const bucket = (rows: import('../types').OrganizationReportRow[]): import('../types').DivisionBucket => {
     const withData = rows.filter((r) => r.hasMonthlySummary);
-    const sum = (k: 'present' | 'late' | 'lateMinutes' | 'leaveDaysOnSummary') => withData.reduce((t, r) => t + (r[k] ?? 0), 0);
+    const sum = (k: 'present' | 'late' | 'lateMinutes' | 'leaveDaysOnSummary' | 'leaveRecordedDays') => withData.reduce((t, r) => t + (r[k] ?? 0), 0);
     return {
       headcount: rows.length, withData: withData.length, withoutData: rows.length - withData.length,
-      present: sum('present'), late: sum('late'), lateMinutes: sum('lateMinutes'), leaveDaysOnSummary: sum('leaveDaysOnSummary'),
+      present: sum('present'), late: sum('late'), lateMinutes: sum('lateMinutes'), leaveDaysOnSummary: sum('leaveDaysOnSummary'), leaveRecordedDays: sum('leaveRecordedDays'), leaveNeedsReview: 0,
       avgPresentPerPerson: withData.length ? Math.round((sum('present') / withData.length) * 10) / 10 : null,
     };
   };
@@ -345,7 +347,7 @@ function handleDivisions(role: string, year: number, month: number): import('../
   const slices = [org.rows.slice(0, 4), org.rows.slice(4, 8), org.rows.slice(8, 11)];
   const unassigned = org.rows.slice(11);
   return {
-    scope: org.scope, year, month, buddhistYear: org.buddhistYear, periodLabel: org.periodLabel, totals: org.totals,
+    scope: org.scope, recordedLeaveCovered: true, year, month, buddhistYear: org.buddhistYear, periodLabel: org.periodLabel, totals: org.totals,
     divisions: slices.map((rows, i) => ({ code: codes[i], nameTh: names[i], rows, ...bucket(rows) })),
     unassigned: { ...bucket(unassigned), rows: unassigned },
     ambiguous: { ...bucket([]), rows: [] },
@@ -372,6 +374,8 @@ function handleOrganizationReport(role: string, year: number, month: number): im
       late: hasMonthlySummary ? (index * 2) % 7 : null,
       lateMinutes: hasMonthlySummary ? ((index * 2) % 7) * 11 : null,
       leaveDaysOnSummary: hasMonthlySummary ? index % 2 : null,
+      leaveRecordedDays: hasMonthlySummary ? (index % 3) * 0.5 : null,
+      leaveNeedsReview: hasMonthlySummary ? 0 : null,
       absent: null,
     };
   });
@@ -392,6 +396,8 @@ function handleOrganizationReport(role: string, year: number, month: number): im
       late: sum('late'),
       lateMinutes: sum('lateMinutes'),
       leaveDaysOnSummary: sum('leaveDaysOnSummary'),
+      leaveRecordedDays: rows.reduce((t, r) => t + (r.leaveRecordedDays ?? 0), 0),
+      leaveNeedsReview: 0,
       absent: null,
     },
     rows,

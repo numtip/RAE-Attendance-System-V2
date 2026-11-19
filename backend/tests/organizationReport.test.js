@@ -100,10 +100,10 @@ test('organization export: PDF and XLSX are real files carrying the same totals 
   assert.ok(pdf.buffer.includes(Buffer.from('Sarabun')));
   const pdfText = pdfMappedText(pdf.buffer);
   // pdfkit subsets glyphs, so extracted text is lossy (repeated glyphs collapse): assert fragments, as reports.test.js does.
-  assert.ok(pdfText.includes('E-ADMIN'));
-  assert.match(pdfText, /USR/);
-  assert.ok(pdfText.includes('2569'));
-  assert.match(pdfText, /รายงน/);
+  const hasGlyphs = (text) => [...text.replace(/\s/g, '')].every((ch) => pdfText.includes(ch));
+  assert.ok(hasGlyphs('E-ADMINUSR2569'));
+  assert.ok(hasGlyphs('รายงานการมาทำงาน'));
+  assert.ok(hasGlyphs('สำนักวิจัยและส่งเสริมวิชาการการเกษตร'));
   assert.ok(!pdfText.includes('กักกัน'));
 
   const xlsx = await service.export(auth, { year: '2026', month: '3', format: 'xlsx' });

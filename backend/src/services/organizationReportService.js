@@ -1,6 +1,7 @@
 const { HttpError } = require('../utils/httpError');
 const { resolveScope } = require('./authorizationService');
 const { reportHelpers } = require('./reportService');
+const { recordedLeaveByEmployee } = require('./recordedLeave');
 const { writeXlsx } = require('./export/xlsxWriter');
 const { renderOrganizationPdf } = require('./export/organizationPdf');
 
@@ -31,6 +32,8 @@ function createOrganizationReportService({ repositories }) {
       .filter((employee) => scope.all || scope.uids.has(employee.employeeUid))
       .sort((a, b) => String(a.employeeId).localeCompare(String(b.employeeId), 'en', { numeric: true }));
 
+    const { start, end } = monthBounds(year, month);
+    const recorded = await recordedLeaveByEmployee(repositories, year, month, start, end);
     const rows = await Promise.all(employees.map(async (employee) => {
       const monthly = await repositories.attendance.findMonthly(employee.employeeUid, year, month);
       return {
@@ -44,13 +47,15 @@ function createOrganizationReportService({ repositories }) {
         late: monthly ? monthly.totalLate : null,
         lateMinutes: monthly ? monthly.totalLateMinutes : null,
         leaveDaysOnSummary: monthly ? monthly.totalLeave : null,
+        // HIP-recorded leave (not approval). null = month never imported; 0 = covered, none recorded.
+        leaveRecordedDays: recorded.covered ? (recorded.byUid.get(employee.employeeUid)?.days ?? 0) : null,
+        leaveNeedsReview: recorded.covered ? (recorded.byUid.get(employee.employeeUid)?.needsReview ?? 0) : null,
         absent: null,
       };
     }));
 
     const withData = rows.filter((row) => row.hasMonthlySummary);
     const sum = (key) => withData.reduce((total, row) => total + Number(row[key] || 0), 0);
-    const { start, end } = monthBounds(year, month);
     return {
       scope: scope.all ? 'organization' : 'team',
       year,
@@ -67,6 +72,8 @@ function createOrganizationReportService({ repositories }) {
         late: sum('late'),
         lateMinutes: sum('lateMinutes'),
         leaveDaysOnSummary: sum('leaveDaysOnSummary'),
+        leaveRecordedDays: recorded.covered ? rows.reduce((t, r) => t + (r.leaveRecordedDays || 0), 0) : null,
+        leaveNeedsReview: recorded.covered ? rows.reduce((t, r) => t + (r.leaveNeedsReview || 0), 0) : null,
         absent: null,
       },
       rows,
@@ -116,7 +123,8 @@ function writeOrganizationXlsx(report) {
           ['มาทำงาน (รวม)', report.totals.present],
           ['สาย (รวม)', report.totals.late],
           ['นาทีที่สาย (รวม)', report.totals.lateMinutes],
-          ['ลาตามสรุป (รวม)', report.totals.leaveDaysOnSummary],
+          ['ลา — บันทึกจาก HIP (รวม, วัน)', report.totals.leaveRecordedDays === null ? 'ไม่มีข้อมูล' : report.totals.leaveRecordedDays],
+          ['ลา — รอตรวจสอบ (รายการ, ไม่รวมในยอด)', report.totals.leaveNeedsReview === null ? 'ไม่มีข้อมูล' : report.totals.leaveNeedsReview],
           ['หมายเหตุ', report.notices.holidayNote],
         ],
       },
@@ -129,10 +137,10 @@ function writeOrganizationXlsx(report) {
           { header: 'มาทำงาน', width: 12 },
           { header: 'สาย', width: 10 },
           { header: 'นาทีที่สาย', width: 12 },
-          { header: 'ลา', width: 10 },
+          { header: 'ลา (วัน, บันทึกจาก HIP)', width: 22 },
         ],
         rows: report.rows.map((row) => (row.hasMonthlySummary
-          ? [row.employeeId, row.employeeName, row.workDays, row.present, row.late, row.lateMinutes, row.leaveDaysOnSummary]
+          ? [row.employeeId, row.employeeName, row.workDays, row.present, row.late, row.lateMinutes, row.leaveRecordedDays === null ? 'ไม่มีข้อมูล' : row.leaveRecordedDays]
           : [row.employeeId, row.employeeName, notAvailable, '', '', '', ''])),
       },
     ],

@@ -11,7 +11,7 @@ const COLUMNS = [
   { key: 'present', label: 'มา', x: 312, width: 40 },
   { key: 'late', label: 'สาย', x: 356, width: 40 },
   { key: 'lateMinutes', label: 'นาทีสาย', x: 400, width: 50 },
-  { key: 'leaveDaysOnSummary', label: 'ลา', x: 454, width: 40 },
+  { key: 'leaveRecordedDays', label: 'ลา(HIP)', x: 454, width: 50 },
 ];
 
 function cell(row, key) {
@@ -35,7 +35,7 @@ function renderOrganizationPdf(report) {
       doc.font('Sarabun').fontSize(11);
       doc.text(report.periodLabel, { width: 515 });
       doc.text(`พนักงานในขอบเขต ${report.totals.employeesInScope} คน · มีสรุปรายเดือน ${report.totals.employeesWithData} · ไม่มี ${report.totals.employeesWithoutData}`, { width: 515 });
-      doc.text(`รวม: มาทำงาน ${report.totals.present} · สาย ${report.totals.late} (${report.totals.lateMinutes} นาที) · ลา ${report.totals.leaveDaysOnSummary}`, { width: 515 });
+      doc.text(`รวม: มาทำงาน ${report.totals.present} · สาย ${report.totals.late} (${report.totals.lateMinutes} นาที) · ลา(HIP) ${report.totals.leaveRecordedDays === null ? 'ไม่มีข้อมูล' : report.totals.leaveRecordedDays} วัน`, { width: 515 });
       doc.text(report.notices.holidayNote, { width: 515 });
       doc.moveDown(0.6);
 
