@@ -25,7 +25,10 @@ const leaveNav = [
 // The server decides access (executive organization grant / manager org-unit grant); the link is only
 // offered to the roles that can hold such a grant, so an employee never sees a page that always refuses.
 const managementNav = computed(() => (['executive', 'manager'].includes(employee.value?.role ?? '')
-  ? [{ name: 'reports-organization', label: 'รายงานองค์กร / ทีม' }]
+  ? [
+    { name: 'dashboard', label: 'แดชบอร์ดผู้บริหาร' },
+    { name: 'reports-organization', label: 'รายงานองค์กร / ทีม' },
+  ]
   : []));
 const groups = computed(() => [
   { title: 'งานของฉัน', items: myNav },

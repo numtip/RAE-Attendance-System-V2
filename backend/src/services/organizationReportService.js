@@ -17,7 +17,7 @@ const { HOLIDAY_NOTE, assertPeriod, monthBounds, thaiDate } = reportHelpers;
  * `absent` is null and the notice says so, exactly like the personal report (policy-pending).
  */
 function createOrganizationReportService({ repositories }) {
-  async function build(auth, query) {
+  async function build(auth, query, { withUid = false } = {}) {
     const year = Number(query.year);
     const month = Number(query.month);
     assertPeriod(year, month);
@@ -34,6 +34,7 @@ function createOrganizationReportService({ repositories }) {
     const rows = await Promise.all(employees.map(async (employee) => {
       const monthly = await repositories.attendance.findMonthly(employee.employeeUid, year, month);
       return {
+        ...(withUid ? { employeeUid: employee.employeeUid } : {}),
         employeeId: employee.employeeId,
         employeeName: `${employee.firstNameTh} ${employee.lastNameTh}`,
         department: employee.department,
@@ -75,7 +76,9 @@ function createOrganizationReportService({ repositories }) {
   }
 
   return {
-    organization: build,
+    organization: (auth, query) => build(auth, query),
+    /** Same scoped build with employeeUid on each row — for server-side grouping only, never sent to clients. */
+    organizationWithUid: (auth, query) => build(auth, query, { withUid: true }),
 
     async export(auth, query) {
       const format = query.format;

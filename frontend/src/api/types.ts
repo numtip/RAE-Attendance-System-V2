@@ -120,6 +120,35 @@ export interface PersonalReport {
   };
 }
 
+export interface DivisionBucket {
+  headcount: number;
+  withData: number;
+  withoutData: number;
+  present: number;
+  late: number;
+  lateMinutes: number;
+  leaveDaysOnSummary: number;
+  avgPresentPerPerson: number | null;
+}
+export interface DivisionSummary extends DivisionBucket {
+  code: string;
+  nameTh: string;
+  rows: OrganizationReportRow[];
+}
+export interface DivisionReport {
+  scope: 'organization' | 'team';
+  year: number;
+  month: number;
+  buddhistYear: number;
+  periodLabel: string;
+  totals: OrganizationReport['totals'];
+  divisions: DivisionSummary[];
+  unassigned: DivisionBucket & { rows: OrganizationReportRow[] };
+  ambiguous: DivisionBucket & { rows: OrganizationReportRow[] };
+  reconciliation: { employeesInScope: number; assignedToDivisions: number; unassigned: number; ambiguous: number; reconciled: boolean };
+  notices: { holidayNote: string; membershipNote: string };
+}
+
 export type LeaveKind = 'personal' | 'sick' | 'vacation';
 export interface LeaveBucket { requests: number; days: number }
 export interface LeaveMonthlyDetail {

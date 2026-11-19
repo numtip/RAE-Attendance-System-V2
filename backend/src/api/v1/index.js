@@ -13,6 +13,7 @@ const { createEmployeeService } = require('../../services/employeeService');
 const { createAttendanceService } = require('../../services/attendanceService');
 const { createAttendanceRecordService } = require('../../services/attendanceRecordService');
 const { createFacescanAttendanceIngestionService } = require('../../services/facescanAttendanceIngestionService');
+const { createDivisionReportService } = require('../../services/divisionReportService');
 const { createLeaveMonthlyReportService } = require('../../services/leaveMonthlyReportService');
 const { createLeaveService } = require('../../services/leaveService');
 const { createSsoService } = require('../../services/ssoService');
@@ -56,7 +57,13 @@ function createV1Router(container) {
   );
   const leave = createLeaveController(leaveService);
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
-  const reports = createReportController(createReportService(container), createOrganizationReportService(container), createLeaveMonthlyReportService(container));
+  const organizationReports = createOrganizationReportService(container);
+  const reports = createReportController(
+    createReportService(container),
+    organizationReports,
+    createLeaveMonthlyReportService(container),
+    createDivisionReportService({ ...container, organizationReportService: organizationReports }),
+  );
   const authenticate = createAuthenticate(container.repositories.accessTokenRevocations);
 
   const router = express.Router();
@@ -113,6 +120,7 @@ function createV1Router(container) {
 
   router.get('/reports/organization/export', authenticate, reports.organizationExport);
   router.get('/reports/organization', authenticate, reports.organization);
+  router.get('/reports/divisions', authenticate, reports.divisions);
   router.get('/reports/leave-monthly', authenticate, reports.leaveMonthly);
   router.get('/reports/personal/export', authenticate, reports.personalExport);
   router.get('/reports/personal', authenticate, reports.personal);

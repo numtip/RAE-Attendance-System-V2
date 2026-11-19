@@ -28,6 +28,12 @@ function emptyAuthorization() {
     async uidsInOrgUnits() {
       return [];
     },
+    async listMemberships() {
+      return [];
+    },
+    async addMembership() {
+      return false;
+    },
   };
 }
 

@@ -320,6 +320,31 @@ function handleLeaveMonthly(role: string, year: number, month: number): import('
   };
 }
 
+function handleDivisions(role: string, year: number, month: number): import('../types').DivisionReport {
+  const org = handleOrganizationReport(role, year, month);
+  const bucket = (rows: import('../types').OrganizationReportRow[]): import('../types').DivisionBucket => {
+    const withData = rows.filter((r) => r.hasMonthlySummary);
+    const sum = (k: 'present' | 'late' | 'lateMinutes' | 'leaveDaysOnSummary') => withData.reduce((t, r) => t + (r[k] ?? 0), 0);
+    return {
+      headcount: rows.length, withData: withData.length, withoutData: rows.length - withData.length,
+      present: sum('present'), late: sum('late'), lateMinutes: sum('lateMinutes'), leaveDaysOnSummary: sum('leaveDaysOnSummary'),
+      avgPresentPerPerson: withData.length ? Math.round((sum('present') / withData.length) * 10) / 10 : null,
+    };
+  };
+  const names = ['กองบริหารงานสำนักวิจัยฯ', 'กองบริหารงานวิจัย', 'กองบริหารงานบริการวิชาการ'];
+  const codes = ['DIV_OFFICE', 'DIV_RESEARCH', 'DIV_ACADEMIC_SERVICE'];
+  const slices = [org.rows.slice(0, 4), org.rows.slice(4, 8), org.rows.slice(8, 11)];
+  const unassigned = org.rows.slice(11);
+  return {
+    scope: org.scope, year, month, buddhistYear: org.buddhistYear, periodLabel: org.periodLabel, totals: org.totals,
+    divisions: slices.map((rows, i) => ({ code: codes[i], nameTh: names[i], rows, ...bucket(rows) })),
+    unassigned: { ...bucket(unassigned), rows: unassigned },
+    ambiguous: { ...bucket([]), rows: [] },
+    reconciliation: { employeesInScope: org.rows.length, assignedToDivisions: 11, unassigned: unassigned.length, ambiguous: 0, reconciled: true },
+    notices: { holidayNote: org.notices.holidayNote, membershipNote: 'ข้อมูลตัวอย่างสำหรับตรวจสอบหน้าจอเท่านั้น' },
+  };
+}
+
 function handleOrganizationReport(role: string, year: number, month: number): import('../types').OrganizationReport {
   if (!['executive', 'manager', 'admin'].includes(role)) {
     throw new ApiError(403, 'FORBIDDEN', 'Organization reports need an executive or manager scope');
@@ -442,6 +467,11 @@ export async function fixtureApiRequest<T>(
   const leaveMonthlyMatch = path.match(/^\/reports\/leave-monthly\?year=(\d+)&month=(\d+)$/);
   if (auth && method === 'GET' && leaveMonthlyMatch) {
     return handleLeaveMonthly(authFromSession().role, Number(leaveMonthlyMatch[1]), Number(leaveMonthlyMatch[2])) as T;
+  }
+
+  const divMatch = path.match(/^\/reports\/divisions\?year=(\d+)&month=(\d+)$/);
+  if (auth && method === 'GET' && divMatch) {
+    return handleDivisions(authFromSession().role, Number(divMatch[1]), Number(divMatch[2])) as T;
   }
 
   const orgMatch = path.match(/^\/reports\/organization\?year=(\d+)&month=(\d+)$/);

@@ -58,6 +58,11 @@ const router = createRouter({
           component: () => import('../views/ReportsView.vue'),
         },
         {
+          path: 'dashboard',
+          name: 'dashboard',
+          component: () => import('../views/ExecutiveDashboardView.vue'),
+        },
+        {
           path: 'leave/monthly',
           name: 'leave-monthly',
           component: () => import('../views/LeaveMonthlyView.vue'),

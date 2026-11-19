@@ -763,3 +763,25 @@ code {
 
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .plain-list { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.5rem; }
+
+/* Executive dashboard */
+.seg { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+.seg-btn { min-height: 44px; padding: 0 1rem; border: 1px solid var(--border, #cbd5e1); border-radius: 999px; background: var(--surface, #fff); color: inherit; font: inherit; cursor: pointer; }
+.seg-btn[aria-pressed='true'] { background: #1e40af; border-color: #1e40af; color: #fff; }
+.division-list { list-style: none; margin: 0 0 1.25rem; padding: 0; display: grid; gap: 0.75rem; }
+.division { width: 100%; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) 6.5rem; grid-template-areas: 'name bar value' 'meta bar value'; gap: 0.1rem 1rem; align-items: center; text-align: left; padding: 0.75rem 1rem; min-height: 44px; border: 1px solid var(--border, #cbd5e1); border-radius: 0.75rem; background: var(--surface, #fff); color: inherit; font: inherit; cursor: pointer; }
+.division:hover { border-color: #1e40af; }
+.division--on { border-color: #1e40af; box-shadow: 0 0 0 2px #1e40af; }
+.division--warn { border-style: dashed; }
+.division-name { grid-area: name; font-weight: 700; }
+.division-meta { grid-area: meta; font-size: 0.875rem; opacity: 0.75; }
+.bar { grid-area: bar; height: 0.75rem; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: #1e40af; border-radius: 999px; transition: width 0.25s ease; }
+.division--warn .bar-fill { background: #b45309; }
+.division-value { grid-area: value; text-align: right; font-weight: 700; font-size: 1.25rem; white-space: nowrap; }
+.division-value small { font-weight: 400; font-size: 0.8rem; opacity: 0.75; }
+.total-row td { font-weight: 700; border-top: 2px solid #94a3b8; }
+@media (max-width: 640px) {
+  .division { grid-template-columns: 1fr auto; grid-template-areas: 'name value' 'meta value' 'bar bar'; }
+}
+@media (prefers-reduced-motion: reduce) { .bar-fill { transition: none; } }
