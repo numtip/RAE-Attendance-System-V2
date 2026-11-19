@@ -196,7 +196,11 @@ export async function downloadOrganizationReport(year: number, month: number, fo
   return downloadReport('organization', year, month, format);
 }
 
-async function downloadReport(kind: 'personal' | 'organization', year: number, month: number, format: 'pdf' | 'xlsx'): Promise<void> {
+export async function downloadLeaveMonthly(year: number, month: number, format: 'pdf' | 'xlsx'): Promise<void> {
+  return downloadReport('leave-monthly', year, month, format);
+}
+
+async function downloadReport(kind: 'personal' | 'organization' | 'leave-monthly', year: number, month: number, format: 'pdf' | 'xlsx'): Promise<void> {
   const token = getAccessToken();
   const response = await fetch(
     `${API_BASE}/reports/${kind}/export?year=${year}&month=${month}&format=${format}`,

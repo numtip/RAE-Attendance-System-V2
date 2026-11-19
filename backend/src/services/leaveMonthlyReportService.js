@@ -1,4 +1,6 @@
 const { HttpError } = require('../utils/httpError');
+const { writeXlsx } = require('./export/xlsxWriter');
+const { renderLeaveMonthlyPdf } = require('./export/leaveMonthlyPdf');
 const { resolveScope } = require('./authorizationService');
 const { reportHelpers } = require('./reportService');
 
@@ -11,6 +13,21 @@ const TYPES = [
 ];
 const TYPE_LABEL = { ...Object.fromEntries(TYPES.map((t) => [t.type, t.labelTh])), other: 'ลาอื่น ๆ' };
 const STATUS_LABEL = { approved: 'อนุมัติ', pending: 'รออนุมัติ', rejected: 'ไม่อนุมัติ' };
+
+const PART_LABEL = { FULL: 'เต็มวัน', AM: 'ครึ่งวันเช้า', PM: 'ครึ่งวันบ่าย', UNKNOWN: 'ไม่ทราบช่วงเวลา' };
+const REASON_LABEL = {
+  both_scans_present: 'มีหมายเหตุลา แต่มีเวลาสแกนทั้งเข้าและออก',
+  scan_contradicts_remark: 'เวลาสแกนขัดกับหมายเหตุ',
+  scan_time_implausible: 'เวลาสแกนไม่สอดคล้องกับช่วงที่ลา',
+  non_working_day: 'ตรงกับวันหยุด/วันที่ไม่ใช่วันทำงาน',
+  multiple_leave_types: 'มีหมายเหตุการลามากกว่าหนึ่งประเภทในวันเดียว',
+  conflicts_with_absent_flag: 'ขัดแย้งกับหมายเหตุอื่นของ HIP ในวันเดียวกัน',
+  conflicts_with_official_duty: 'มีหมายเหตุไปราชการในวันเดียวกัน',
+  duplicate_source_conflict: 'พบรายการซ้ำที่จัดประเภทไม่ตรงกัน',
+};
+const RECORDED_NOTE = 'ข้อมูลที่บันทึกจากรายงาน HIP (หมายเหตุ) เป็นผลการจัดประเภทจากข้อมูลการสแกน ไม่ใช่หลักฐานการอนุมัติ '
+  + 'และไม่ใช้หักวันลาคงเหลือ; ครึ่งวัน = 0.5 วัน (เช้า = มีเวลาออกอย่างเดียว, บ่าย = มีเวลาเข้าอย่างเดียว); '
+  + 'รายการที่ขัดแย้งหรือคลุมเครือแยกไว้ให้ตรวจสอบและไม่รวมในยอด';
 
 const DAY_MS = 86400000;
 function utcDay(iso) {
@@ -36,6 +53,21 @@ const NOTICE = 'จำนวนวันนับเป็นวันตาม�
  */
 function createLeaveMonthlyReportService({ repositories }) {
   return {
+    async export(auth, query) {
+      const format = query.format;
+      if (format !== 'pdf' && format !== 'xlsx') {
+        throw new HttpError(400, 'EXPORT_INVALID_FORMAT', 'format must be pdf or xlsx');
+      }
+      const report = await this.monthly(auth, query);
+      const filename = `leave-${report.scope}-${report.buddhistYear}-${String(report.month).padStart(2, '0')}.${format}`;
+      if (format === 'pdf') return { filename, contentType: 'application/pdf', buffer: await renderLeaveMonthlyPdf(report) };
+      return {
+        filename,
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: writeLeaveXlsx(report),
+      };
+    },
+
     async monthly(auth, query) {
       const year = Number(query.year);
       const month = Number(query.month);
@@ -55,6 +87,19 @@ function createLeaveMonthlyReportService({ repositories }) {
       const recordsInSystem = await repositories.leave.countAll();
       const overlapping = (await repositories.leave.listOverlapping(start, end))
         .filter((row) => inScope.has(row.employeeUid));
+
+      const periodKey = `${year}-${String(month).padStart(2, '0')}`;
+      const covered = (await repositories.leaveRecords.coveredPeriods()).includes(periodKey);
+      const recordedRows = covered
+        ? (await repositories.leaveRecords.listBetween(start, end)).filter((row) => inScope.has(row.employeeUid))
+        : [];
+      const emptyRecorded = () => Object.fromEntries(TYPES.map((t) => [t.type, { days: 0, records: 0, fullDays: 0, halfDays: 0 }]));
+      const recordedTotals = { byType: emptyRecorded(), needsReviewRecords: 0 };
+      const recordedByUid = new Map();
+      for (const record of recordedRows) {
+        if (!recordedByUid.has(record.employeeUid)) recordedByUid.set(record.employeeUid, []);
+        recordedByUid.get(record.employeeUid).push(record);
+      }
 
       let unmatched = 0;
       const byUid = new Map();
@@ -101,7 +146,32 @@ function createLeaveMonthlyReportService({ repositories }) {
           };
         }).sort((a, b) => a.startDate.localeCompare(b.startDate));
         const hasData = recordsInSystem > 0;
+        const myRecorded = (recordedByUid.get(employee.employeeUid) || []).sort((a, b) => a.leaveDate.localeCompare(b.leaveDate));
+        const recordedBy = emptyRecorded();
+        let needsReview = 0;
+        for (const record of myRecorded) {
+          if (record.reviewStatus !== 'candidate') { needsReview += 1; recordedTotals.needsReviewRecords += 1; continue; }
+          for (const bucket of [recordedBy[record.leaveType], recordedTotals.byType[record.leaveType]]) {
+            bucket.days += Number(record.dayFraction);
+            bucket.records += 1;
+            if (record.dayPart === 'FULL') bucket.fullDays += 1; else bucket.halfDays += 1;
+          }
+        }
         return {
+          recorded: covered ? recordedBy : null,
+          recordedNeedsReview: covered ? needsReview : null,
+          recordedDetails: myRecorded.map((record) => ({
+            date: record.leaveDate,
+            dateLabel: thaiDate(record.leaveDate),
+            leaveType: record.leaveType,
+            typeLabel: TYPE_LABEL[record.leaveType] || record.leaveType,
+            dayPart: record.dayPart,
+            partLabel: PART_LABEL[record.dayPart] || record.dayPart,
+            dayFraction: record.dayFraction,
+            reviewStatus: record.reviewStatus,
+            reasonLabels: record.reviewReason ? record.reviewReason.split(',').map((code) => REASON_LABEL[code] || code) : [],
+            approvalStatus: record.approvalStatus || 'unverified',
+          })),
           employeeId: employee.employeeId,
           employeeName: `${employee.firstNameTh} ${employee.lastNameTh}`.trim(),
           hasLeaveData: hasData,
@@ -126,11 +196,63 @@ function createLeaveMonthlyReportService({ repositories }) {
           note: recordsInSystem > 0 ? null : 'ยังไม่มีข้อมูลการลาในระบบ (ยังไม่ได้นำเข้าจากแหล่งข้อมูลการลา) — ไม่ได้หมายความว่าไม่มีผู้ลา',
         },
         totals: recordsInSystem > 0 ? totals : null,
+        recordedCoverage: {
+          periodCovered: covered,
+          note: covered ? null : 'เดือนนี้ยังไม่มีข้อมูลการลาที่บันทึกจากรายงาน HIP — ไม่ได้หมายความว่าไม่มีผู้ลา',
+        },
+        recordedTotals: covered ? recordedTotals : null,
         rows,
-        notices: { dayCounting: NOTICE },
+        notices: { dayCounting: NOTICE, recorded: RECORDED_NOTE },
       };
     },
   };
+}
+
+function writeLeaveXlsx(report) {
+  const none = 'ไม่มีข้อมูล';
+  const cell = (row, type) => (row.recorded ? row.recorded[type].days : none);
+  return writeXlsx({
+    sheets: [
+      {
+        name: 'สรุป',
+        columns: [{ header: 'รายการ', width: 30 }, { header: 'ค่า', width: 60 }],
+        rows: [
+          ['ช่วงวันที่', report.periodLabel],
+          ['ปี พ.ศ.', report.buddhistYear],
+          ...report.types.map((t) => [`${t.labelTh} (วัน)`, report.recordedTotals ? report.recordedTotals.byType[t.type].days : none]),
+          ['รายการรอตรวจสอบ (ไม่รวมในยอด)', report.recordedTotals ? report.recordedTotals.needsReviewRecords : none],
+          ['หมายเหตุ', report.notices.recorded],
+          ['การนับวัน', report.notices.dayCounting],
+        ],
+      },
+      {
+        name: 'รายบุคคล',
+        columns: [
+          { header: 'รหัสพนักงาน', width: 14 }, { header: 'ชื่อ-นามสกุล', width: 30 },
+          ...report.types.map((t) => ({ header: `${t.labelTh} (วัน)`, width: 16 })),
+          { header: 'รอตรวจสอบ (รายการ)', width: 20 },
+        ],
+        rows: report.rows.map((row) => [
+          row.employeeId, row.employeeName, ...report.types.map((t) => cell(row, t.type)),
+          row.recordedNeedsReview === null ? none : row.recordedNeedsReview,
+        ]),
+      },
+      {
+        name: 'รายการ',
+        columns: [
+          { header: 'รหัสพนักงาน', width: 14 }, { header: 'ชื่อ-นามสกุล', width: 30 }, { header: 'วันที่', width: 20 },
+          { header: 'ประเภท', width: 14 }, { header: 'ช่วงเวลา', width: 16 }, { header: 'จำนวนวัน', width: 12 },
+          { header: 'สถานะ', width: 18 }, { header: 'เหตุผลที่ต้องตรวจสอบ', width: 60 },
+        ],
+        rows: report.rows.flatMap((row) => row.recordedDetails.map((d) => [
+          row.employeeId, row.employeeName, d.dateLabel, d.typeLabel, d.partLabel,
+          d.dayFraction === null ? '' : d.dayFraction,
+          d.reviewStatus === 'candidate' ? 'บันทึกจาก HIP (ยังไม่ยืนยันอนุมัติ)' : 'รอตรวจสอบ',
+          d.reasonLabels.join('; '),
+        ])),
+      },
+    ],
+  });
 }
 
 module.exports = { createLeaveMonthlyReportService, overlapDays };

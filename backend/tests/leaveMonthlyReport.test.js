@@ -15,6 +15,7 @@ function makeRepos(leaveRows, grants = [], members = []) {
   return {
     authorization: { async grantsFor() { return grants; }, async uidsInOrgUnits() { return members; } },
     employees: { async list() { return employees; } },
+    leaveRecords: { async coveredPeriods() { return []; }, async listBetween() { return []; } },
     leave: {
       async countAll() { return leaveRows.length; },
       async listOverlapping(start, end) { return leaveRows.filter((r) => r.startDate <= end && r.endDate >= start); },
@@ -93,4 +94,83 @@ test('an employee sees only their own row; a manager only the granted unit', asy
 test('invalid period is rejected', async () => {
   const service = createLeaveMonthlyReportService({ repositories: makeRepos([], execGrant) });
   await assert.rejects(() => service.monthly(exec, { year: '2026', month: '13' }), (e) => e.status === 400);
+});
+
+// ---- HIP-recorded leave (0.5 / 1.0 day) -------------------------------------------------------
+function withRecorded(records, coveredPeriods, grants = execGrant, members = []) {
+  const repos = makeRepos([], grants, members);
+  repos.leaveRecords = {
+    async coveredPeriods() { return coveredPeriods; },
+    async listBetween(start, end) { return records.filter((r) => r.leaveDate >= start && r.leaveDate <= end); },
+  };
+  return repos;
+}
+const rec = (over) => ({ employeeUid: A, leaveDate: '2026-03-04', leaveType: 'personal', dayPart: 'FULL', dayFraction: 1, reviewStatus: 'candidate', reviewReason: null, approvalStatus: 'unverified', ...over });
+
+test('recorded leave sums 0.5/1.0 days per type, keeps review items out of totals, and stays unverified', async () => {
+  const repos = withRecorded([
+    rec({}),
+    rec({ leaveDate: '2026-03-05', dayPart: 'PM', dayFraction: 0.5 }),
+    rec({ leaveDate: '2026-03-06', leaveType: 'sick', dayPart: 'AM', dayFraction: 0.5 }),
+    rec({ leaveDate: '2026-03-09', leaveType: 'vacation', dayPart: 'UNKNOWN', dayFraction: null, reviewStatus: 'needs_review', reviewReason: 'both_scans_present' }),
+    rec({ employeeUid: B, leaveDate: '2026-03-10', leaveType: 'vacation' }),
+  ], ['2026-03']);
+  const report = await createLeaveMonthlyReportService({ repositories: repos }).monthly(exec, { year: '2026', month: '3' });
+  const a = report.rows.find((r) => r.employeeId === '1001');
+  assert.deepEqual(a.recorded.personal, { days: 1.5, records: 2, fullDays: 1, halfDays: 1 });
+  assert.deepEqual(a.recorded.sick, { days: 0.5, records: 1, fullDays: 0, halfDays: 1 });
+  assert.equal(a.recorded.vacation.days, 0, 'the needs_review record is not counted');
+  assert.equal(a.recordedNeedsReview, 1);
+  assert.equal(report.recordedTotals.byType.vacation.days, 1, 'only the other employee full day counts');
+  assert.equal(report.recordedTotals.needsReviewRecords, 1);
+  const review = a.recordedDetails.find((d) => d.reviewStatus === 'needs_review');
+  assert.equal(review.dayFraction, null);
+  assert.ok(review.reasonLabels.length === 1);
+  assert.ok(a.recordedDetails.every((d) => d.approvalStatus === 'unverified'));
+  assert.match(report.notices.recorded, /ไม่ใช่หลักฐานการอนุมัติ/);
+  assert.equal(report.totals, null, 'official approved leave is still "no data", separate from HIP-recorded');
+});
+
+test('a month the HIP source never covered is "no data"; a covered month with none is a real zero', async () => {
+  const records = [rec({ leaveDate: '2026-03-04' })];
+  const uncovered = await createLeaveMonthlyReportService({ repositories: withRecorded(records, ['2026-02']) }).monthly(exec, { year: '2026', month: '3' });
+  assert.equal(uncovered.recordedTotals, null);
+  assert.ok(uncovered.rows.every((r) => r.recorded === null));
+  assert.match(uncovered.recordedCoverage.note, /ไม่ได้หมายความว่าไม่มีผู้ลา/);
+  const covered = await createLeaveMonthlyReportService({ repositories: withRecorded([], ['2026-03']) }).monthly(exec, { year: '2026', month: '3' });
+  assert.equal(covered.recordedTotals.byType.personal.days, 0);
+  assert.equal(covered.rows[0].recorded.personal.days, 0);
+});
+
+test('recorded leave respects scope: manager and employee never see out-of-scope rows', async () => {
+  const records = [rec({ employeeUid: A }), rec({ employeeUid: B, leaveDate: '2026-03-05' })];
+  const mgrGrant = [{ employeeUid: 'm', role: 'MANAGER', scopeType: 'org_unit', orgUnitCode: 'U1' }];
+  const team = await createLeaveMonthlyReportService({ repositories: withRecorded(records, ['2026-03'], mgrGrant, [A]) })
+    .monthly({ role: 'manager', employeeUid: 'm' }, { year: '2026', month: '3' });
+  assert.deepEqual(team.rows.map((r) => r.employeeId), ['1001']);
+  assert.equal(team.recordedTotals.byType.personal.records, 1);
+  const self = await createLeaveMonthlyReportService({ repositories: withRecorded(records, ['2026-03'], []) })
+    .monthly({ role: 'employee', employeeUid: B }, { year: '2026', month: '3' });
+  assert.deepEqual(self.rows.map((r) => r.employeeId), ['1002']);
+  assert.ok(!JSON.stringify(self).includes('สมชาย'));
+});
+
+test('exports carry fractional days and no absence wording', async () => {
+  const zlib = require('node:zlib');
+  const repos = withRecorded([rec({ dayPart: 'PM', dayFraction: 0.5 })], ['2026-03']);
+  const service = createLeaveMonthlyReportService({ repositories: repos });
+  const x = await service.export(exec, { year: '2026', month: '3', format: 'xlsx' });
+  assert.equal(x.buffer.subarray(0, 2).toString(), 'PK');
+  const parts = [];
+  for (let o = 0; o + 30 < x.buffer.length && x.buffer.readUInt32LE(o) === 0x04034b50;) {
+    const nl = x.buffer.readUInt16LE(o + 26), cs = x.buffer.readUInt32LE(o + 18), ds = o + 30 + nl;
+    parts.push(zlib.inflateRawSync(x.buffer.subarray(ds, ds + cs)).toString('utf8')); o = ds + cs;
+  }
+  const xml = parts.join('\n');
+  assert.match(xml, /<v>0\.5<\/v>/);
+  assert.match(xml, /ครึ่งวันบ่าย/);
+  assert.doesNotMatch(xml, /ขาด/);
+  const p = await service.export(exec, { year: '2026', month: '3', format: 'pdf' });
+  assert.equal(p.buffer.subarray(0, 5).toString(), '%PDF-');
+  await assert.rejects(() => service.export(exec, { year: '2026', month: '3', format: 'csv' }), (e) => e.status === 400);
 });

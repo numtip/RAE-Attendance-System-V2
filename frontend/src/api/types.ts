@@ -162,7 +162,24 @@ export interface LeaveMonthlyDetail {
   crossesMonth: boolean;
   counted: boolean;
 }
+export interface RecordedBucket { days: number; records: number; fullDays: number; halfDays: number }
+export interface RecordedDetail {
+  date: string;
+  dateLabel: string;
+  leaveType: string;
+  typeLabel: string;
+  dayPart: 'FULL' | 'AM' | 'PM' | 'UNKNOWN';
+  partLabel: string;
+  dayFraction: number | null;
+  reviewStatus: 'candidate' | 'needs_review';
+  reasonLabels: string[];
+  approvalStatus: string;
+}
 export interface LeaveMonthlyRow {
+  /** HIP-recorded leave (not approval). null = that month was never imported (NOT zero). */
+  recorded: Record<LeaveKind, RecordedBucket> | null;
+  recordedNeedsReview: number | null;
+  recordedDetails: RecordedDetail[];
   employeeId: string;
   employeeName: string;
   hasLeaveData: boolean;
@@ -179,10 +196,12 @@ export interface LeaveMonthlyReport {
   buddhistYear: number;
   periodLabel: string;
   types: { type: LeaveKind; labelTh: string }[];
+  recordedCoverage: { periodCovered: boolean; note: string | null };
+  recordedTotals: { byType: Record<LeaveKind, RecordedBucket>; needsReviewRecords: number } | null;
   coverage: { leaveRecordsInSystem: number; hasLeaveData: boolean; unmatchedRecordsExcluded: number; note: string | null };
   totals: { byType: Record<LeaveKind, LeaveBucket>; pendingRequests: number; rejectedRequests: number; otherApprovedRequests: number } | null;
   rows: LeaveMonthlyRow[];
-  notices: { dayCounting: string };
+  notices: { dayCounting: string; recorded: string };
 }
 
 export interface OrganizationReportRow {
