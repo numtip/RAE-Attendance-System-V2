@@ -164,6 +164,13 @@ test('attendance boundary resolves employee_id and Attendance Core receives empl
   const uid = await resolveEmployeeUidFromBusinessId(container.repositories, 'E-USER');
   assert.equal(uid, '22222222-2222-2222-2222-222222222222');
 
+  const executiveUid = '11111111-1111-1111-1111-111111111111';
+  container.repositories.authorization = {
+    async grantsFor(grantee) {
+      return grantee === executiveUid ? [{ employeeUid: grantee, role: 'EXECUTIVE', scopeType: 'organization' }] : [];
+    },
+    async uidsInOrgUnits() { return []; },
+  };
   const compute = createAttendanceComputeService({
     container,
     coreClient: {
@@ -182,7 +189,7 @@ test('attendance boundary resolves employee_id and Attendance Core receives empl
     },
   });
   const result = await compute.evaluateDay(
-    { role: 'admin' },
+    { role: 'executive', employeeUid: executiveUid },
     { employee_id: 'E-USER', date: '2026-08-03' },
   );
   assert.equal(result.employeeUid, '22222222-2222-2222-2222-222222222222');

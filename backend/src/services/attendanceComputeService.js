@@ -1,14 +1,34 @@
 const { HttpError } = require('../utils/httpError');
 const { createAttendanceCoreClient } = require('./attendanceCoreClient');
 const { createEmployeeIdentityService } = require('./employeeIdentityService');
+const { resolveScope } = require('./authorizationService');
 
 const ALLOWED_SOURCES = new Set(['CSV_IMPORT', 'FACESCAN_DB', 'API', 'MANUAL_CORRECTION']);
 
-function assertCanCompute(auth) {
-  if (auth.role === 'admin' || auth.role === 'manager') {
-    return;
+// One month of days per evaluate-period call: the core is a rule evaluator, not a bulk exporter.
+const MAX_PERIOD_DAYS = 31;
+
+/**
+ * Evaluation is an attendance read, so it uses the same authorization as every other read: the
+ * canonical role plus a data scope from grants (an organization-wide executive grant, or a manager
+ * with org-unit grants). A raw role string ('admin'/'manager') is not an authorization — it let any
+ * holder evaluate and resolve any employee, and the executive role could not use it at all.
+ * Fails closed when repositories are missing: without them there is no scope to check.
+ */
+async function resolveComputeScope(auth, repositories) {
+  if (!repositories) {
+    throw new HttpError(503, 'IDENTITY_UNAVAILABLE', 'Employee repositories are not configured');
   }
-  throw new HttpError(403, 'FORBIDDEN', 'Attendance evaluation requires a manager or admin role');
+  const scope = await resolveScope(auth, repositories, 'data');
+  if (!(scope.all || scope.broad)) {
+    throw new HttpError(403, 'FORBIDDEN', 'Attendance evaluation requires a data scope (executive or manager grant)');
+  }
+  return scope;
+}
+
+function assertEmployeeInScope(scope, employeeUid) {
+  if (scope.all || scope.uids.has(employeeUid)) return;
+  throw new HttpError(403, 'FORBIDDEN', 'This employee is outside your scope');
 }
 
 function normalizeEvaluateDayBody(body) {
@@ -66,41 +86,40 @@ function createAttendanceComputeService(options = {}) {
 
   return {
     async evaluateDay(auth, body) {
-      assertCanCompute(auth);
+      const scope = await resolveComputeScope(auth, repositories);
       const boundaryPayload = normalizeEvaluateDayBody(body);
-      let employeeUid;
-      if (repositories) {
-        employeeUid = await resolveEmployeeUidFromBusinessId(
-          repositories,
-          boundaryPayload.employee_id,
-          nationalIdProtector,
-        );
-      }
-      const corePayload = employeeUid
-        ? buildCoreEvaluateDayPayload(boundaryPayload, employeeUid)
-        : boundaryPayload;
+      const employeeUid = await resolveEmployeeUidFromBusinessId(
+        repositories,
+        boundaryPayload.employee_id,
+        nationalIdProtector,
+      );
+      assertEmployeeInScope(scope, employeeUid);
+      const corePayload = buildCoreEvaluateDayPayload(boundaryPayload, employeeUid);
       const result = await coreClient.evaluateDay(corePayload);
       return {
         ...result,
-        ...(employeeUid ? { employeeUid } : {}),
+        employeeUid,
         source: boundaryPayload.source,
         explainedBy: 'attendance-core',
       };
     },
 
     async evaluatePeriod(auth, body) {
-      assertCanCompute(auth);
+      const scope = await resolveComputeScope(auth, repositories);
       const days = Array.isArray(body.days) ? body.days : [];
       if (!days.length) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'days must be a non-empty array');
       }
+      if (days.length > MAX_PERIOD_DAYS) {
+        throw new HttpError(400, 'VALIDATION_ERROR', `days must not exceed ${MAX_PERIOD_DAYS} entries`);
+      }
       const normalizedDays = days.map((day) => normalizeEvaluateDayBody(day));
-      const coreDays = repositories
-        ? await Promise.all(normalizedDays.map(async (day) => {
-          const employeeUid = await resolveEmployeeUidFromBusinessId(repositories, day.employee_id, nationalIdProtector);
-          return buildCoreEvaluateDayPayload(day, employeeUid);
-        }))
-        : normalizedDays;
+      // Resolve and check every day before the core sees any of them: one out-of-scope day refuses the call.
+      const coreDays = await Promise.all(normalizedDays.map(async (day) => {
+        const employeeUid = await resolveEmployeeUidFromBusinessId(repositories, day.employee_id, nationalIdProtector);
+        assertEmployeeInScope(scope, employeeUid);
+        return buildCoreEvaluateDayPayload(day, employeeUid);
+      }));
       return coreClient.evaluatePeriod({
         month: body.month || '',
         days: coreDays,
@@ -108,7 +127,6 @@ function createAttendanceComputeService(options = {}) {
     },
 
     async explainResult(auth, body) {
-      assertCanCompute(auth);
       const evaluated = await this.evaluateDay(auth, body);
       return {
         employee_id: evaluated.employee_id,
@@ -124,6 +142,7 @@ function createAttendanceComputeService(options = {}) {
 }
 
 module.exports = {
+  MAX_PERIOD_DAYS,
   createAttendanceComputeService,
   normalizeEvaluateDayBody,
   resolveEmployeeUidFromBusinessId,
