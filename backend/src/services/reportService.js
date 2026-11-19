@@ -226,4 +226,8 @@ function writePersonalXlsx(report) {
   });
 }
 
-module.exports = { createReportService };
+const reportHelpers = {
+  ABSENCE_NOTE, assertPeriod, monthBounds, thaiDate, THAI_MONTHS,
+};
+
+module.exports = { createReportService, reportHelpers };

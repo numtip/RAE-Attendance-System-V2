@@ -118,6 +118,39 @@ export interface PersonalReport {
   };
 }
 
+export interface OrganizationReportRow {
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  hasMonthlySummary: boolean;
+  workDays: number | null;
+  present: number | null;
+  late: number | null;
+  lateMinutes: number | null;
+  leaveDaysOnSummary: number | null;
+  absent: null;
+}
+
+export interface OrganizationReport {
+  scope: 'organization' | 'team';
+  year: number;
+  month: number;
+  buddhistYear: number;
+  periodLabel: string;
+  totals: {
+    employeesInScope: number;
+    employeesWithData: number;
+    employeesWithoutData: number;
+    present: number;
+    late: number;
+    lateMinutes: number;
+    leaveDaysOnSummary: number;
+    absent: null;
+  };
+  rows: OrganizationReportRow[];
+  notices: { absenceDerived: boolean; holidaysApplied: boolean; absenceNote: string };
+}
+
 export interface LeaveBalanceRow {
   employeeUid: string;
   year: number;

@@ -20,6 +20,7 @@ const { getPool, isDatabaseConfigured } = require('../../db/pool');
 const { createAttendanceComputeService } = require('../../services/attendanceComputeService');
 const { createAttendanceComputeController } = require('../../controllers/attendanceComputeController');
 const { createReportService } = require('../../services/reportService');
+const { createOrganizationReportService } = require('../../services/organizationReportService');
 const { createReportController } = require('../../controllers/reportController');
 
 function createV1Router(container) {
@@ -54,7 +55,7 @@ function createV1Router(container) {
   );
   const leave = createLeaveController(leaveService);
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
-  const reports = createReportController(createReportService(container));
+  const reports = createReportController(createReportService(container), createOrganizationReportService(container));
   const authenticate = createAuthenticate(container.repositories.accessTokenRevocations);
 
   const router = express.Router();
@@ -109,6 +110,8 @@ function createV1Router(container) {
   router.get('/leave/balance/:employeeUid', authenticate, leave.balance);
   router.get('/leave/history/:employeeUid', authenticate, leave.history);
 
+  router.get('/reports/organization/export', authenticate, reports.organizationExport);
+  router.get('/reports/organization', authenticate, reports.organization);
   router.get('/reports/personal/export', authenticate, reports.personalExport);
   router.get('/reports/personal', authenticate, reports.personal);
 

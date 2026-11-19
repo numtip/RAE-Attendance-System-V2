@@ -352,6 +352,11 @@ export async function fixtureApiRequest<T>(
     return (await handleLeaveBalance(decodeURIComponent(balanceMatch[1]), Number(balanceMatch[2]))) as T;
   }
 
+  if (auth && method === 'GET' && /^\/reports\/organization\?/.test(path)) {
+    // The review build has no org-level data; the real API answers 403 to everyone without a scope.
+    throw new ApiError(403, 'FORBIDDEN', 'Organization reports need an executive or manager scope');
+  }
+
   const reportMatch = path.match(/^\/reports\/personal\?(.+)$/);
   if (auth && method === 'GET' && reportMatch) {
     return (await handlePersonalReport(reportMatch[1])) as T;

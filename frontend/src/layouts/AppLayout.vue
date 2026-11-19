@@ -8,7 +8,7 @@ const route = useRoute();
 const router = useRouter();
 const employee = computed(() => getStoredEmployee());
 
-const nav = [
+const baseNav = [
   { name: 'profile', label: 'Profile' },
   { name: 'attendance-daily', label: 'Daily attendance' },
   { name: 'attendance-monthly', label: 'Monthly summary' },
@@ -17,6 +17,11 @@ const nav = [
   { name: 'leave-history', label: 'Leave history' },
   { name: 'reports', label: 'My report' },
 ];
+// The server decides access (executive organization grant / manager org-unit grant); the link is only
+// offered to the roles that can hold such a grant, so an employee never sees a page that always refuses.
+const nav = computed(() => (['executive', 'manager'].includes(employee.value?.role ?? '')
+  ? [...baseNav, { name: 'reports-organization', label: 'Team / organization report' }]
+  : baseNav));
 
 function isActive(name: string): boolean {
   return route.name === name;
