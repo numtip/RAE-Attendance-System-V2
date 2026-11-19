@@ -180,6 +180,10 @@ export const api = {
     apiRequest<import('./types').LeaveRow[]>(`/leave/history/${employeeUid}`),
   organizationReport: (year: number, month: number) =>
     apiRequest<import('./types').OrganizationReport>(`/reports/organization?year=${year}&month=${month}`),
+  divisionReport: (year: number, month: number) =>
+    apiRequest<import('./types').DivisionReport>(`/reports/divisions?year=${year}&month=${month}`),
+  leaveMonthlyReport: (year: number, month: number) =>
+    apiRequest<import('./types').LeaveMonthlyReport>(`/reports/leave-monthly?year=${year}&month=${month}`),
   personalReport: (year: number, month: number) =>
     apiRequest<import('./types').PersonalReport>(`/reports/personal?year=${year}&month=${month}`),
 };

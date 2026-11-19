@@ -30,6 +30,14 @@ function createFixtureRepositories() {
           .filter((row) => codes.has(row.orgUnitCode))
           .map((row) => row.employeeUid);
       },
+      async addMembership(employeeUid, orgUnitCode) {
+        if (fixtures.orgMemberships.some((row) => row.employeeUid === employeeUid && row.orgUnitCode === orgUnitCode)) return false;
+        fixtures.orgMemberships.push({ employeeUid, orgUnitCode });
+        return true;
+      },
+      async listMemberships() {
+        return fixtures.orgMemberships.map((row) => ({ employeeUid: row.employeeUid, orgUnitCode: row.orgUnitCode }));
+      },
     },
     identityLinks: createFixtureIdentityLinkRepository(),
     employeeIdentifiers: createFixtureEmployeeIdentifierRepository(fixtures.employeeIdentifiers),
