@@ -15,7 +15,7 @@ async function load() {
     rows.value = await api.leaveList();
   } catch (e) {
     rows.value = [];
-    error.value = e instanceof ApiError ? e.message : 'Failed to load leave list';
+    error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดรายการลาได้';
   } finally {
     loading.value = false;
   }
@@ -26,36 +26,30 @@ onMounted(load);
 
 <template>
   <section class="card">
-    <div class="card-head">
-      <h2>Leave list</h2>
-      <button type="button" class="btn btn--ghost" :disabled="loading" @click="load">Refresh</button>
+    <div class="page-head">
+      <h2>รายการลา</h2>
+      <button type="button" class="btn btn--ghost" :disabled="loading" @click="load">โหลดใหม่</button>
     </div>
     <AsyncState
       :loading="loading"
       :error="error"
       :empty="!loading && !error && rows.length === 0"
-      empty-message="No leave requests."
+      empty-message="ไม่มีรายการลา"
     >
       <div v-if="rows.length" class="table-scroll">
         <table class="data-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Type</th>
-            <th>Start</th>
-            <th>End</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in rows" :key="row.leaveId">
-            <td>{{ row.leaveId }}</td>
-            <td>{{ row.leaveType }}</td>
-            <td>{{ row.startDate }}</td>
-            <td>{{ row.endDate }}</td>
-            <td>{{ row.status }}</td>
-          </tr>
-        </tbody>
+          <thead>
+            <tr><th>เลขที่</th><th>ประเภท</th><th>เริ่ม</th><th>สิ้นสุด</th><th>สถานะ</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="row.leaveId">
+              <td>{{ row.leaveId }}</td>
+              <td>{{ row.leaveType }}</td>
+              <td>{{ row.startDate }}</td>
+              <td>{{ row.endDate }}</td>
+              <td>{{ row.status }}</td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </AsyncState>

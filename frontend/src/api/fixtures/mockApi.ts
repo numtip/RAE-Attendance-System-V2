@@ -281,6 +281,56 @@ async function handlePersonalReport(search: string): Promise<PersonalReport> {
   };
 }
 
+/** Review build only: synthetic people and numbers, so the page can be shown without any real record. */
+function handleOrganizationReport(role: string, year: number, month: number): import('../types').OrganizationReport {
+  if (!['executive', 'manager', 'admin'].includes(role)) {
+    throw new ApiError(403, 'FORBIDDEN', 'Organization reports need an executive or manager scope');
+  }
+  const names = ['สมชาย ตัวอย่าง', 'สมหญิง ทดสอบ', 'วิชัย สมมติ', 'อรทัย จำลอง', 'ประเสริฐ ตัวอย่าง', 'มาลี ทดสอบ',
+    'ธนากร สมมติ', 'ชนิดา จำลอง', 'สุรชัย ตัวอย่าง', 'นภา ทดสอบ', 'กิตติ สมมติ', 'พิมพ์ใจ จำลอง'];
+  const rows = names.map((employeeName, index) => {
+    const hasMonthlySummary = index !== 10;
+    return {
+      employeeId: `S${String(index + 1).padStart(3, '0')}`,
+      employeeName,
+      department: 'หน่วยงานตัวอย่าง',
+      hasMonthlySummary,
+      workDays: hasMonthlySummary ? 22 : null,
+      present: hasMonthlySummary ? 22 - (index % 3) : null,
+      late: hasMonthlySummary ? (index * 2) % 7 : null,
+      lateMinutes: hasMonthlySummary ? ((index * 2) % 7) * 11 : null,
+      leaveDaysOnSummary: hasMonthlySummary ? index % 2 : null,
+      absent: null,
+    };
+  });
+  const withData = rows.filter((row) => row.hasMonthlySummary);
+  const sum = (key: 'present' | 'late' | 'lateMinutes' | 'leaveDaysOnSummary') =>
+    withData.reduce((total, row) => total + Number(row[key] ?? 0), 0);
+  return {
+    scope: 'organization',
+    year,
+    month,
+    buddhistYear: year + 543,
+    periodLabel: `${thaiDate(`${year}-${String(month).padStart(2, '0')}-01`)} (ข้อมูลตัวอย่าง)`,
+    totals: {
+      employeesInScope: rows.length,
+      employeesWithData: withData.length,
+      employeesWithoutData: rows.length - withData.length,
+      present: sum('present'),
+      late: sum('late'),
+      lateMinutes: sum('lateMinutes'),
+      leaveDaysOnSummary: sum('leaveDaysOnSummary'),
+      absent: null,
+    },
+    rows,
+    notices: {
+      absenceDerived: false,
+      holidaysApplied: false,
+      absenceNote: 'ยอดขาดยังไม่คำนวณ: วันที่ไม่มีการสแกนยังไม่ถูกจัดเป็นวันขาด และยังไม่หักวันหยุดนักขัตฤกษ์ (รอนโยบาย)',
+    },
+  };
+}
+
 async function handleLeaveHistory(employeeUid: string): Promise<LeaveRow[]> {
   const auth = authFromSession();
   assertCanReadEmployee(auth, employeeUid);
@@ -352,9 +402,9 @@ export async function fixtureApiRequest<T>(
     return (await handleLeaveBalance(decodeURIComponent(balanceMatch[1]), Number(balanceMatch[2]))) as T;
   }
 
-  if (auth && method === 'GET' && /^\/reports\/organization\?/.test(path)) {
-    // The review build has no org-level data; the real API answers 403 to everyone without a scope.
-    throw new ApiError(403, 'FORBIDDEN', 'Organization reports need an executive or manager scope');
+  const orgMatch = path.match(/^\/reports\/organization\?year=(\d+)&month=(\d+)$/);
+  if (auth && method === 'GET' && orgMatch) {
+    return handleOrganizationReport(authFromSession().role, Number(orgMatch[1]), Number(orgMatch[2])) as T;
   }
 
   const reportMatch = path.match(/^\/reports\/personal\?(.+)$/);

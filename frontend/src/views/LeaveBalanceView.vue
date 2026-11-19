@@ -14,7 +14,7 @@ const rows = ref<LeaveBalanceRow[]>([]);
 
 async function load() {
   if (!employeeUid.value) {
-    error.value = 'Missing employee context. Sign in again.';
+    error.value = 'ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่';
     return;
   }
   loading.value = true;
@@ -23,7 +23,7 @@ async function load() {
     rows.value = await api.leaveBalance(employeeUid.value, year.value);
   } catch (e) {
     rows.value = [];
-    error.value = e instanceof ApiError ? e.message : 'Failed to load leave balance';
+    error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดวันลาคงเหลือได้';
   } finally {
     loading.value = false;
   }
@@ -34,15 +34,15 @@ onMounted(load);
 
 <template>
   <section class="card">
-    <div class="card-head">
-      <h2>Leave balance</h2>
-      <div class="inline-controls">
-        <label class="field field--inline">
-          <span>Year</span>
-          <input v-model.number="year" type="number" min="2000" max="2100" />
+    <div class="page-head">
+      <h2>วันลาคงเหลือ</h2>
+      <form class="period" @submit.prevent="load">
+        <label class="field">
+          <span>ปี (ค.ศ.) <em class="field-hint">พ.ศ. {{ year + 543 }}</em></span>
+          <input v-model.number="year" type="number" min="2000" max="2100" inputmode="numeric" />
         </label>
-        <button type="button" class="btn btn--primary" :disabled="loading" @click="load">Load</button>
-      </div>
+        <button type="submit" class="btn btn--primary" :disabled="loading">{{ loading ? 'กำลังโหลด…' : 'แสดงข้อมูล' }}</button>
+      </form>
     </div>
     <AsyncState
       :loading="loading"
@@ -52,22 +52,17 @@ onMounted(load);
     >
       <div v-if="rows.length" class="table-scroll">
         <table class="data-table">
-        <thead>
-          <tr>
-            <th>Type</th>
-            <th>Total</th>
-            <th>Used</th>
-            <th>Remaining</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in rows" :key="`${row.leaveType}-${row.year}`">
-            <td>{{ row.leaveType }}</td>
-            <td>{{ row.totalDays }}</td>
-            <td>{{ row.usedDays }}</td>
-            <td>{{ row.remainingDays }}</td>
-          </tr>
-        </tbody>
+          <thead>
+            <tr><th>ประเภท</th><th class="num">ทั้งหมด</th><th class="num">ใช้ไป</th><th class="num">คงเหลือ</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="`${row.leaveType}-${row.year}`">
+              <td>{{ row.leaveType }}</td>
+              <td class="num">{{ row.totalDays }}</td>
+              <td class="num">{{ row.usedDays }}</td>
+              <td class="num">{{ row.remainingDays }}</td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </AsyncState>
