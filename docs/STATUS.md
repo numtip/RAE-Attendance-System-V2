@@ -42,7 +42,7 @@
 | Title display | `title_th` is shown on the profile page only; `first_name_th`/`last_name_th` stay title-free so reports and exports print the same names. `/me` returns `titleTh` for 52 of 52 (49 verified before the last 3 rows were imported; the final count is a DB query) | PROD_DEPLOYED |
 | Backups / rollback | DB dumps `…20261120T074512-pre-employee-profile-import` and `…T080853-pre-title-import`, `…T085253-pre-3-employees-profile` (backups dir); `prod-dark/docker-compose.yml.bak-pre-4bd7790`; `prod-dark/frontend-dist.prev-d1a1c2e` and `.prev-4bd7790` | VERIFIED |
 
-Open: authenticated profile page on Production **not yet checked** (needs a real SSO session). The personnel file is the only source of these fields; a row for a person not yet onboarded is reported by the import and never auto-created.
+Profile page "ข้อมูลของฉัน" on Production: **REAL_USER_QA passed** — checked by the owner in a real session on 2026-11-20. The personnel file is the only source of these fields; a row for a person not yet onboarded is reported by the import and never auto-created.
 
 ## Branding + Thai localization — 2026-11-20 (frontend only, no backend/DB/API change)
 
