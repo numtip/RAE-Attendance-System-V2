@@ -313,3 +313,17 @@
     padding: 0;
   }
 }
+
+/* Brand lockup: RAE People Hub + subtitles + full organization name */
+.brand-sub--en {
+  font-size: 0.72rem;
+  color: #c3cfdf;
+  overflow-wrap: anywhere;
+}
+
+.brand-sub--org {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgb(255 255 255 / 12%);
+  font-size: 0.72rem;
+}

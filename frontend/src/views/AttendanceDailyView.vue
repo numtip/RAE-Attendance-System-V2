@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessageTh } from '../utils/i18n';
 import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import type { AttendanceRecord } from '../api/types';
@@ -7,7 +8,8 @@ import AsyncState from '../components/AsyncState.vue';
 import PageHeader from '../components/PageHeader.vue';
 import KpiTile from '../components/KpiTile.vue';
 import StatusChip from '../components/StatusChip.vue';
-import { roleLabel } from '../utils/thai';
+import { formatThaiDate, roleLabel } from '../utils/thai';
+import ThaiDateInput from '../components/ThaiDateInput.vue';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -49,7 +51,7 @@ async function load() {
     }
   } catch (e) {
     rows.value = [];
-    error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดข้อมูลลงเวลาได้';
+    error.value = errorMessageTh(e, 'ไม่สามารถโหลดข้อมูลลงเวลาได้');
   } finally {
     loading.value = false;
   }
@@ -87,10 +89,7 @@ onMounted(load);
     <form class="period" @submit.prevent="load">
       <div class="daynav">
         <button type="button" class="btn btn--ghost" aria-label="วันก่อนหน้า" :disabled="loading" @click="shiftDay(-1)">‹</button>
-        <label class="field">
-          <span>วันที่</span>
-          <input v-model="date" type="date" />
-        </label>
+        <ThaiDateInput v-model="date" />
         <button type="button" class="btn btn--ghost" aria-label="วันถัดไป" :disabled="loading" @click="shiftDay(1)">›</button>
       </div>
       <button type="button" class="btn btn--ghost" :disabled="loading" @click="goToday">วันนี้</button>
@@ -124,7 +123,7 @@ onMounted(load);
                   </template>
                   <span v-else class="muted">ไม่พบข้อมูลพนักงาน</span>
                 </td>
-                <td data-label="วันที่">{{ row.date }}</td>
+                <td data-label="วันที่">{{ formatThaiDate(row.date) }}</td>
                 <td data-label="เวลาเข้า">{{ bangkokTime(row.checkIn) }}</td>
                 <td data-label="เวลาออก">{{ bangkokTime(row.checkOut) }}</td>
                 <td data-label="สถานะ"><StatusChip :label="statusLabel(row.status)" /></td>

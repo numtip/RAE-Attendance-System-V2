@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { errorMessageTh } from '../utils/i18n';
 import { computed, onMounted, ref } from 'vue';
-import { ApiError, api } from '../api/client';
+import { api } from '../api/client';
 import type { EmployeePublic } from '../api/types';
 import AsyncState from '../components/AsyncState.vue';
 import PageHeader from '../components/PageHeader.vue';
@@ -17,7 +18,7 @@ async function load() {
     profile.value = await api.me();
   } catch (e) {
     profile.value = null;
-    error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดข้อมูลผู้ใช้ได้';
+    error.value = errorMessageTh(e, 'ไม่สามารถโหลดข้อมูลผู้ใช้ได้');
   } finally {
     loading.value = false;
   }

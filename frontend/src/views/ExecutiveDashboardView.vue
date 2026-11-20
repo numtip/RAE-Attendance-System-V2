@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessageTh } from '../utils/i18n';
 import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import type { DivisionBucket, DivisionReport, OrganizationReportRow } from '../api/types';
@@ -66,7 +67,7 @@ async function load() {
   } catch (e) {
     error.value = e instanceof ApiError && e.status === 403
       ? 'ไม่มีสิทธิ์ดูแดชบอร์ด — ต้องเป็นผู้บริหารหรือผู้จัดการที่ได้รับสิทธิ์'
-      : (e instanceof ApiError ? e.message : 'ไม่สามารถโหลดแดชบอร์ดได้');
+      : (errorMessageTh(e, 'ไม่สามารถโหลดแดชบอร์ดได้'));
   } finally {
     loading.value = false;
   }

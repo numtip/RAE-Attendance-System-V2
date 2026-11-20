@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { errorMessageTh } from '../utils/i18n';
 import { computed, onMounted, ref } from 'vue';
-import { ApiError, api, downloadLeaveMonthly } from '../api/client';
+import { api, downloadLeaveMonthly } from '../api/client';
 import type { LeaveKind, LeaveMonthlyReport, LeaveMonthlyRow } from '../api/types';
 import AsyncState from '../components/AsyncState.vue';
 import KpiTile from '../components/KpiTile.vue';
@@ -47,7 +48,7 @@ async function load() {
   try {
     report.value = await api.leaveMonthlyReport(year.value, month.value);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดสรุปการลาได้';
+    error.value = errorMessageTh(e, 'ไม่สามารถโหลดสรุปการลาได้');
   } finally {
     loading.value = false;
   }
@@ -58,7 +59,7 @@ async function download(format: 'pdf' | 'xlsx') {
   try {
     await downloadLeaveMonthly(year.value, month.value, format);
   } catch (e) {
-    exportError.value = e instanceof ApiError ? e.message : 'ส่งออกรายงานไม่สำเร็จ';
+    exportError.value = errorMessageTh(e, 'ส่งออกรายงานไม่สำเร็จ');
   }
 }
 

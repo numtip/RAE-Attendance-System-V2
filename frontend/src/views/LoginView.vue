@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { errorMessageTh } from '../utils/i18n';
 import logoUrl from '../assets/brand/logo.png';
-import { ORGANIZATION_LINE, SYSTEM_NAME_TH } from '../config/organization';
+import { BRAND_NAME, BRAND_SUBTITLE_EN, BRAND_SUBTITLE_TH, ORGANIZATION_LINE } from '../config/organization';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ApiError, api } from '../api/client';
+import { api } from '../api/client';
 import { setSession } from '../auth/session';
 import AppIcon from '../components/AppIcon.vue';
 import { isReviewFixtureMode, reviewModeBannerText } from '../config/reviewMode';
@@ -54,7 +55,7 @@ async function submit() {
     setSession(data.accessToken, data.refreshToken, data.employee);
     await router.replace(safeRelativeRedirect(route.query.redirect));
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Login failed';
+    error.value = errorMessageTh(e, 'เข้าสู่ระบบไม่สำเร็จ');
   } finally {
     loading.value = false;
   }
@@ -66,7 +67,9 @@ async function submit() {
     <section class="login-hero" aria-label="เกี่ยวกับระบบ">
       <img class="login-logo" :src="logoUrl" alt="ตรามหาวิทยาลัยแม่โจ้" width="104" height="104" />
       <div>
-        <h2>{{ SYSTEM_NAME_TH }}</h2>
+        <h2>{{ BRAND_NAME }}</h2>
+        <p class="login-sub">{{ BRAND_SUBTITLE_EN }}</p>
+        <p class="login-sub login-sub--th">{{ BRAND_SUBTITLE_TH }}</p>
         <p class="login-org">{{ ORGANIZATION_LINE }}</p>
       </div>
       <ul class="login-points">
@@ -81,11 +84,7 @@ async function submit() {
           {{ reviewModeBannerText }}
         </p>
         <h1 id="login-title">เข้าสู่ระบบ</h1>
-        <p class="muted">
-          <template v-if="isReviewFixtureMode">Fixture review build — API calls are mocked in the browser.</template>
-          <template v-else-if="showLocalLogin">เข้าสู่ระบบด้วยบัญชี MJU (MJU SSO) หรือบัญชีภายในของระบบ</template>
-          <template v-else>เข้าสู่ระบบด้วยบัญชี MJU (MJU SSO) ของท่าน</template>
-        </p>
+        <p class="muted">เข้าสู่ระบบเพื่อใช้งาน STAR</p>
         <p v-if="ssoQueryError" class="form-error" role="alert">{{ ssoQueryError }}</p>
         <div v-if="!isReviewFixtureMode" class="form">
           <button type="button" class="btn btn--primary btn--wide" :disabled="loading" @click="beginMjuSsoLogin">
@@ -102,11 +101,11 @@ async function submit() {
             <input v-model="password" type="password" autocomplete="current-password" required />
           </label>
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-          <button type="submit" class="btn" :class="{ 'btn--primary': isReviewFixtureMode }" :disabled="loading">
+          <button type="submit" class="btn btn--primary" :disabled="loading">
             {{ loading ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบด้วยอีเมล' }}
           </button>
         </form>
-        <p v-if="isReviewFixtureMode" class="hint muted">Fixture user: user@example.test / valid-pass (admin: admin@example.test)</p>
+        <p v-if="isReviewFixtureMode" class="hint muted">ผู้ใช้ตัวอย่าง: user@example.test / valid-pass (ผู้ดูแล: admin@example.test)</p>
         <p class="login-foot">{{ ORGANIZATION_LINE }}</p>
       </section>
     </main>
