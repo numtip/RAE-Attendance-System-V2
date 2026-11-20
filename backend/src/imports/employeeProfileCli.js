@@ -12,8 +12,9 @@ const { operatorAuth, EXIT } = require('./facescanImportCli');
  * touches email, credentials, identifiers, org memberships or grants. Dry run by default; --confirm needs
  * --operator with a data scope and the MariaDB source.
  *
- * Names are only written with --update-names: the CSV carries the title in the first name ("นาย…"),
- * the database does not, so changing them alters every report that prints a name.
+ * The CSV carries the title inside the first name ("นาย…"). It is split off into employees.title_th
+ * (shown on "ข้อมูลของฉัน" only); first/last names stay title-free, so reports print the same name. They are
+ * only rewritten from the CSV with --update-names.
  *
  * Role safety: a row whose current role is anything but `user` keeps it (a CSV that has no `executive`
  * must not demote the executive), and promotion to `admin` is skipped unless --allow-admin-grant is given.
@@ -28,6 +29,14 @@ const TYPE_MAP = Object.freeze({
   'พนักงานส่วนงานจ้างเหมา': 'contract',
   'นักวิชาการพัสดุ': 'procurement_academic',
 });
+/** Longest first, so "นางสาว" is not read as "นาง" + "สาว". */
+const TITLES = Object.freeze(['ว่าที่ร้อยตรี', 'นางสาว', 'นาง', 'นาย', 'ดร.']);
+
+function splitTitle(token) {
+  const title = TITLES.find((candidate) => token.startsWith(candidate) && token.length > candidate.length);
+  return title ? { titleTh: title, firstNameTh: token.slice(title.length) } : { titleTh: null, firstNameTh: token };
+}
+
 const STATUS_MAP = Object.freeze({ 'ปฏิบัติงานอยู่': 'active' });
 const ROLE_MAP = Object.freeze({ 'ผู้ดูแลระบบ(System admin)': 'admin', 'บุคลากร': 'user' });
 
@@ -88,9 +97,9 @@ async function runEmployeeProfileImport(argv, { container }) {
 
   const counts = {
     rows: rows.length, blankRows: 0, duplicateId: 0, notInDatabase: 0, badName: 0, unknownType: 0,
-    unknownStatus: 0, unknownRole: 0, unchanged: 0, toUpdate: 0, roleKept: 0, adminGrantSkipped: 0,
+    unknownStatus: 0, unknownRole: 0, noTitle: 0, unchanged: 0, toUpdate: 0, roleKept: 0, adminGrantSkipped: 0,
   };
-  const changed = { name: 0, position: 0, department: 0, employeeType: 0, status: 0, role: 0 };
+  const changed = { title: 0, name: 0, position: 0, department: 0, employeeType: 0, status: 0, role: 0 };
   const plan = [];
   const seen = new Set();
 
@@ -122,8 +131,11 @@ async function runEmployeeProfileImport(argv, { container }) {
       counts.adminGrantSkipped += 1;
     }
 
+    const split = splitTitle(names[0]);
+    if (!split.titleTh) counts.noTitle += 1;
     const next = {
-      firstNameTh: options.updateNames ? names[0] : current.firstNameTh,
+      titleTh: split.titleTh,
+      firstNameTh: options.updateNames ? split.firstNameTh : current.firstNameTh,
       lastNameTh: options.updateNames ? names[1] : current.lastNameTh,
       position: (row['ตำแหน่ง'] ?? '').trim() || current.position || null,
       department: department || current.department,
@@ -132,6 +144,7 @@ async function runEmployeeProfileImport(argv, { container }) {
       role,
     };
     const diff = {
+      title: next.titleTh !== (current.titleTh ?? null),
       name: next.firstNameTh !== current.firstNameTh || next.lastNameTh !== current.lastNameTh,
       position: next.position !== (current.position ?? null),
       department: next.department !== current.department,
@@ -168,7 +181,7 @@ async function runEmployeeProfileImport(argv, { container }) {
   return { exitCode: EXIT.OK, report: { mode: 'apply', written: true, ...counts, changed, rowsUpdated: written } };
 }
 
-module.exports = { runEmployeeProfileImport, parseArgs, TYPE_MAP, STATUS_MAP, ROLE_MAP };
+module.exports = { runEmployeeProfileImport, parseArgs, splitTitle, TYPE_MAP, STATUS_MAP, ROLE_MAP };
 
 if (require.main === module) {
   const { createContainer } = require('../container');

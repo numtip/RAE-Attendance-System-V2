@@ -25,6 +25,7 @@ const employeesInternal = [
   {
     employeeUid: '22222222-2222-2222-2222-222222222222',
     employeeId: 'E-USER',
+    titleTh: 'นาย',
     firstNameTh: 'ผู้ใช้',
     lastNameTh: 'ตัวอย่าง',
     email: 'user@example.test',

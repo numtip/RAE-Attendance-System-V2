@@ -7,7 +7,7 @@ const test = require('node:test');
 process.env.JWT_SECRET = 'test-only-secret';
 process.env.DATA_SOURCE = 'fixture';
 
-const { runEmployeeProfileImport, parseArgs } = require('../src/imports/employeeProfileCli');
+const { runEmployeeProfileImport, parseArgs, splitTitle } = require('../src/imports/employeeProfileCli');
 
 const HEADER = 'รหัส,ชื่อ-นามสกุล,ตำแหน่ง,ประเภทบุคลากร,หน่วยงาน,สถานะ,บทบาทในระบบ';
 
@@ -44,7 +44,7 @@ test('dry run reports counts only and writes nothing', async () => {
   assert.equal(report.mode, 'dry-run');
   assert.equal(report.blankRows, 1);
   assert.equal(report.toUpdate, 1);
-  assert.deepEqual(report.changed, { name: 0, position: 1, department: 1, employeeType: 1, status: 0, role: 0 });
+  assert.deepEqual(report.changed, { title: 1, name: 0, position: 1, department: 1, employeeType: 1, status: 0, role: 0 });
   assert.equal(c.writes.length, 0);
   const withNames = await runEmployeeProfileImport(['--file', file, '--update-names'], { container: c });
   assert.equal(withNames.report.changed.name, 1);
@@ -86,4 +86,21 @@ test('--confirm needs an operator and the MariaDB source', async () => {
   const { exitCode, report } = await runEmployeeProfileImport(['--file', csv([]), '--confirm', '--operator', 'u'], { container: c });
   assert.notEqual(exitCode, 0);
   assert.match(report.refused, /MARIADB|mariadb/);
+});
+
+test('the title is split off the first name, longest title first', () => {
+  assert.deepEqual(splitTitle('นางสาวสมหญิง'), { titleTh: 'นางสาว', firstNameTh: 'สมหญิง' });
+  assert.deepEqual(splitTitle('นายสมชาย'), { titleTh: 'นาย', firstNameTh: 'สมชาย' });
+  assert.deepEqual(splitTitle('ว่าที่ร้อยตรีสมบัติ'), { titleTh: 'ว่าที่ร้อยตรี', firstNameTh: 'สมบัติ' });
+  assert.deepEqual(splitTitle('ดร.สมศรี'), { titleTh: 'ดร.', firstNameTh: 'สมศรี' });
+  assert.deepEqual(splitTitle('สมคิด'), { titleTh: null, firstNameTh: 'สมคิด' });
+  assert.deepEqual(splitTitle('นาย'), { titleTh: null, firstNameTh: 'นาย' });
+});
+
+test('--update-names writes the title-free name and the title separately', async () => {
+  const c = container({ 1: base() });
+  const file = csv(['1,นางสาวสมหญิง ใจงาม,ต,พนักงานมหาวิทยาลัย,ห,ปฏิบัติงานอยู่,บุคลากร']);
+  const { report } = await runEmployeeProfileImport(['--file', file, '--update-names'], { container: c });
+  assert.equal(report.changed.title, 1);
+  assert.equal(report.changed.name, 1);
 });
