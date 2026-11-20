@@ -360,14 +360,20 @@
   margin: 0.5rem 0 1rem;
 }
 
+/* `td.decide` must stay a table cell (display:grid on a td collapses the table layout); stack its controls instead. */
 .decide {
   min-width: 17rem;
-  display: grid;
-  gap: 0.4rem;
+  vertical-align: top;
+}
+
+.decide > * + * {
+  margin-top: 0.4rem;
 }
 
 .decide select,
-.decide .note {
+.decide .note,
+.decide .field {
+  display: block;
   width: 100%;
 }
 
@@ -375,4 +381,8 @@
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.decide .muted {
+  display: block;
 }

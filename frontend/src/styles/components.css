@@ -427,6 +427,7 @@
 }
 
 .table-scroll {
+  position: relative; /* contains absolutely-positioned .sr-only labels so they cannot widen the page */
   width: 100%;
   max-height: 36rem;
   overflow: auto;
@@ -486,6 +487,16 @@
   left: 0;
   z-index: 1;
   min-width: 9rem;
+}
+
+.data-table td:not(.num):not(.sticky-col):not([colspan]) {
+  min-width: 7rem; /* Thai has no word spaces: stop narrow columns collapsing to one character per line */
+}
+
+.data-table .btn {
+  min-height: 2.25rem;
+  padding: 0.2rem 0.8rem;
+  white-space: nowrap;
 }
 
 .data-table td.num,
