@@ -4,6 +4,7 @@ import { ApiError, api, downloadLeaveMonthly } from '../api/client';
 import type { LeaveKind, LeaveMonthlyReport, LeaveMonthlyRow } from '../api/types';
 import AsyncState from '../components/AsyncState.vue';
 import KpiTile from '../components/KpiTile.vue';
+import PageHeader from '../components/PageHeader.vue';
 import PeriodPicker from '../components/PeriodPicker.vue';
 
 const now = new Date();
@@ -65,14 +66,11 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="card">
-    <div class="page-head">
-      <h2>สรุปการลารายเดือน</h2>
-      <div class="actions">
-        <button type="button" class="btn" :disabled="loading || !report" @click="download('pdf')">ส่งออก PDF</button>
-        <button type="button" class="btn" :disabled="loading || !report" @click="download('xlsx')">ส่งออก Excel</button>
-      </div>
-    </div>
+  <section>
+    <PageHeader eyebrow="การลา" title="สรุปการลารายเดือน" subtitle="ข้อมูลการลาที่บันทึกจากรายงาน HIP แยกจากการลาที่อนุมัติอย่างเป็นทางการ">
+      <button type="button" class="btn" :disabled="loading || !report" @click="download('pdf')">ส่งออก PDF</button>
+      <button type="button" class="btn" :disabled="loading || !report" @click="download('xlsx')">ส่งออก Excel</button>
+    </PageHeader>
     <PeriodPicker v-model:year="year" v-model:month="month" :loading="loading" @submit="load" />
     <p v-if="exportError" class="form-error" role="alert">{{ exportError }}</p>
     <AsyncState :loading="loading" :error="error" :empty="false">
