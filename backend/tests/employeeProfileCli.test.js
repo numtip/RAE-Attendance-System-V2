@@ -44,8 +44,10 @@ test('dry run reports counts only and writes nothing', async () => {
   assert.equal(report.mode, 'dry-run');
   assert.equal(report.blankRows, 1);
   assert.equal(report.toUpdate, 1);
-  assert.deepEqual(report.changed, { name: 1, position: 1, department: 1, employeeType: 1, status: 0, role: 0 });
+  assert.deepEqual(report.changed, { name: 0, position: 1, department: 1, employeeType: 1, status: 0, role: 0 });
   assert.equal(c.writes.length, 0);
+  const withNames = await runEmployeeProfileImport(['--file', file, '--update-names'], { container: c });
+  assert.equal(withNames.report.changed.name, 1);
   assert.ok(!JSON.stringify(report).includes('สมชาย'));
 });
 

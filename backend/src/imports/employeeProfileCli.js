@@ -5,19 +5,22 @@ const { operatorAuth, EXIT } = require('./facescanImportCli');
  * `npm run employees:import-profile` — bring the profile fields shown on "ข้อมูลของฉัน" in line with the
  * owner's personnel file (database/01-updatedb2.csv).
  *
- *   employees:import-profile --file <csv> [--allow-admin-grant] [--confirm --operator <employee_uid>]
+ *   employees:import-profile --file <csv> [--update-names] [--allow-admin-grant] [--confirm --operator <employee_uid>]
  *
  * Columns: รหัส, ชื่อ-นามสกุล, ตำแหน่ง, ประเภทบุคลากร, หน่วยงาน, สถานะ, บทบาทในระบบ.
  * Matches existing employees by employee_id only: it never creates or deletes an employee, and never
  * touches email, credentials, identifiers, org memberships or grants. Dry run by default; --confirm needs
  * --operator with a data scope and the MariaDB source.
  *
+ * Names are only written with --update-names: the CSV carries the title in the first name ("นาย…"),
+ * the database does not, so changing them alters every report that prints a name.
+ *
  * Role safety: a row whose current role is anything but `user` keeps it (a CSV that has no `executive`
  * must not demote the executive), and promotion to `admin` is skipped unless --allow-admin-grant is given.
  *
  * Output is counts only: no employee id, name or uid is printed.
  */
-const USAGE = 'usage: employees:import-profile --file <csv> [--allow-admin-grant] [--confirm --operator <employee_uid>]';
+const USAGE = 'usage: employees:import-profile --file <csv> [--update-names] [--allow-admin-grant] [--confirm --operator <employee_uid>]';
 
 const TYPE_MAP = Object.freeze({
   'พนักงานมหาวิทยาลัย': 'university',
@@ -51,11 +54,12 @@ function readCsv(file) {
 }
 
 function parseArgs(argv) {
-  const options = { file: null, confirm: false, operator: null, allowAdminGrant: false };
+  const options = { file: null, confirm: false, operator: null, allowAdminGrant: false, updateNames: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--confirm') options.confirm = true;
     else if (arg === '--allow-admin-grant') options.allowAdminGrant = true;
+    else if (arg === '--update-names') options.updateNames = true;
     else if (arg === '--file' || arg === '--operator') {
       const next = argv[index + 1];
       if (next === undefined || next.startsWith('--')) return { error: `${arg} needs a value` };
@@ -119,8 +123,8 @@ async function runEmployeeProfileImport(argv, { container }) {
     }
 
     const next = {
-      firstNameTh: names[0],
-      lastNameTh: names[1],
+      firstNameTh: options.updateNames ? names[0] : current.firstNameTh,
+      lastNameTh: options.updateNames ? names[1] : current.lastNameTh,
       position: (row['ตำแหน่ง'] ?? '').trim() || current.position || null,
       department: department || current.department,
       employeeType,
@@ -148,7 +152,7 @@ async function runEmployeeProfileImport(argv, { container }) {
     return { exitCode: EXIT.USAGE, report: { refused: '--confirm needs DATA_SOURCE=mariadb' } };
   }
   const unresolved = counts.badName + counts.unknownType + counts.unknownStatus + counts.unknownRole
-    + counts.duplicateId + counts.notInDatabase;
+    + counts.duplicateId; // notInDatabase is only reported: this tool never creates an employee
   if (unresolved > 0) {
     return { exitCode: EXIT.FILE_REFUSED, report: { refused: 'the file has rows that cannot be applied; fix them first', ...counts } };
   }
