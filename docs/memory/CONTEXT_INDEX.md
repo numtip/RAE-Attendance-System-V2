@@ -1,6 +1,7 @@
 # Context index
 
-> **Start here (2026-11-19 closeout).** Production is **LIVE**: `main` `c9e856f`, backend `dark-c9e856f`. Read, in order:
+> **Start here (2026-11-20 closeout).** Production is **LIVE**: `main` `3d38715`, backend `dark-4bd7790`. Newest day: [`../reports/DAY_SUMMARY_2026-11-20.md`](../reports/DAY_SUMMARY_2026-11-20.md), decisions D-2026-11-20-01 … -05.
+> Earlier closeout (2026-11-19, `c9e856f`). Read, in order:
 > [`../STATUS.md`](../STATUS.md) → [`STATUS.md`](STATUS.md) → [`NEXT_ACTIONS.md`](NEXT_ACTIONS.md) →
 > [`../reports/DAY_SUMMARY_2026-11-19.md`](../reports/DAY_SUMMARY_2026-11-19.md) → `DECISIONS.md` (D-2026-11-19-01 … -08).
 > Everything below this block is the 2026-10-21 index: **historical, superseded** (including "FROZEN" and the open-P0 line),

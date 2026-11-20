@@ -350,3 +350,25 @@ Owner decisions given today. Grades: `OWNER_DECISION`. None of them is a source 
 **Decision (default, no new approval given):** nothing is mapped or onboarded; those records stay skipped. Recording a former employee's leave would need a new owner decision plus authoritative HR evidence.
 **Grade:** `VERIFIED` (profile) / `OWNER_DECISION` (D-2026-11-18-01 stands).
 
+## 2026-11-20
+
+### D-2026-11-20-01 — The personnel file is the source for profile fields
+**Decision (owner):** position, division (`employees.department`), personnel type, status and title shown on "ข้อมูลของฉัน" come from the owner's personnel file. The import never creates an employee, never demotes a non-`user` role (the sole executive), and needs `--allow-admin-grant` to grant `admin`. Dry-run first; backup before any write.
+**Grade:** `OWNER_DECISION`.
+
+### D-2026-11-20-02 — Titles are shown on the profile page only
+**Decision (owner):** the title (นาย / นาง / นางสาว / ดร. / ว่าที่ร้อยตรี) lives in `employees.title_th` (migration 033). `first_name_th` / `last_name_th` stay title-free so reports and exports print the same names. Four names were corrected from the file on the owner's confirmation.
+**Grade:** `OWNER_DECISION`.
+
+### D-2026-11-20-03 — "นักวิชาการพัสดุ" becomes a personnel type
+**Decision (owner):** `employee_type` gains `procurement_academic` (migration 032), although the value reads like a position. Append-only enum; rollback refuses while a row uses it.
+**Grade:** `OWNER_DECISION`.
+
+### D-2026-11-20-04 — Production is the `prod-dark` stack; verify on the public domain
+**Finding:** the public domain proxies `/attendance-v2/` to the `prod-dark` stack (port 8094). The `rae-attendance-v2-runtime` stack (8088) and `deploy/production/cutover.sh` are not what serves users.
+**Decision:** every deploy is verified through the public domain; frontend swaps copy `index.html` last and never delete the dist directory.
+**Grade:** `VERIFIED`.
+
+### D-2026-11-20-05 — Brand
+**Decision (owner):** main brand **RAE People Hub**; English subtitle "RAE Personnel Information and Services Center"; Thai subtitle "ศูนย์ข้อมูลและบริการบุคลากรสำนักวิจัยฯ"; the full Maejo University organization line is kept. Source: `frontend/src/config/organization.ts`. Display text only.
+**Grade:** `OWNER_DECISION`.
