@@ -1,7 +1,7 @@
 # Status — 2026-11-20 (current)
 
 **Gate:** `RELEASE1_PRODUCTION_ACCEPTED` · Release 2 (M1 + leave + division dashboard + leave review) **LIVE**
-**GitHub `main`:** `e4e235c` (PR #120) · **Production:** backend `dark-c9e856f` (unchanged), frontend built from `e4e235c` (RAE People Hub branding + Thai localization) · health 200
+**GitHub `main`:** `e4595af` (PR #122) · **Production:** backend `dark-4bd7790`, frontend built from `4bd7790` (same code as `e4595af`; only a test file differs), schema through `033_employee_title.sql` · health 200
 **Day summary:** [`reports/DAY_SUMMARY_2026-11-19.md`](reports/DAY_SUMMARY_2026-11-19.md) · decisions **D-2026-11-19-01 … -08** in [`memory/DECISIONS.md`](memory/DECISIONS.md) · next actions [`memory/NEXT_ACTIONS.md`](memory/NEXT_ACTIONS.md)
 
 ## Evidence levels (read this before trusting a line below)
@@ -30,9 +30,23 @@
 
 #106 org/team report → #107 Thai-first UX → #108 org name / no absence / daily names → #109 monthly leave + division dashboard → #110 HIP leave recovery (migration 030) → #111 recorded leave in dashboard + fixes → #112 "data through" notice → #113 leave review/approval (migration 031). Detail: day summary.
 
+## Employee profile data from the personnel file — 2026-11-20
+
+#122 (`e4595af`): "ข้อมูลของฉัน" now shows the owner's personnel file (`database/local/01-updatedb2.csv`, gitignored, never committed).
+
+| Item | Value | Label |
+|---|---|---|
+| Schema | `032` adds `employee_type = procurement_academic`; `033` adds `employees.title_th` (rollbacks in `database/rollbacks/`) | PROD_DEPLOYED |
+| Import | `npm run employees:import-profile -- --file <csv> --update-names --confirm --operator <uid>` — dry-run by default, counts-only output, matches by `employee_id`, never creates an employee, keeps a non-`user` role (the executive is not demoted), admin grant needs `--allow-admin-grant` | CODE_MERGED |
+| Data written | All **52** employees now carry position, division (`department`), personnel type and title from the file: 49 in the first run (personnel type 1 changed, 3 names corrected, owner confirmed), then the last 3 (codes 1032, 2012, 2017 — owner supplied their rows; 1 name corrected). Roles and status unchanged (1 executive, 51 user) | PROD_DEPLOYED |
+| Title display | `title_th` is shown on the profile page only; `first_name_th`/`last_name_th` stay title-free so reports and exports print the same names. `/me` returns `titleTh` for 52 of 52 (49 verified before the last 3 rows were imported; the final count is a DB query) | PROD_DEPLOYED |
+| Backups / rollback | DB dumps `…20261120T074512-pre-employee-profile-import` and `…T080853-pre-title-import`, `…T085253-pre-3-employees-profile` (backups dir); `prod-dark/docker-compose.yml.bak-pre-4bd7790`; `prod-dark/frontend-dist.prev-d1a1c2e` and `.prev-4bd7790` | VERIFIED |
+
+Profile page "ข้อมูลของฉัน" on Production: **REAL_USER_QA passed** — checked by the owner in a real session on 2026-11-20. The personnel file is the only source of these fields; a row for a person not yet onboarded is reported by the import and never auto-created.
+
 ## Branding + Thai localization — 2026-11-20 (frontend only, no backend/DB/API change)
 
-#120 (`e4e235c`): brand **RAE People Hub** with EN/TH subtitles (`config/organization.ts`), full Maejo University organization line kept, applied to Login, sidebar, top bar and page title. Same PR: Thai leave-type and error-message maps, Buddhist-Era dates, พ.ศ. year selector, Thai date picker, review banner gated by `VITE_REVIEW_MODE`, sidebar group "สำหรับผู้บริหาร". Deployed as a frontend-only swap into `frontend-dist` (new assets first, `index.html` last); rollback copy `frontend-dist.prev-e4e235c`. Evidence: CODE_MERGED (CI 9 jobs) · SYNTHETIC_QA (fixture build, headless Chromium, 375/768/1440 px) · PROD_DEPLOYED (page, login, new bundle and `/health` return 200, backend log 0 errors). Authenticated screens: **not yet done** (needs a real MJU SSO session).
+#120 (`e4e235c`): brand **RAE People Hub** with EN/TH subtitles (`config/organization.ts`), full Maejo University organization line kept, applied to Login, sidebar, top bar and page title. Same PR: Thai leave-type and error-message maps, Buddhist-Era dates, พ.ศ. year selector, Thai date picker, review banner gated by `VITE_REVIEW_MODE`, sidebar group "สำหรับผู้บริหาร". Deployed as a frontend-only swap into `frontend-dist` (new assets first, `index.html` last); rollback copy `prod-dark/frontend-dist.prev-e4e235c` (**Production serves `/home/rae_admin/prod-dark/frontend-dist` via `rae-v2-dark-frontend` :8094 — not `rae-attendance-v2-runtime`, which is an unused older stack**). Evidence: CODE_MERGED (CI 9 jobs) · SYNTHETIC_QA (fixture build, headless Chromium, 375/768/1440 px) · PROD_DEPLOYED (page, login, new bundle and `/health` return 200, backend log 0 errors). Authenticated screens: **not yet done** (needs a real MJU SSO session).
 
 ## UI redesign "Premium Emerald" — 2026-11-20 (frontend only, no backend/DB/API change)
 
