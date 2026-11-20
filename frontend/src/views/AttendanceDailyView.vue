@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import type { AttendanceRecord } from '../api/types';
 import { getStoredEmployee } from '../auth/session';
 import AsyncState from '../components/AsyncState.vue';
+import PageHeader from '../components/PageHeader.vue';
+import KpiTile from '../components/KpiTile.vue';
 import StatusChip from '../components/StatusChip.vue';
 import { roleLabel } from '../utils/thai';
 
@@ -53,56 +55,85 @@ async function load() {
   }
 }
 
+// Day navigation only changes the requested date; the same API call is used.
+function shiftDay(delta: number) {
+  const d = new Date(`${date.value}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return;
+  d.setUTCDate(d.getUTCDate() + delta);
+  date.value = d.toISOString().slice(0, 10);
+  void load();
+}
+function goToday() {
+  date.value = todayIso();
+  void load();
+}
+// Counts of the rows shown. There is no absence figure: a missing scan is "no data", never an inferred absence.
+const counts = computed(() => ({
+  total: rows.value.length,
+  present: rows.value.filter((r) => r.status === 'present').length,
+  late: rows.value.filter((r) => r.status === 'late').length,
+}));
+
 onMounted(load);
 </script>
 
 <template>
-  <section class="card">
-    <div class="page-head">
-      <h2>ลงเวลารายวัน</h2>
-      <form class="period" @submit.prevent="load">
+  <section>
+    <PageHeader
+      eyebrow="งานของฉัน"
+      title="ลงเวลารายวัน"
+      :subtitle="`สิทธิ์ของท่าน: ${roleLabel(employee?.role)} — ระบบแสดงข้อมูลตามสิทธิ์ (ผู้บริหาร/หัวหน้าที่ได้รับสิทธิ์เห็นทั้งหน่วย; พนักงานเห็นเฉพาะของตนเอง)`"
+    />
+    <form class="period" @submit.prevent="load">
+      <div class="daynav">
+        <button type="button" class="btn btn--ghost" aria-label="วันก่อนหน้า" :disabled="loading" @click="shiftDay(-1)">‹</button>
         <label class="field">
           <span>วันที่</span>
           <input v-model="date" type="date" />
         </label>
-        <button type="submit" class="btn btn--primary" :disabled="loading">{{ loading ? 'กำลังโหลด…' : 'แสดงข้อมูล' }}</button>
-      </form>
-    </div>
-    <p class="muted">
-      สิทธิ์ของท่าน: <strong>{{ roleLabel(employee?.role) }}</strong> — ระบบแสดงข้อมูลตามสิทธิ์
-      (ผู้บริหาร/หัวหน้าที่ได้รับสิทธิ์เห็นทั้งหน่วย; พนักงานเห็นเฉพาะของตนเอง)
-    </p>
+        <button type="button" class="btn btn--ghost" aria-label="วันถัดไป" :disabled="loading" @click="shiftDay(1)">›</button>
+      </div>
+      <button type="button" class="btn btn--ghost" :disabled="loading" @click="goToday">วันนี้</button>
+      <button type="submit" class="btn btn--primary" :disabled="loading">{{ loading ? 'กำลังโหลด…' : 'แสดงข้อมูล' }}</button>
+    </form>
     <AsyncState
       :loading="loading"
       :error="error"
       :empty="!loading && !error && rows.length === 0"
-      empty-message="ไม่มีรายการลงเวลาในวันนี้"
+      empty-message="ไม่มีข้อมูลการสแกนในวันนี้ — ระบบไม่สรุปว่าเป็นการขาดงาน"
     >
-      <div v-if="rows.length" class="table-scroll">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th class="sticky-col">พนักงาน</th><th>วันที่</th><th>เวลาเข้า</th><th>เวลาออก</th><th>สถานะ</th><th class="num">สาย (นาที)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in rows" :key="`${row.employeeUid}-${row.date}`">
-              <td class="sticky-col">
-                <template v-if="row.employeeName">
-                  <strong>{{ row.employeeName }}</strong><br />
-                  <span class="muted">{{ row.employeeId }}</span>
-                </template>
-                <span v-else class="muted">ไม่พบข้อมูลพนักงาน</span>
-              </td>
-              <td>{{ row.date }}</td>
-              <td>{{ bangkokTime(row.checkIn) }}</td>
-              <td>{{ bangkokTime(row.checkOut) }}</td>
-              <td><StatusChip :label="statusLabel(row.status)" /></td>
-              <td class="num">{{ row.lateMinutes ?? '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <template v-if="rows.length">
+        <dl class="kpi-grid">
+          <KpiTile label="รายการที่แสดง" :value="counts.total" hint="รายการลงเวลา" tone="info" />
+          <KpiTile label="มาทำงาน" :value="counts.present" hint="ในรายการที่แสดง" />
+          <KpiTile label="สาย" :value="counts.late" hint="ในรายการที่แสดง" tone="late" />
+        </dl>
+        <div class="table-scroll">
+          <table class="data-table data-table--stack">
+            <thead>
+              <tr>
+                <th class="sticky-col">พนักงาน</th><th>วันที่</th><th>เวลาเข้า</th><th>เวลาออก</th><th>สถานะ</th><th class="num">สาย (นาที)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in rows" :key="`${row.employeeUid}-${row.date}`">
+                <td class="sticky-col" data-label="">
+                  <template v-if="row.employeeName">
+                    <strong>{{ row.employeeName }}</strong><br />
+                    <span class="muted">{{ row.employeeId }}</span>
+                  </template>
+                  <span v-else class="muted">ไม่พบข้อมูลพนักงาน</span>
+                </td>
+                <td data-label="วันที่">{{ row.date }}</td>
+                <td data-label="เวลาเข้า">{{ bangkokTime(row.checkIn) }}</td>
+                <td data-label="เวลาออก">{{ bangkokTime(row.checkOut) }}</td>
+                <td data-label="สถานะ"><StatusChip :label="statusLabel(row.status)" /></td>
+                <td class="num" data-label="สาย (นาที)">{{ row.lateMinutes ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
     </AsyncState>
   </section>
 </template>

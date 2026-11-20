@@ -30,6 +30,13 @@ export function employeeStatusLabel(value: string | undefined | null): string {
   return value === 'active' ? 'ปฏิบัติงานอยู่' : value;
 }
 
+/** Leave request status as stored by the API. Only the three standard states are translated; anything else is shown as stored. */
+export function leaveStatusLabel(value: string | undefined | null): string {
+  if (!value) return '—';
+  const map: Record<string, string> = { approved: 'อนุมัติ', pending: 'รออนุมัติ', rejected: 'ไม่อนุมัติ' };
+  return map[value.toLowerCase()] ?? value;
+}
+
 export type Tone = 'ok' | 'late' | 'leave' | 'muted';
 
 /** Visual tone for a Thai status label already produced by the API (`statusLabel`). */

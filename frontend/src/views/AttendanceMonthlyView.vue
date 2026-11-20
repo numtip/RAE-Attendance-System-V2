@@ -6,6 +6,7 @@ import { getStoredEmployee } from '../auth/session';
 import AsyncState from '../components/AsyncState.vue';
 import KpiTile from '../components/KpiTile.vue';
 import PeriodPicker from '../components/PeriodPicker.vue';
+import PageHeader from '../components/PageHeader.vue';
 import StatusChip from '../components/StatusChip.vue';
 
 const now = new Date();
@@ -64,10 +65,8 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="card">
-    <div class="page-head">
-      <h2>สรุปรายเดือน</h2>
-    </div>
+  <section>
+    <PageHeader eyebrow="งานของฉัน" title="สรุปรายเดือน" subtitle="สรุปการมาทำงาน การมาสาย และการลาของท่านในเดือนที่เลือก" />
     <PeriodPicker v-model:year="year" v-model:month="month" :loading="loading" submit-label="แสดงสรุป" @submit="load" />
     <AsyncState :loading="loading" :error="error" :empty="false">
       <p v-if="!summary && !loading && !error" class="state state--empty">ไม่มีสรุปรายเดือนที่บันทึกไว้</p>
@@ -77,19 +76,19 @@ onMounted(load);
         </p>
         <dl class="kpi-grid">
           <KpiTile label="มาทำงาน" :value="summary.totalPresent" :hint="`จาก ${summary.totalWorkDays} วันทำงาน`" />
-          <KpiTile label="มาสาย" :value="summary.totalLate" :hint="`รวม ${summary.totalLateMinutes} นาที`" />
-          <KpiTile label="ลา" :value="summary.totalLeave" hint="วัน" />
+          <KpiTile label="มาสาย" tone="late" :value="summary.totalLate" :hint="`รวม ${summary.totalLateMinutes} นาที`" />
+          <KpiTile label="ลา" tone="leave" :value="summary.totalLeave" hint="วัน" />
           <KpiTile label="ชั่วโมงทำงานรวม" :value="summary.totalWorkHours" hint="ชั่วโมง" />
         </dl>
       </template>
       <p v-if="!loading && !error && events.length === 0" class="muted">ไม่มีรายการที่บันทึกไว้ในเดือนนี้</p>
       <div v-else-if="events.length" class="table-scroll">
-        <table class="data-table">
+        <table class="data-table data-table--stack">
           <thead><tr><th>วันที่</th><th>สถานะ</th></tr></thead>
           <tbody>
             <tr v-for="row in events" :key="row.date">
-              <td>{{ row.date }}</td>
-              <td><StatusChip :label="label(row)" /></td>
+              <td data-label="วันที่">{{ row.date }}</td>
+              <td data-label="สถานะ"><StatusChip :label="label(row)" /></td>
             </tr>
           </tbody>
         </table>

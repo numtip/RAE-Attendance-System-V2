@@ -4,6 +4,7 @@ import { ApiError, api } from '../api/client';
 import type { LeaveBalanceRow } from '../api/types';
 import { getStoredEmployee } from '../auth/session';
 import AsyncState from '../components/AsyncState.vue';
+import PageHeader from '../components/PageHeader.vue';
 
 const employeeUid = computed(() => getStoredEmployee()?.employeeUid ?? '');
 const year = ref(new Date().getUTCFullYear());
@@ -29,42 +30,38 @@ async function load() {
   }
 }
 
+// Share of the entitlement already used, derived only from the API figures; 0 when no total is recorded.
+function usedPercent(row: LeaveBalanceRow): number {
+  return row.totalDays > 0 ? Math.min(100, Math.max(0, Math.round((row.usedDays / row.totalDays) * 100))) : 0;
+}
+
 onMounted(load);
 </script>
 
 <template>
-  <section class="card">
-    <div class="page-head">
-      <h2>วันลาคงเหลือ</h2>
-      <form class="period" @submit.prevent="load">
-        <label class="field">
-          <span>ปี (ค.ศ.) <em class="field-hint">พ.ศ. {{ year + 543 }}</em></span>
-          <input v-model.number="year" type="number" min="2000" max="2100" inputmode="numeric" />
-        </label>
-        <button type="submit" class="btn btn--primary" :disabled="loading">{{ loading ? 'กำลังโหลด…' : 'แสดงข้อมูล' }}</button>
-      </form>
-    </div>
+  <section>
+    <PageHeader eyebrow="การลา" title="วันลาคงเหลือ" subtitle="แสดงตามที่บันทึกในระบบเท่านั้น — ระบบไม่คำนวณหรือหักวันลาเอง" />
+    <form class="period" @submit.prevent="load">
+      <label class="field">
+        <span>ปี (ค.ศ.) <em class="field-hint">พ.ศ. {{ year + 543 }}</em></span>
+        <input v-model.number="year" type="number" min="2000" max="2100" inputmode="numeric" />
+      </label>
+      <button type="submit" class="btn btn--primary" :disabled="loading">{{ loading ? 'กำลังโหลด…' : 'แสดงข้อมูล' }}</button>
+    </form>
     <AsyncState
       :loading="loading"
       :error="error"
       :empty="!loading && !error && rows.length === 0"
       empty-message="ไม่มีวันลาคงเหลือที่บันทึกไว้"
     >
-      <div v-if="rows.length" class="table-scroll">
-        <table class="data-table">
-          <thead>
-            <tr><th>ประเภท</th><th class="num">ทั้งหมด</th><th class="num">ใช้ไป</th><th class="num">คงเหลือ</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in rows" :key="`${row.leaveType}-${row.year}`">
-              <td>{{ row.leaveType }}</td>
-              <td class="num">{{ row.totalDays }}</td>
-              <td class="num">{{ row.usedDays }}</td>
-              <td class="num">{{ row.remainingDays }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <ul v-if="rows.length" class="balance-grid">
+        <li v-for="row in rows" :key="`${row.leaveType}-${row.year}`" class="balance">
+          <p class="balance-type">{{ row.leaveType }}</p>
+          <p class="balance-left"><strong>{{ row.remainingDays }}</strong> <span>วันคงเหลือ</span></p>
+          <div class="meter" aria-hidden="true"><span class="meter-fill" :style="{ width: `${usedPercent(row)}%` }"></span></div>
+          <p class="muted">ใช้ไป {{ row.usedDays }} จาก {{ row.totalDays }} วัน</p>
+        </li>
+      </ul>
     </AsyncState>
   </section>
 </template>

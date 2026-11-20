@@ -3,6 +3,9 @@ import { onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import type { LeaveRow } from '../api/types';
 import AsyncState from '../components/AsyncState.vue';
+import PageHeader from '../components/PageHeader.vue';
+import StatusChip from '../components/StatusChip.vue';
+import { leaveStatusLabel } from '../utils/thai';
 
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -25,11 +28,10 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="card">
-    <div class="page-head">
-      <h2>รายการลา</h2>
+  <section>
+    <PageHeader eyebrow="การลา" title="รายการลา" subtitle="รายการลาของท่านตามที่บันทึกในระบบ">
       <button type="button" class="btn btn--ghost" :disabled="loading" @click="load">โหลดใหม่</button>
-    </div>
+    </PageHeader>
     <AsyncState
       :loading="loading"
       :error="error"
@@ -37,17 +39,17 @@ onMounted(load);
       empty-message="ไม่มีรายการลา"
     >
       <div v-if="rows.length" class="table-scroll">
-        <table class="data-table">
+        <table class="data-table data-table--stack">
           <thead>
             <tr><th>เลขที่</th><th>ประเภท</th><th>เริ่ม</th><th>สิ้นสุด</th><th>สถานะ</th></tr>
           </thead>
           <tbody>
             <tr v-for="row in rows" :key="row.leaveId">
-              <td>{{ row.leaveId }}</td>
-              <td>{{ row.leaveType }}</td>
-              <td>{{ row.startDate }}</td>
-              <td>{{ row.endDate }}</td>
-              <td>{{ row.status }}</td>
+              <td data-label="เลขที่">{{ row.leaveId }}</td>
+              <td data-label="ประเภท">{{ row.leaveType }}</td>
+              <td data-label="เริ่ม">{{ row.startDate }}</td>
+              <td data-label="สิ้นสุด">{{ row.endDate }}</td>
+              <td data-label="สถานะ"><StatusChip :label="leaveStatusLabel(row.status)" /></td>
             </tr>
           </tbody>
         </table>

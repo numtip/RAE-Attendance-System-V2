@@ -151,8 +151,38 @@ async function handleMe(): Promise<EmployeePublic> {
   return employee;
 }
 
-async function handleAttendanceDaily(_date: string): Promise<AttendanceRecord[]> {
-  authFromSession();
+// Synthetic preview rows only (no real people or data). Wide roles see the whole synthetic unit, others only themselves.
+const DAILY_PEOPLE: [string, string, string, number][] = [
+  ['S001', 'สมชาย ตัวอย่าง', '08:12', 0],
+  ['S002', 'สมหญิง ทดสอบ', '08:41', 11],
+  ['S003', 'วิชัย สมมติ', '08:30', 0],
+  ['S004', 'อรทัย จำลอง', '08:55', 25],
+  ['S005', 'ประเสริฐ ตัวอย่าง', '08:20', 0],
+  ['S006', 'มาลี ทดสอบ', '08:35', 5],
+];
+
+function syntheticDaily(date: string, uid: string | null): AttendanceRecord[] {
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+  if (day === 0 || day === 6) return [];
+  return DAILY_PEOPLE.map(([id, name, time, late], i) => {
+    const [h, m] = time.split(':').map(Number);
+    return {
+      employeeUid: uid ?? `00000000-0000-4000-8000-00000000000${i + 1}`,
+      date,
+      checkIn: new Date(`${date}T${String(h - 7).padStart(2, '0')}:${String(m).padStart(2, '0')}:00.000Z`).toISOString(),
+      checkOut: new Date(`${date}T09:${String(30 + i).padStart(2, '0')}:00.000Z`).toISOString(),
+      status: late > 0 ? 'late' : 'present',
+      isLate: late > 0,
+      lateMinutes: late > 0 ? late : undefined,
+      employeeId: id,
+      employeeName: name,
+    };
+  });
+}
+
+async function handleAttendanceDaily(date: string): Promise<AttendanceRecord[]> {
+  const auth = authFromSession();
+  if (auth.role === 'executive' || auth.role === 'manager') return syntheticDaily(date, null);
   throw new ApiError(
     403,
     'FORBIDDEN',
@@ -461,6 +491,12 @@ export async function fixtureApiRequest<T>(
   const dailyMatch = path.match(/^\/attendance\/daily\/(\d{4}-\d{2}-\d{2})$/);
   if (auth && method === 'GET' && dailyMatch) {
     return (await handleAttendanceDaily(dailyMatch[1])) as T;
+  }
+
+  const meMatch = path.match(/^\/attendance\/me\/(\d{4}-\d{2}-\d{2})$/);
+  if (auth && method === 'GET' && meMatch) {
+    const own = authFromSession();
+    return syntheticDaily(meMatch[1], own.employeeUid).slice(1, 2).map((row) => ({ ...row, employeeId: 'E-USER', employeeName: 'ผู้ใช้ ตัวอย่าง' })) as T;
   }
 
   const monthlyMatch = path.match(/^\/attendance\/monthly\/([^/]+)\/(\d+)\/(\d+)$/);

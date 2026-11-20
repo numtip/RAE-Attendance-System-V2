@@ -153,6 +153,25 @@
   width: 7rem;
 }
 
+.period .field input[type='date'] {
+  width: 11.5rem;
+}
+
+.daynav {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+}
+
+.daynav .field {
+  flex: 1;
+}
+
+.daynav .btn {
+  padding-inline: 0.9rem;
+  font-size: 1.25rem;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -593,4 +612,145 @@
   .actions .btn {
     flex: 1 1 8rem;
   }
+
+  .daynav {
+    width: 100%;
+  }
+
+  .daynav .btn {
+    flex: none;
+  }
+
+  .daynav .field input[type='date'] {
+    width: 100%;
+  }
+}
+
+/* ---------- Responsive table → card rows (opt-in with .data-table--stack + data-label on each td) ---------- */
+
+@media (max-width: 640px) {
+  .data-table--stack {
+    min-width: 0;
+  }
+
+  .data-table--stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .data-table--stack,
+  .data-table--stack tbody,
+  .data-table--stack tr,
+  .data-table--stack td {
+    display: block;
+    width: 100%;
+  }
+
+  .data-table--stack tr {
+    padding: 0.5rem 0.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .data-table--stack tbody tr:nth-child(even) td {
+    background: var(--surface);
+  }
+
+  .data-table--stack td,
+  .data-table--stack td.num,
+  .data-table--stack td.sticky-col {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    position: static;
+    min-width: 0;
+    padding: 0.3rem 0.75rem;
+    border: 0;
+    text-align: right;
+  }
+
+  .data-table--stack td.sticky-col {
+    display: block;
+    text-align: left;
+    padding-bottom: 0.5rem;
+  }
+
+  .data-table--stack td[data-label='']::before {
+    display: none;
+  }
+
+  .data-table--stack td::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-align: left;
+  }
+
+  .data-table--stack .table-scroll,
+  .table-scroll:has(.data-table--stack) {
+    max-height: none;
+  }
+}
+
+/* ---------- Leave balance cards ---------- */
+
+.balance-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.85rem;
+}
+
+.balance {
+  padding: 1.1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+
+.balance p {
+  margin: 0;
+}
+
+.balance-type {
+  font-weight: 700;
+}
+
+.balance-left {
+  margin: 0.15rem 0 0.5rem;
+}
+
+.balance-left strong {
+  font-size: 2rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--emerald-deep);
+}
+
+.balance-left span {
+  color: var(--muted);
+}
+
+.meter {
+  height: 0.5rem;
+  margin-bottom: 0.5rem;
+  background: var(--empty-bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), #e3c186);
+  border-radius: 999px;
+  transition: width 0.4s var(--ease);
 }
