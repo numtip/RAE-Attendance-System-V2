@@ -38,3 +38,6 @@ docs/sampleCallback.aspx*
 # --- Python bytecode from the local data-recovery scripts ---
 __pycache__/
 *.pyc
+
+# Claude Code personal settings
+.claude/settings.local.json
