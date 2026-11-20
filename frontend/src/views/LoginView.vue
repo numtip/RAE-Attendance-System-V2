@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import logoUrl from '../assets/brand/logo.png';
 import { ORGANIZATION_LINE, SYSTEM_NAME_TH } from '../config/organization';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -63,7 +64,7 @@ async function submit() {
   <div class="login-page">
     <section class="card login-card" aria-labelledby="login-title">
       <div class="login-brand">
-        <span class="brand-mark" aria-hidden="true">RAE</span>
+        <img class="brand-logo" :src="logoUrl" alt="" width="40" height="40" />
         <div>
           <p class="brand-name">{{ SYSTEM_NAME_TH }}</p>
           <p class="brand-sub">{{ ORGANIZATION_LINE }}</p>
