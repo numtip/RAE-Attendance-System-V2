@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import type { LeaveReviewList, LeaveReviewRow, ReviewBucket } from '../api/types';
 import AsyncState from '../components/AsyncState.vue';
+import ConfirmDialog from '../components/ConfirmDialog.vue';
+import PageHeader from '../components/PageHeader.vue';
 import PeriodPicker from '../components/PeriodPicker.vue';
 
 const now = new Date();
@@ -17,7 +19,18 @@ const query = ref('');
 const parts = ref<Record<string, 'FULL' | 'AM' | 'PM' | ''>>({});
 const notes = ref<Record<string, string>>({});
 const busy = ref<string | null>(null);
-const confirmBulk = ref(false);
+// Every decision (single or bulk) is confirmed explicitly in a dialog before anything is sent.
+const pending = ref<{ rows: LeaveReviewRow[]; action: 'approve' | 'reject' } | null>(null);
+const partLabels: Record<string, string> = { FULL: 'เต็มวัน (1.0)', AM: 'ครึ่งวันเช้า (0.5)', PM: 'ครึ่งวันบ่าย (0.5)' };
+function ask(rows: LeaveReviewRow[], action: 'approve' | 'reject') {
+  pending.value = { rows, action };
+}
+async function confirmPending() {
+  const current = pending.value;
+  if (!current) return;
+  await send(current.rows, current.action);
+  pending.value = null;
+}
 
 const tabs: { key: ReviewBucket; label: string }[] = [
   { key: 'needs_review', label: 'รอตรวจสอบ' },
@@ -51,7 +64,6 @@ async function load() {
 
 function pick(next: ReviewBucket) {
   filter.value = next;
-  confirmBulk.value = false;
   void load();
 }
 
@@ -70,7 +82,6 @@ async function send(rows: LeaveReviewRow[], action: 'approve' | 'reject') {
     notice.value = result.failed
       ? { kind: 'error', text: `บันทึกสำเร็จ ${result.applied} รายการ, ไม่สำเร็จ ${result.failed}${firstError ? ` — ${firstError}` : ''}` }
       : { kind: 'ok', text: `บันทึกผลแล้ว ${result.applied} รายการ` };
-    confirmBulk.value = false;
     await load();
   } catch (e) {
     notice.value = { kind: 'error', text: e instanceof ApiError ? e.message : 'บันทึกไม่สำเร็จ' };
@@ -87,14 +98,12 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="card">
-    <div class="page-head">
-      <h2>ตรวจสอบ / อนุมัติการลา</h2>
-    </div>
-    <p class="muted">
-      รายการลาที่บันทึกจากรายงาน HIP — ผู้บริหารเป็นผู้ยืนยันหรือปฏิเสธ ทุกการตัดสินถูกบันทึกประวัติ
-      การอนุมัติไม่หักวันลาคงเหลือและไม่เปลี่ยนข้อมูลเข้างาน
-    </p>
+  <section>
+    <PageHeader
+      eyebrow="ผู้บริหาร"
+      title="ตรวจสอบ / อนุมัติการลา"
+      subtitle="รายการลาที่บันทึกจากรายงาน HIP — ผู้บริหารเป็นผู้ยืนยันหรือปฏิเสธ ทุกการตัดสินถูกบันทึกประวัติ การอนุมัติไม่หักวันลาคงเหลือและไม่เปลี่ยนข้อมูลเข้างาน"
+    />
     <PeriodPicker v-model:year="year" v-model:month="month" :loading="loading" submit-label="แสดงรายการ" @submit="load" />
     <p v-if="notice" class="callout" :role="notice.kind === 'error' ? 'alert' : 'status'">{{ notice.text }}</p>
 
@@ -111,12 +120,7 @@ onMounted(load);
         </div>
 
         <div v-if="bulkTargets.length" class="bulk">
-          <button v-if="!confirmBulk" type="button" class="btn" @click="confirmBulk = true">อนุมัติทั้งหมดที่แสดง ({{ bulkTargets.length }})</button>
-          <template v-else>
-            <span>ยืนยันอนุมัติ {{ bulkTargets.length }} รายการที่แสดงอยู่?</span>
-            <button type="button" class="btn btn--primary" :disabled="busy === 'bulk'" @click="send(bulkTargets, 'approve')">ยืนยัน</button>
-            <button type="button" class="btn btn--ghost" @click="confirmBulk = false">ยกเลิก</button>
-          </template>
+          <button type="button" class="btn" :disabled="busy !== null" @click="ask(bulkTargets, 'approve')">อนุมัติทั้งหมดที่แสดง ({{ bulkTargets.length }})</button>
         </div>
 
         <p v-if="visible.length === 0" class="state state--empty">ไม่มีรายการในสถานะนี้</p>
@@ -155,8 +159,8 @@ onMounted(load);
                   </label>
                   <input v-model="notes[row.recordUid]" class="note" type="text" maxlength="200" placeholder="หมายเหตุ (ไม่บังคับ)" :aria-label="`หมายเหตุสำหรับ ${row.employeeName ?? ''}`" />
                   <span class="actions">
-                    <button type="button" class="btn btn--primary" :disabled="busy !== null || needsPart(row) || row.bucket === 'approved'" @click="send([row], 'approve')">อนุมัติ</button>
-                    <button type="button" class="btn" :disabled="busy !== null || row.bucket === 'rejected'" @click="send([row], 'reject')">ไม่อนุมัติ</button>
+                    <button type="button" class="btn btn--primary" :disabled="busy !== null || needsPart(row) || row.bucket === 'approved'" @click="ask([row], 'approve')">อนุมัติ</button>
+                    <button type="button" class="btn" :disabled="busy !== null || row.bucket === 'rejected'" @click="ask([row], 'reject')">ไม่อนุมัติ</button>
                   </span>
                   <span v-if="row.reviewNote" class="muted">หมายเหตุเดิม: {{ row.reviewNote }}</span>
                 </td>
@@ -166,5 +170,29 @@ onMounted(load);
         </div>
       </template>
     </AsyncState>
+
+    <ConfirmDialog
+      :open="pending !== null"
+      :title="pending?.action === 'reject' ? 'ยืนยันการไม่อนุมัติการลา' : 'ยืนยันการอนุมัติการลา'"
+      :confirm-label="pending?.action === 'reject' ? 'ยืนยันไม่อนุมัติ' : 'ยืนยันอนุมัติ'"
+      :busy="busy !== null"
+      @cancel="pending = null"
+      @confirm="confirmPending"
+    >
+      <template v-if="pending">
+        <p v-if="pending.rows.length > 1">
+          {{ pending.action === 'approve' ? 'อนุมัติ' : 'ไม่อนุมัติ' }} <strong>{{ pending.rows.length }} รายการ</strong>ที่แสดงอยู่
+        </p>
+        <dl v-else class="dialog-facts">
+          <dt>พนักงาน</dt><dd>{{ pending.rows[0].employeeName ?? 'ไม่พบข้อมูลพนักงาน' }} ({{ pending.rows[0].employeeId }})</dd>
+          <dt>วันที่</dt><dd>{{ pending.rows[0].dateLabel }}</dd>
+          <dt>ประเภท</dt><dd>{{ pending.rows[0].typeLabel }}</dd>
+          <dt>ช่วงเวลา</dt>
+          <dd>{{ pending.action === 'approve' && parts[pending.rows[0].recordUid] ? partLabels[parts[pending.rows[0].recordUid]] : pending.rows[0].partLabel }}</dd>
+          <template v-if="notes[pending.rows[0].recordUid]?.trim()"><dt>หมายเหตุ</dt><dd>{{ notes[pending.rows[0].recordUid] }}</dd></template>
+        </dl>
+        <p class="muted">การตัดสินจะถูกบันทึกประวัติ ไม่หักวันลาคงเหลือ และไม่เปลี่ยนข้อมูลเข้างาน</p>
+      </template>
+    </ConfirmDialog>
   </section>
 </template>

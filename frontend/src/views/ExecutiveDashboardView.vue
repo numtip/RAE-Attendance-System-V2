@@ -90,8 +90,8 @@ onMounted(load);
         <dl class="kpi-grid">
           <KpiTile label="พนักงาน" :value="report.totals.employeesInScope" :hint="`มีสรุปรายเดือน ${report.totals.employeesWithData} · ไม่มี ${report.totals.employeesWithoutData}`" />
           <KpiTile label="มาทำงาน (รวม)" :value="report.totals.present" hint="วัน-คน" />
-          <KpiTile label="มาสาย (รวม)" :value="report.totals.late" :hint="`${report.totals.lateMinutes} นาที`" />
-          <KpiTile label="ลา — บันทึกจาก HIP (รวม)" :value="report.recordedLeaveCovered ? report.totals.leaveRecordedDays ?? 0 : '—'" :hint="report.recordedLeaveCovered ? `วัน (ครึ่งวัน = 0.5) · รอตรวจสอบ ${report.totals.leaveNeedsReview ?? 0} รายการ ไม่รวมในยอด` : 'เดือนนี้ยังไม่มีข้อมูลการลา'" />
+          <KpiTile label="มาสาย (รวม)" tone="late" :value="report.totals.late" :hint="`${report.totals.lateMinutes} นาที`" />
+          <KpiTile label="ลา — บันทึกจาก HIP (รวม)" tone="leave" :value="report.recordedLeaveCovered ? report.totals.leaveRecordedDays ?? 0 : '—'" :hint="report.recordedLeaveCovered ? `วัน (ครึ่งวัน = 0.5) · รอตรวจสอบ ${report.totals.leaveNeedsReview ?? 0} รายการ ไม่รวมในยอด` : 'เดือนนี้ยังไม่มีข้อมูลการลา'" />
         </dl>
 
         <p v-if="report.reconciliation.reconciled && !report.reconciliation.unassigned && !report.reconciliation.ambiguous" class="callout" role="status">

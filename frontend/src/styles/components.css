@@ -754,3 +754,80 @@
   border-radius: 999px;
   transition: width 0.4s var(--ease);
 }
+
+/* ---------- Confirm dialog ---------- */
+
+.dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+}
+
+.dialog::backdrop {
+  background: rgb(16 29 53 / 60%);
+}
+
+.dialog[open] {
+  animation: dialog-in 0.18s var(--ease);
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.dialog-body {
+  padding: 1.25rem 1.5rem 1.25rem;
+  border-top: 4px solid var(--gold);
+  border-radius: var(--radius-lg);
+}
+
+.dialog-body h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+.dialog-content {
+  display: grid;
+  gap: 0.5rem;
+  color: var(--text);
+}
+
+.dialog-content p {
+  margin: 0;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.dialog-facts {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.dialog-facts dt {
+  color: var(--muted);
+}
+
+.dialog-facts dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
