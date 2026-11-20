@@ -1,7 +1,7 @@
 # Status — 2026-11-20 (current)
 
 **Gate:** `RELEASE1_PRODUCTION_ACCEPTED` · Release 2 (M1 + leave + division dashboard + leave review) **LIVE**
-**GitHub `main`:** `82f730d` (PR #118) · **Production:** backend `dark-c9e856f` (unchanged), frontend built from `82f730d` (Premium Emerald UI) · health/ready 200
+**GitHub `main`:** `e4e235c` (PR #120) · **Production:** backend `dark-c9e856f` (unchanged), frontend built from `e4e235c` (RAE People Hub branding + Thai localization) · health 200
 **Day summary:** [`reports/DAY_SUMMARY_2026-11-19.md`](reports/DAY_SUMMARY_2026-11-19.md) · decisions **D-2026-11-19-01 … -08** in [`memory/DECISIONS.md`](memory/DECISIONS.md) · next actions [`memory/NEXT_ACTIONS.md`](memory/NEXT_ACTIONS.md)
 
 ## Evidence levels (read this before trusting a line below)
@@ -29,6 +29,10 @@
 ## Release 2 shipped today (PR → deployed SHA)
 
 #106 org/team report → #107 Thai-first UX → #108 org name / no absence / daily names → #109 monthly leave + division dashboard → #110 HIP leave recovery (migration 030) → #111 recorded leave in dashboard + fixes → #112 "data through" notice → #113 leave review/approval (migration 031). Detail: day summary.
+
+## Branding + Thai localization — 2026-11-20 (frontend only, no backend/DB/API change)
+
+#120 (`e4e235c`): brand **RAE People Hub** with EN/TH subtitles (`config/organization.ts`), full Maejo University organization line kept, applied to Login, sidebar, top bar and page title. Same PR: Thai leave-type and error-message maps, Buddhist-Era dates, พ.ศ. year selector, Thai date picker, review banner gated by `VITE_REVIEW_MODE`, sidebar group "สำหรับผู้บริหาร". Deployed as a frontend-only swap into `frontend-dist` (new assets first, `index.html` last); rollback copy `frontend-dist.prev-e4e235c`. Evidence: CODE_MERGED (CI 9 jobs) · SYNTHETIC_QA (fixture build, headless Chromium, 375/768/1440 px) · PROD_DEPLOYED (page, login, new bundle and `/health` return 200, backend log 0 errors). Authenticated screens: **not yet done** (needs a real MJU SSO session).
 
 ## UI redesign "Premium Emerald" — 2026-11-20 (frontend only, no backend/DB/API change)
 
