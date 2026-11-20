@@ -1,7 +1,7 @@
-# Status — 2026-11-19 (current, closeout)
+# Status — 2026-11-20 (current)
 
 **Gate:** `RELEASE1_PRODUCTION_ACCEPTED` · Release 2 (M1 + leave + division dashboard + leave review) **LIVE**
-**GitHub `main`:** `c9e856f` (PR #113) · **Production:** backend `dark-c9e856f`, frontend built from `c9e856f` · health/ready 200
+**GitHub `main`:** `82f730d` (PR #118) · **Production:** backend `dark-c9e856f` (unchanged), frontend built from `82f730d` (Premium Emerald UI) · health/ready 200
 **Day summary:** [`reports/DAY_SUMMARY_2026-11-19.md`](reports/DAY_SUMMARY_2026-11-19.md) · decisions **D-2026-11-19-01 … -08** in [`memory/DECISIONS.md`](memory/DECISIONS.md) · next actions [`memory/NEXT_ACTIONS.md`](memory/NEXT_ACTIONS.md)
 
 ## Evidence levels (read this before trusting a line below)
@@ -30,9 +30,22 @@
 
 #106 org/team report → #107 Thai-first UX → #108 org name / no absence / daily names → #109 monthly leave + division dashboard → #110 HIP leave recovery (migration 030) → #111 recorded leave in dashboard + fixes → #112 "data through" notice → #113 leave review/approval (migration 031). Detail: day summary.
 
+## UI redesign "Premium Emerald" — 2026-11-20 (frontend only, no backend/DB/API change)
+
+#115 Maejo University logo → #116 tokens, navy sidebar/mobile drawer, Login, Profile (deployed) → #117 attendance + leave screens → #118 reports, dashboard tones, leave-review confirmation dialog. All three deployed together as frontend `82f730d`; rollback copy `prod-dark/frontend-dist.prev-82f730d`.
+
+| Item | Evidence |
+|---|---|
+| Build, type-check, `/attendance-v2/` base build, secret scan, CI (9 jobs) | CODE_MERGED |
+| Drawer focus trap/Esc/inert/resize, RBAC nav for 4 roles, day navigation, leave-review dialog (open/Esc/cancel/confirm/bulk) | SYNTHETIC_QA (fixture build, headless Chromium, 390/768/1440 px) |
+| Public Login page at `/attendance-v2/login` (fonts, logo, SSO button, no console errors, no overflow) | PROD_DEPLOYED (checked on the live URL) |
+| Authenticated screens (profile, attendance, leave, reports, dashboard, review dialog) on Production | **Not yet done** — needs a real MJU SSO session (REAL_USER_QA). Do not confirm an approval during the click-through |
+
+Behaviour that did not change: MJU SSO-only login and redirect, role gating, API contracts, no absence KPI/status (an empty day reads "no scan data — not treated as absence"), HIP `candidate`/`needs_review` never shown as approved. Every leave-review decision now needs an explicit confirmation in a dialog; the payload and audit trail are unchanged.
+
 ## Pending (owner / evidence, not code)
 
-1. Executive Production click-through (REAL_USER_QA) of dashboard, leave report and leave review.
+1. Executive Production click-through (REAL_USER_QA) of dashboard, leave report and leave review — now also covers the Premium Emerald UI (drawer on a phone, review confirmation dialog: press Cancel unless approving for real).
 2. Review the 29 `needs_review` leave records (HR queue file is local and gitignored).
 3. 30 leave records belong to one unmapped device code — see D-2026-11-19-08: consistent with a former employee, scans stay unmapped unless the owner decides otherwise.
 4. HIP export for 19–30 Nov 2026.
