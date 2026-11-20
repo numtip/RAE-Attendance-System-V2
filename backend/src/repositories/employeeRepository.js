@@ -47,6 +47,13 @@ class EmployeeRepository {
     });
   }
 
+  async updateProfile(employeeUid, fields) {
+    const row = this.rows.find((item) => item.employeeUid === employeeUid);
+    if (!row) return false;
+    Object.assign(row, fields);
+    return true;
+  }
+
   async findByEmail(email) {
     return this.rows.find((row) => row.email === email) || null;
   }

@@ -12,6 +12,7 @@
     "db:seed": "node scripts/migrate.mjs --seed-only",
     "facescan:import": "node backend/src/imports/facescanImportCli.js",
     "leave:import-hip": "node backend/src/imports/hipLeaveImportCli.js",
+    "employees:import-profile": "node backend/src/imports/employeeProfileCli.js",
     "org:import-divisions": "node backend/src/imports/divisionMembershipCli.js",
     "facescan:derive": "node backend/src/imports/facescanDeriveCli.js",
     "db:hash-dev-password": "node scripts/hash-dev-password.mjs",

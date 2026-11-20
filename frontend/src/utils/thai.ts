@@ -11,7 +11,7 @@ export function buddhistYear(year: number): number {
 const ROLE_LABELS: Record<string, string> = {
   executive: 'ผู้บริหาร',
   manager: 'หัวหน้า/ผู้จัดการ',
-  admin: 'ผู้ดูแลระบบ',
+  admin: 'ผู้ดูแลระบบ (System admin)',
   user: 'พนักงาน',
 };
 
@@ -19,15 +19,28 @@ export function roleLabel(role: string | undefined | null): string {
   return (role && ROLE_LABELS[role]) || 'พนักงาน';
 }
 
-/** Only values the owner has confirmed are translated; anything else is shown as stored. */
+/** Personnel type labels, confirmed by the owner's personnel file (01-updatedb2.csv). Unknown values are shown as stored. */
+const EMPLOYEE_TYPE_LABELS: Record<string, string> = {
+  university: 'พนักงานมหาวิทยาลัย',
+  department: 'พนักงานส่วนงาน',
+  contract: 'พนักงานส่วนงานจ้างเหมา',
+  procurement_academic: 'นักวิชาการพัสดุ',
+};
+
 export function employeeTypeLabel(value: string | undefined | null): string {
   if (!value) return '—';
-  return value === 'contract' ? 'พนักงานส่วนงานจ้างเหมา' : value;
+  return EMPLOYEE_TYPE_LABELS[value] ?? value;
 }
+
+const EMPLOYEE_STATUS_LABELS: Record<string, string> = {
+  active: 'ปฏิบัติงานอยู่',
+  inactive: 'ไม่ได้ปฏิบัติงาน',
+  resigned: 'ลาออก',
+};
 
 export function employeeStatusLabel(value: string | undefined | null): string {
   if (!value) return '—';
-  return value === 'active' ? 'ปฏิบัติงานอยู่' : value;
+  return EMPLOYEE_STATUS_LABELS[value] ?? value;
 }
 
 /** Leave request status as stored by the API. Only the three standard states are translated; anything else is shown as stored. */

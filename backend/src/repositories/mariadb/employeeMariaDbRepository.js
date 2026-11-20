@@ -38,6 +38,22 @@ function createEmployeeMariaDbRepository(pool) {
       return row ? publicFields(row) : null;
     },
 
+    /**
+     * Profile fields only (display name, position, department, type, status, role). Never touches
+     * credentials, email, identifiers or login counters. Returns true when a row matched.
+     */
+    async updateProfile(employeeUid, fields) {
+      const [result] = await pool.query(
+        `UPDATE employees
+            SET first_name_th = ?, last_name_th = ?, position = ?, department = ?,
+                employee_type = ?, status = ?, role = ?, updated_at = NOW()
+          WHERE employee_uid = ?`,
+        [fields.firstNameTh, fields.lastNameTh, fields.position, fields.department,
+          fields.employeeType, fields.status, fields.role, employeeUid],
+      );
+      return result.affectedRows > 0;
+    },
+
     async list() {
       const [rows] = await pool.query(
         `SELECT employee_uid, employee_id, first_name_th, last_name_th, email, department,
