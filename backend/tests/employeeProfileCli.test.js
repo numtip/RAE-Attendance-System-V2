@@ -13,7 +13,7 @@ const HEADER = 'รหัส,ชื่อ-นามสกุล,ตำแหน�
 
 function csv(lines) {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'prof-')), 'p.csv');
-  fs.writeFileSync(file, `﻿${HEADER}\n${lines.join('\n')}\n`);
+  fs.writeFileSync(file, `\uFEFF${HEADER}\n${lines.join('\n')}\n`);
   return file;
 }
 
