@@ -1,4 +1,23 @@
-# Next actions — as of 2026-11-19 closeout (current)
+# Next actions — as of 2026-11-20 closeout (current)
+
+**Gate:** `RELEASE1_PRODUCTION_ACCEPTED`; Release 2 live. `main` `3d38715`, backend `dark-4bd7790`, frontend from `4bd7790`. Resume from here; do not repeat completed work. Day: `docs/reports/DAY_SUMMARY_2026-11-20.md`, decisions D-2026-11-20-01 … -05.
+
+## Owner / evidence first
+
+| # | Action | Who | Notes |
+|---|---|---|---|
+| 1 | Real-session click-through of attendance, leave, reports, dashboard, leave review | owner / executive | Only the profile page has REAL_USER_QA; do not confirm an approval during the check |
+| 2 | Onboard any person who is in the personnel file but not in the database | owner | The import reports them and never creates an employee |
+| 3 | Copy `docs/reports/DAY_SUMMARY_2026-11-20.md` and `docs/memory/` into the Obsidian vault | owner | The vault is not reachable from the VPS |
+| 4 | Items 1–6 of the 2026-11-19 list below are still open | owner | HIP export 19–30 Nov, 29 `needs_review` leave records, SSO links, self-approval policy |
+
+## Operating rule added
+
+Verify every deploy on the public domain. Production = `prod-dark` stack (see D-2026-11-20-04).
+
+---
+
+# Next actions — as of 2026-11-19 closeout (previous)
 
 **Gate:** `RELEASE1_PRODUCTION_ACCEPTED`; Release 2 live on `dark-c9e856f` (`main` `c9e856f`). Resume from here; do not repeat completed work.
 

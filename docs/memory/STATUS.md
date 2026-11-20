@@ -1,4 +1,6 @@
-# STATUS — 2026-11-19 closeout (one page, current)
+# STATUS — 2026-11-20: see `docs/STATUS.md` and `docs/reports/DAY_SUMMARY_2026-11-20.md` (`main` `3d38715`, backend `dark-4bd7790`). The page below is the 2026-11-19 closeout.
+
+# STATUS — 2026-11-19 closeout (one page)
 
 **Gate:** `RELEASE1_PRODUCTION_ACCEPTED`; Release 2 live. **GitHub `main`** `c9e856f` (PR #113) · **Production** `dark-c9e856f`.
 **Production is LIVE** at https://raeservice.mju.ac.th/attendance-v2/ (the 2026-10-20 / 10-21 "FROZEN" state below is superseded).
