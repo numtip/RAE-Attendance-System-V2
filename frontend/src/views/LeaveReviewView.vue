@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessageTh } from '../utils/i18n';
 import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import type { LeaveReviewList, LeaveReviewRow, ReviewBucket } from '../api/types';
@@ -56,7 +57,7 @@ async function load() {
     data.value = null;
     error.value = e instanceof ApiError && e.status === 403
       ? 'หน้านี้สำหรับผู้บริหารที่ได้รับสิทธิ์ระดับองค์กรเท่านั้น'
-      : (e instanceof ApiError ? e.message : 'ไม่สามารถโหลดรายการได้');
+      : (errorMessageTh(e, 'ไม่สามารถโหลดรายการได้'));
   } finally {
     loading.value = false;
   }
@@ -80,11 +81,11 @@ async function send(rows: LeaveReviewRow[], action: 'approve' | 'reject') {
     const result = await api.leaveReviewDecide(decisions);
     const firstError = result.results.find((r) => !r.ok)?.error;
     notice.value = result.failed
-      ? { kind: 'error', text: `บันทึกสำเร็จ ${result.applied} รายการ, ไม่สำเร็จ ${result.failed}${firstError ? ` — ${firstError}` : ''}` }
+      ? { kind: 'error', text: `บันทึกสำเร็จ ${result.applied} รายการ, ไม่สำเร็จ ${result.failed}${firstError ? ` — ${errorMessageTh(firstError)}` : ''}` }
       : { kind: 'ok', text: `บันทึกผลแล้ว ${result.applied} รายการ` };
     await load();
   } catch (e) {
-    notice.value = { kind: 'error', text: e instanceof ApiError ? e.message : 'บันทึกไม่สำเร็จ' };
+    notice.value = { kind: 'error', text: errorMessageTh(e, 'บันทึกไม่สำเร็จ') };
   } finally {
     busy.value = null;
   }

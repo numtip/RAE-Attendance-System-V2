@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { errorMessageTh } from '../utils/i18n';
+import { formatThaiDate } from '../utils/thai';
 import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import type { AttendanceRecord, MonthlySummary } from '../api/types';
@@ -44,7 +46,7 @@ async function load() {
     summary.value = await api.attendanceMonthly(employeeUid.value, year.value, month.value);
   } catch (e) {
     if (!(e instanceof ApiError) || e.status !== 404) {
-      error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดสรุปรายเดือนได้';
+      error.value = errorMessageTh(e, 'ไม่สามารถโหลดสรุปรายเดือนได้');
       loading.value = false;
       return;
     }
@@ -54,7 +56,7 @@ async function load() {
     events.value = rows.filter((row) => inMonth(row.date));
   } catch (e) {
     if (!(e instanceof ApiError) || e.status !== 404) {
-      error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดรายการลงเวลาได้';
+      error.value = errorMessageTh(e, 'ไม่สามารถโหลดรายการลงเวลาได้');
     }
   } finally {
     loading.value = false;
@@ -87,7 +89,7 @@ onMounted(load);
           <thead><tr><th>วันที่</th><th>สถานะ</th></tr></thead>
           <tbody>
             <tr v-for="row in events" :key="row.date">
-              <td data-label="วันที่">{{ row.date }}</td>
+              <td data-label="วันที่">{{ formatThaiDate(row.date) }}</td>
               <td data-label="สถานะ"><StatusChip :label="label(row)" /></td>
             </tr>
           </tbody>

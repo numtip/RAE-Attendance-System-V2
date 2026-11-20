@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { errorMessageTh } from '../utils/i18n';
 import { computed, onMounted, ref } from 'vue';
-import { ApiError, api, downloadPersonalReport } from '../api/client';
+import { api, downloadPersonalReport } from '../api/client';
 import type { PersonalReport } from '../api/types';
 import { getStoredEmployee } from '../auth/session';
 import AsyncState from '../components/AsyncState.vue';
@@ -32,7 +33,7 @@ async function load() {
   try {
     report.value = await api.personalReport(year.value, month.value);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดรายงานได้';
+    error.value = errorMessageTh(e, 'ไม่สามารถโหลดรายงานได้');
   } finally {
     loading.value = false;
   }
@@ -43,7 +44,7 @@ async function download(format: 'pdf' | 'xlsx') {
   try {
     await downloadPersonalReport(year.value, month.value, format);
   } catch (e) {
-    exportError.value = e instanceof ApiError ? e.message : 'ส่งออกรายงานไม่สำเร็จ';
+    exportError.value = errorMessageTh(e, 'ส่งออกรายงานไม่สำเร็จ');
   }
 }
 

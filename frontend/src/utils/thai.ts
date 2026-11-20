@@ -47,3 +47,35 @@ export function statusTone(label: string): Tone {
   if (label === 'ลา' || label.startsWith('ลา')) return 'leave';
   return 'muted';
 }
+
+const THAI_MONTHS_SHORT = [
+  'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
+] as const;
+
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
+
+/**
+ * Display an ISO (CE) date as Thai Buddhist Era. `numeric` → 20/11/2569, `short` → 20 พ.ย. 2569.
+ * Anything that is not an ISO date is returned as stored. The ISO value itself is never changed.
+ */
+export function formatThaiDate(iso: string | null | undefined, style: 'numeric' | 'short' = 'short'): string {
+  if (!iso) return '—';
+  const m = ISO_DATE.exec(iso);
+  if (!m) return iso;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (month < 1 || month > 12) return iso;
+  return style === 'numeric'
+    ? `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${buddhistYear(year)}`
+    : `${day} ${THAI_MONTHS_SHORT[month - 1]} ${buddhistYear(year)}`;
+}
+
+/** Year choices for a พ.ศ. dropdown, newest first. Values are พ.ศ.; convert with `gregorianYear`. */
+export function buddhistYearOptions(currentCe: number, span = 6): number[] {
+  const current = buddhistYear(currentCe);
+  return Array.from({ length: span + 1 }, (_, i) => current - i);
+}
+
+export function gregorianYear(be: number): number {
+  return be - 543;
+}

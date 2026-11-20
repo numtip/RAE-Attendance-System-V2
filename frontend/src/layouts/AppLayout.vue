@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import logoUrl from '../assets/brand/logo.png';
-import { ORGANIZATION_LINE, SYSTEM_NAME_TH } from '../config/organization';
+import { BRAND_NAME, BRAND_SUBTITLE_EN, BRAND_SUBTITLE_TH, ORGANIZATION_LINE } from '../config/organization';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api/client';
@@ -37,7 +37,7 @@ const reviewNav = computed(() => (employee.value?.role === 'executive' ? [{ name
 const groups = computed(() => [
   { title: 'งานของฉัน', items: myNav },
   { title: 'การลา', items: leaveNav },
-  ...(managementNav.value.length ? [{ title: 'ผู้บริหาร / หัวหน้างาน', items: [...managementNav.value, ...reviewNav.value] }] : []),
+  ...(managementNav.value.length ? [{ title: 'สำหรับผู้บริหาร', items: [...managementNav.value, ...reviewNav.value] }] : []),
 ]);
 
 function isActive(name: string): boolean {
@@ -163,7 +163,7 @@ watch(() => route.name, async () => {
       >
         <AppIcon name="menu" />
       </button>
-      <p class="topbar-title">{{ SYSTEM_NAME_TH }}</p>
+      <p class="topbar-title">{{ BRAND_NAME }}</p>
     </header>
     <div v-if="drawerActive" class="scrim" aria-hidden="true" @click="closeDrawer()"></div>
     <aside id="sidenav" ref="sidebar" class="sidebar"
@@ -176,8 +176,10 @@ watch(() => route.name, async () => {
         <div class="brand">
           <img class="brand-logo" :src="logoUrl" alt="" width="48" height="48" />
           <div>
-            <p class="brand-name">{{ SYSTEM_NAME_TH }}</p>
-            <p class="brand-sub">{{ ORGANIZATION_LINE }}</p>
+            <p class="brand-name">{{ BRAND_NAME }}</p>
+            <p class="brand-sub brand-sub--en">{{ BRAND_SUBTITLE_EN }}</p>
+            <p class="brand-sub">{{ BRAND_SUBTITLE_TH }}</p>
+            <p class="brand-sub brand-sub--org">{{ ORGANIZATION_LINE }}</p>
           </div>
         </div>
         <button type="button" class="icon-btn sidebar-close" aria-label="ปิดเมนู" @click="closeDrawer()">

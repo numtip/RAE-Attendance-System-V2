@@ -386,3 +386,16 @@
 .decide .muted {
   display: block;
 }
+
+.login-sub {
+  margin: 0.35rem 0 0;
+  color: #e6edf6;
+  font-size: clamp(0.9rem, 0.8rem + 0.5vw, 1.1rem);
+  line-height: 1.35;
+}
+
+.login-sub--th {
+  margin: 0.1rem 0 0.6rem;
+  color: #c3cfdf;
+  font-size: clamp(0.85rem, 0.8rem + 0.35vw, 1rem);
+}

@@ -831,3 +831,27 @@
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+
+/* Thai date picker (day / month / year in พ.ศ.) */
+.thai-date {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.thai-date legend {
+  padding: 0;
+  margin-bottom: 0.3rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.thai-date select {
+  flex: 1 1 auto;
+  min-width: 4.5rem;
+}

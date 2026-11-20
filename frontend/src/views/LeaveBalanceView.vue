@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import YearSelect from '../components/YearSelect.vue';
+import { errorMessageTh, leaveTypeLabel } from '../utils/i18n';
 import { computed, onMounted, ref } from 'vue';
-import { ApiError, api } from '../api/client';
+import { api } from '../api/client';
 import type { LeaveBalanceRow } from '../api/types';
 import { getStoredEmployee } from '../auth/session';
 import AsyncState from '../components/AsyncState.vue';
@@ -24,7 +26,7 @@ async function load() {
     rows.value = await api.leaveBalance(employeeUid.value, year.value);
   } catch (e) {
     rows.value = [];
-    error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดวันลาคงเหลือได้';
+    error.value = errorMessageTh(e, 'ไม่สามารถโหลดวันลาคงเหลือได้');
   } finally {
     loading.value = false;
   }
@@ -42,10 +44,7 @@ onMounted(load);
   <section>
     <PageHeader eyebrow="การลา" title="วันลาคงเหลือ" subtitle="แสดงตามที่บันทึกในระบบเท่านั้น — ระบบไม่คำนวณหรือหักวันลาเอง" />
     <form class="period" @submit.prevent="load">
-      <label class="field">
-        <span>ปี (ค.ศ.) <em class="field-hint">พ.ศ. {{ year + 543 }}</em></span>
-        <input v-model.number="year" type="number" min="2000" max="2100" inputmode="numeric" />
-      </label>
+      <YearSelect v-model="year" />
       <button type="submit" class="btn btn--primary" :disabled="loading">{{ loading ? 'กำลังโหลด…' : 'แสดงข้อมูล' }}</button>
     </form>
     <AsyncState
@@ -56,7 +55,7 @@ onMounted(load);
     >
       <ul v-if="rows.length" class="balance-grid">
         <li v-for="row in rows" :key="`${row.leaveType}-${row.year}`" class="balance">
-          <p class="balance-type">{{ row.leaveType }}</p>
+          <p class="balance-type">{{ leaveTypeLabel(row.leaveType) }}</p>
           <p class="balance-left"><strong>{{ row.remainingDays }}</strong> <span>วันคงเหลือ</span></p>
           <div class="meter" aria-hidden="true"><span class="meter-fill" :style="{ width: `${usedPercent(row)}%` }"></span></div>
           <p class="muted">ใช้ไป {{ row.usedDays }} จาก {{ row.totalDays }} วัน</p>

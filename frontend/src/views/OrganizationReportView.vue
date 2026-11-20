@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessageTh } from '../utils/i18n';
 import { computed, onMounted, ref } from 'vue';
 import { ApiError, api, downloadOrganizationReport } from '../api/client';
 import type { OrganizationReport } from '../api/types';
@@ -37,7 +38,7 @@ async function load() {
   } catch (e) {
     error.value = e instanceof ApiError && e.status === 403
       ? 'ไม่มีสิทธิ์ดูรายงานองค์กร/ทีม — ต้องเป็นผู้บริหารหรือผู้จัดการที่ได้รับสิทธิ์'
-      : (e instanceof ApiError ? e.message : 'ไม่สามารถโหลดรายงานได้');
+      : (errorMessageTh(e, 'ไม่สามารถโหลดรายงานได้'));
   } finally {
     loading.value = false;
   }
@@ -48,7 +49,7 @@ async function download(format: 'pdf' | 'xlsx') {
   try {
     await downloadOrganizationReport(year.value, month.value, format);
   } catch (e) {
-    exportError.value = e instanceof ApiError ? e.message : 'ส่งออกรายงานไม่สำเร็จ';
+    exportError.value = errorMessageTh(e, 'ส่งออกรายงานไม่สำเร็จ');
   }
 }
 
@@ -57,7 +58,7 @@ onMounted(load);
 
 <template>
   <section>
-    <PageHeader eyebrow="ผู้บริหาร / หัวหน้างาน" title="รายงานองค์กร / ทีม" subtitle="สรุปรายบุคคลตามขอบเขตสิทธิ์ของท่าน พร้อมส่งออกเป็นไฟล์">
+    <PageHeader eyebrow="สำหรับผู้บริหาร" title="รายงานองค์กร / ทีม" subtitle="สรุปรายบุคคลตามขอบเขตสิทธิ์ของท่าน พร้อมส่งออกเป็นไฟล์">
       <button type="button" class="btn" :disabled="loading || !report" @click="download('pdf')">ส่งออก PDF</button>
       <button type="button" class="btn" :disabled="loading || !report" @click="download('xlsx')">ส่งออก Excel</button>
     </PageHeader>

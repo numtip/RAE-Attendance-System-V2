@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { errorMessageTh, leaveTypeLabel } from '../utils/i18n';
+import { formatThaiDate } from '../utils/thai';
 import { computed, onMounted, ref } from 'vue';
-import { ApiError, api } from '../api/client';
+import { api } from '../api/client';
 import type { LeaveRow } from '../api/types';
 import { getStoredEmployee } from '../auth/session';
 import AsyncState from '../components/AsyncState.vue';
@@ -25,7 +27,7 @@ async function load() {
     rows.value = await api.leaveHistory(employeeUid.value);
   } catch (e) {
     rows.value = [];
-    error.value = e instanceof ApiError ? e.message : 'ไม่สามารถโหลดประวัติการลาได้';
+    error.value = errorMessageTh(e, 'ไม่สามารถโหลดประวัติการลาได้');
   } finally {
     loading.value = false;
   }
@@ -53,9 +55,9 @@ onMounted(load);
           <tbody>
             <tr v-for="row in rows" :key="row.leaveId">
               <td data-label="เลขที่">{{ row.leaveId }}</td>
-              <td data-label="ประเภท">{{ row.leaveType }}</td>
-              <td data-label="เริ่ม">{{ row.startDate }}</td>
-              <td data-label="สิ้นสุด">{{ row.endDate }}</td>
+              <td data-label="ประเภท">{{ leaveTypeLabel(row.leaveType) }}</td>
+              <td data-label="เริ่ม">{{ formatThaiDate(row.startDate) }}</td>
+              <td data-label="สิ้นสุด">{{ formatThaiDate(row.endDate) }}</td>
               <td data-label="สถานะ"><StatusChip :label="leaveStatusLabel(row.status)" /></td>
               <td data-label="การจับคู่">{{ row.matchStatus ?? '—' }}</td>
             </tr>
