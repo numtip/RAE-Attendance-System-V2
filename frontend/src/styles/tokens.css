@@ -1,0 +1,80 @@
+/*
+ * RAE Attendance V2 — "Premium Emerald" design tokens.
+ * Midnight navy #101D35 · emerald #087F68 · muted gold #D5AC65 · cloud #EEF3F7.
+ * Thai-first: Sarabun is self-hosted (no external font request from a campus network) and is the same
+ * face the PDF exports use. Gold is an accent only (rules, rings, highlights on navy) — never body text
+ * on a light surface. Contrast: text on cloud/white >= 7:1, muted >= 5.5:1, white on emerald >= 5:1.
+ */
+@font-face {
+  font-family: 'Sarabun';
+  src: url('../assets/fonts/Sarabun-Regular.ttf') format('truetype');
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Sarabun';
+  src: url('../assets/fonts/Sarabun-Bold.ttf') format('truetype');
+  font-weight: 600 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+
+  /* brand */
+  --navy: #101d35;
+  --navy-2: #172a4d;
+  --navy-3: #22395f;
+  --emerald: #087f68;
+  --emerald-hover: #066b57;
+  --emerald-deep: #054d40;
+  --emerald-soft: #e2f3ee;
+  --emerald-line: #a9dccf;
+  --gold: #d5ac65;
+  --gold-deep: #8a6420;
+  --gold-soft: #faf2e1;
+  --cloud: #eef3f7;
+
+  /* semantic surfaces */
+  --bg: var(--cloud);
+  --surface: #ffffff;
+  --surface-2: #f6f9fb;
+  --text: #101d35;
+  --muted: #4d5d76;
+  --border: #d8e1ea;
+  --border-strong: #a9b7c8;
+  --ring: #0a6fd6;
+
+  /* legacy aliases (kept so every existing view picks up the new palette) */
+  --primary: var(--emerald);
+  --primary-hover: var(--emerald-hover);
+  --primary-soft: var(--emerald-soft);
+
+  /* status */
+  --ok: #066653;
+  --ok-bg: #e2f3ee;
+  --late: #7a4f00;
+  --late-bg: #fbefd6;
+  --leave: #24407a;
+  --leave-bg: #e6ecf8;
+  --info-bg: #edf3f8;
+  --info-border: #bdd0e2;
+  --danger-bg: #fdecec;
+  --danger-text: #9b1c1c;
+  --empty-bg: #eaf0f5;
+
+  /* shape + depth */
+  --radius: 0.625rem;
+  --radius-lg: 1rem;
+  --shadow-1: 0 1px 2px rgb(16 29 53 / 6%), 0 1px 1px rgb(16 29 53 / 4%);
+  --shadow-2: 0 8px 24px -8px rgb(16 29 53 / 16%), 0 2px 6px rgb(16 29 53 / 6%);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --sidebar-w: 17rem;
+
+  font-family: 'Sarabun', 'Noto Sans Thai', 'Tahoma', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+}
