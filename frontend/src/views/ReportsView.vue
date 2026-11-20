@@ -6,6 +6,7 @@ import { getStoredEmployee } from '../auth/session';
 import AsyncState from '../components/AsyncState.vue';
 import KpiTile from '../components/KpiTile.vue';
 import PeriodPicker from '../components/PeriodPicker.vue';
+import PageHeader from '../components/PageHeader.vue';
 import StatusChip from '../components/StatusChip.vue';
 import { isReviewFixtureMode } from '../config/reviewMode';
 
@@ -50,14 +51,11 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="card">
-    <div class="page-head">
-      <h2>รายงานของฉัน</h2>
-      <div class="actions">
-        <button type="button" class="btn" :disabled="loading || !report" @click="download('pdf')">ส่งออก PDF</button>
-        <button type="button" class="btn" :disabled="loading || !report" @click="download('xlsx')">ส่งออก Excel</button>
-      </div>
-    </div>
+  <section>
+    <PageHeader eyebrow="งานของฉัน" title="รายงานของฉัน" subtitle="สรุปการมาทำงาน การสแกน และการลาของท่านรายเดือน พร้อมส่งออกเป็นไฟล์">
+      <button type="button" class="btn" :disabled="loading || !report" @click="download('pdf')">ส่งออก PDF</button>
+      <button type="button" class="btn" :disabled="loading || !report" @click="download('xlsx')">ส่งออก Excel</button>
+    </PageHeader>
     <PeriodPicker v-model:year="year" v-model:month="month" :loading="loading" @submit="load" />
     <p v-if="exportError" class="form-error" role="alert">{{ exportError }}</p>
     <AsyncState :loading="loading" :error="error" :empty="false">
@@ -72,14 +70,14 @@ onMounted(load);
           <p v-if="!report.hasMonthlySummary" class="state state--empty">ไม่มีสรุปรายเดือนที่บันทึกไว้</p>
           <dl v-else class="kpi-grid">
             <KpiTile label="มาทำงาน" :value="report.present ?? '—'" :hint="`จาก ${report.workDays ?? '—'} วันทำงาน`" />
-            <KpiTile label="มาสาย" :value="report.late ?? '—'" :hint="`รวม ${report.lateMinutes ?? 0} นาที`" />
-            <KpiTile label="ลา (บันทึกจาก HIP)" :value="report.leaveRecordedDays ?? '—'" :hint="report.leaveRecordedDays === null ? 'เดือนนี้ยังไม่มีข้อมูลการลา' : `วัน — ยังไม่ยืนยันอนุมัติ${report.leaveNeedsReview ? ` · รอตรวจสอบ ${report.leaveNeedsReview}` : ''}`" />
+            <KpiTile label="มาสาย" tone="late" :value="report.late ?? '—'" :hint="`รวม ${report.lateMinutes ?? 0} นาที`" />
+            <KpiTile label="ลา (บันทึกจาก HIP)" tone="leave" :value="report.leaveRecordedDays ?? '—'" :hint="report.leaveRecordedDays === null ? 'เดือนนี้ยังไม่มีข้อมูลการลา' : `วัน — ยังไม่ยืนยันอนุมัติ${report.leaveNeedsReview ? ` · รอตรวจสอบ ${report.leaveNeedsReview}` : ''}`" />
             <KpiTile label="วันลาคงเหลือ" :value="report.remainingLeaveDays ?? '—'" hint="วัน" />
           </dl>
           <h3 class="section-title">รายการสแกน</h3>
           <p v-if="report.scans.length === 0" class="muted">ไม่มีรายการสแกนที่บันทึกไว้</p>
           <div v-else class="table-scroll">
-            <table class="data-table">
+            <table class="data-table data-table--stack">
               <thead>
                 <tr>
                   <th>วันที่</th><th>เวลาเข้า</th><th>เวลาออก</th><th>สถานะ</th><th class="num">สาย (นาที)</th>
@@ -87,11 +85,11 @@ onMounted(load);
               </thead>
               <tbody>
                 <tr v-for="scan in report.scans" :key="scan.date">
-                  <td>{{ scan.dateLabel }}</td>
-                  <td>{{ scan.checkInLabel }}</td>
-                  <td>{{ scan.checkOutLabel }}</td>
-                  <td><StatusChip :label="scan.statusLabel" /></td>
-                  <td class="num">{{ scan.lateMinutes ?? '—' }}</td>
+                  <td data-label="วันที่">{{ scan.dateLabel }}</td>
+                  <td data-label="เวลาเข้า">{{ scan.checkInLabel }}</td>
+                  <td data-label="เวลาออก">{{ scan.checkOutLabel }}</td>
+                  <td data-label="สถานะ"><StatusChip :label="scan.statusLabel" /></td>
+                  <td class="num" data-label="สาย (นาที)">{{ scan.lateMinutes ?? '—' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -99,16 +97,16 @@ onMounted(load);
           <h3 class="section-title">รายการลา</h3>
           <p v-if="report.leaveRows.length === 0" class="muted">ไม่มีรายการลาที่บันทึกไว้</p>
           <div v-else class="table-scroll">
-            <table class="data-table">
+            <table class="data-table data-table--stack">
               <thead>
                 <tr><th>ประเภท</th><th>เริ่ม</th><th>สิ้นสุด</th><th>สถานะ</th></tr>
               </thead>
               <tbody>
                 <tr v-for="row in report.leaveRows" :key="`${row.startLabel}-${row.typeLabel}`">
-                  <td>{{ row.typeLabel }}</td>
-                  <td>{{ row.startLabel }}</td>
-                  <td>{{ row.endLabel }}</td>
-                  <td>{{ row.statusLabel }}</td>
+                  <td data-label="ประเภท">{{ row.typeLabel }}</td>
+                  <td data-label="เริ่ม">{{ row.startLabel }}</td>
+                  <td data-label="สิ้นสุด">{{ row.endLabel }}</td>
+                  <td data-label="สถานะ"><StatusChip :label="row.statusLabel" /></td>
                 </tr>
               </tbody>
             </table>

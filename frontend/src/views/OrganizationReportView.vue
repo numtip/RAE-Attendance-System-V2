@@ -4,6 +4,7 @@ import { ApiError, api, downloadOrganizationReport } from '../api/client';
 import type { OrganizationReport } from '../api/types';
 import AsyncState from '../components/AsyncState.vue';
 import KpiTile from '../components/KpiTile.vue';
+import PageHeader from '../components/PageHeader.vue';
 import PeriodPicker from '../components/PeriodPicker.vue';
 
 const now = new Date();
@@ -55,14 +56,11 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="card">
-    <div class="page-head">
-      <h2>รายงานองค์กร / ทีม</h2>
-      <div class="actions">
-        <button type="button" class="btn" :disabled="loading || !report" @click="download('pdf')">ส่งออก PDF</button>
-        <button type="button" class="btn" :disabled="loading || !report" @click="download('xlsx')">ส่งออก Excel</button>
-      </div>
-    </div>
+  <section>
+    <PageHeader eyebrow="ผู้บริหาร / หัวหน้างาน" title="รายงานองค์กร / ทีม" subtitle="สรุปรายบุคคลตามขอบเขตสิทธิ์ของท่าน พร้อมส่งออกเป็นไฟล์">
+      <button type="button" class="btn" :disabled="loading || !report" @click="download('pdf')">ส่งออก PDF</button>
+      <button type="button" class="btn" :disabled="loading || !report" @click="download('xlsx')">ส่งออก Excel</button>
+    </PageHeader>
     <PeriodPicker v-model:year="year" v-model:month="month" :loading="loading" @submit="load" />
     <p v-if="exportError" class="form-error" role="alert">{{ exportError }}</p>
     <AsyncState :loading="loading" :error="error" :empty="false">
@@ -81,8 +79,8 @@ onMounted(load);
             :hint="`มีสรุปรายเดือน ${report.totals.employeesWithData} · ไม่มี ${report.totals.employeesWithoutData}`"
           />
           <KpiTile label="มาทำงาน (รวม)" :value="report.totals.present" hint="วัน-คน" />
-          <KpiTile label="มาสาย (รวม)" :value="report.totals.late" :hint="`${report.totals.lateMinutes} นาที`" />
-          <KpiTile label="ลา — บันทึกจาก HIP (รวม)" :value="report.totals.leaveRecordedDays ?? '—'" :hint="report.totals.leaveRecordedDays === null ? 'เดือนนี้ยังไม่มีข้อมูลการลา' : `วัน — รอตรวจสอบ ${report.totals.leaveNeedsReview} รายการ (ไม่รวม)`" />
+          <KpiTile label="มาสาย (รวม)" tone="late" :value="report.totals.late" :hint="`${report.totals.lateMinutes} นาที`" />
+          <KpiTile label="ลา — บันทึกจาก HIP (รวม)" tone="leave" :value="report.totals.leaveRecordedDays ?? '—'" :hint="report.totals.leaveRecordedDays === null ? 'เดือนนี้ยังไม่มีข้อมูลการลา' : `วัน — รอตรวจสอบ ${report.totals.leaveNeedsReview} รายการ (ไม่รวม)`" />
         </dl>
         <div class="toolbar">
           <input v-model="query" class="search" type="search" placeholder="ค้นหาชื่อหรือรหัสพนักงาน" aria-label="ค้นหาชื่อหรือรหัสพนักงาน" />
