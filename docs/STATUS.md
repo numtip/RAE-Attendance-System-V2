@@ -38,11 +38,11 @@
 |---|---|---|
 | Schema | `032` adds `employee_type = procurement_academic`; `033` adds `employees.title_th` (rollbacks in `database/rollbacks/`) | PROD_DEPLOYED |
 | Import | `npm run employees:import-profile -- --file <csv> --update-names --confirm --operator <uid>` — dry-run by default, counts-only output, matches by `employee_id`, never creates an employee, keeps a non-`user` role (the executive is not demoted), admin grant needs `--allow-admin-grant` | CODE_MERGED |
-| Data written | 49 employees: position, division (`department`), personnel type (1 changed), title (นาย 11 · นาง 12 · นางสาว 24 · ดร. 1 · ว่าที่ร้อยตรี 1), 3 names corrected from the CSV (owner confirmed). Roles and status unchanged | PROD_DEPLOYED |
-| Title display | `title_th` is shown on the profile page only; `first_name_th`/`last_name_th` stay title-free so reports and exports print the same names. `/me` returns `titleTh` for 49 of 52 | PROD_DEPLOYED |
-| Backups / rollback | DB dumps `…20261120T074512-pre-employee-profile-import` and `…T080853-pre-title-import` (backups dir); `prod-dark/docker-compose.yml.bak-pre-4bd7790`; `prod-dark/frontend-dist.prev-d1a1c2e` and `.prev-4bd7790` | VERIFIED |
+| Data written | All **52** employees now carry position, division (`department`), personnel type and title from the file: 49 in the first run (personnel type 1 changed, 3 names corrected, owner confirmed), then the last 3 (codes 1032, 2012, 2017 — owner supplied their rows; 1 name corrected). Roles and status unchanged (1 executive, 51 user) | PROD_DEPLOYED |
+| Title display | `title_th` is shown on the profile page only; `first_name_th`/`last_name_th` stay title-free so reports and exports print the same names. `/me` returns `titleTh` for 52 of 52 (49 verified before the last 3 rows were imported; the final count is a DB query) | PROD_DEPLOYED |
+| Backups / rollback | DB dumps `…20261120T074512-pre-employee-profile-import` and `…T080853-pre-title-import`, `…T085253-pre-3-employees-profile` (backups dir); `prod-dark/docker-compose.yml.bak-pre-4bd7790`; `prod-dark/frontend-dist.prev-d1a1c2e` and `.prev-4bd7790` | VERIFIED |
 
-Open: 3 employees (incl. the executive) are not in the CSV by code, so they keep the old division and have no position/title; CSV code `1022` is not in the database (never auto-created — onboard it first). Authenticated profile page on Production: **not yet checked** (needs a real SSO session).
+Open: authenticated profile page on Production **not yet checked** (needs a real SSO session). The personnel file is the only source of these fields; a row for a person not yet onboarded is reported by the import and never auto-created.
 
 ## Branding + Thai localization — 2026-11-20 (frontend only, no backend/DB/API change)
 
