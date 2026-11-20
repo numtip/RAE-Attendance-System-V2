@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ApiError, api } from '../api/client';
 import { setSession } from '../auth/session';
+import AppIcon from '../components/AppIcon.vue';
 import { isReviewFixtureMode, reviewModeBannerText } from '../config/reviewMode';
 
 const route = useRoute();
@@ -61,45 +62,53 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login-page">
-    <section class="card login-card" aria-labelledby="login-title">
-      <div class="login-brand">
-        <img class="brand-logo" :src="logoUrl" alt="" width="40" height="40" />
-        <div>
-          <p class="brand-name">{{ SYSTEM_NAME_TH }}</p>
-          <p class="brand-sub">{{ ORGANIZATION_LINE }}</p>
-        </div>
+  <div class="login">
+    <section class="login-hero" aria-label="เกี่ยวกับระบบ">
+      <img class="login-logo" :src="logoUrl" alt="ตรามหาวิทยาลัยแม่โจ้" width="104" height="104" />
+      <div>
+        <h2>{{ SYSTEM_NAME_TH }}</h2>
+        <p class="login-org">{{ ORGANIZATION_LINE }}</p>
       </div>
-      <p v-if="isReviewFixtureMode" class="review-banner" role="status">
-        {{ reviewModeBannerText }}
-      </p>
-      <h1 id="login-title">เข้าสู่ระบบ</h1>
-      <p class="muted">
-        <template v-if="isReviewFixtureMode">Fixture review build — API calls are mocked in the browser.</template>
-        <template v-else-if="showLocalLogin">เข้าสู่ระบบด้วยบัญชี MJU (MJU SSO) หรือบัญชีภายในของระบบ</template>
-        <template v-else>เข้าสู่ระบบด้วยบัญชี MJU (MJU SSO) ของท่าน</template>
-      </p>
-      <p v-if="ssoQueryError" class="form-error" role="alert">{{ ssoQueryError }}</p>
-      <div v-if="!isReviewFixtureMode" class="form">
-        <button type="button" class="btn btn--primary btn--wide" :disabled="loading" @click="beginMjuSsoLogin">
-          เข้าสู่ระบบด้วย MJU SSO
-        </button>
-      </div>
-      <form v-if="showLocalLogin" class="form" @submit.prevent="submit">
-        <label class="field">
-          <span>อีเมล</span>
-          <input v-model="email" type="email" autocomplete="username" required />
-        </label>
-        <label class="field">
-          <span>รหัสผ่าน</span>
-          <input v-model="password" type="password" autocomplete="current-password" required />
-        </label>
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-        <button type="submit" class="btn btn--ghost" :disabled="loading">
-          {{ loading ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบด้วยอีเมล' }}
-        </button>
-      </form>
-      <p v-if="isReviewFixtureMode" class="hint muted">Fixture user: user@example.test / valid-pass (admin: admin@example.test)</p>
+      <ul class="login-points">
+        <li><AppIcon name="clock" />ดูเวลาปฏิบัติงานรายวันและสรุปรายเดือน</li>
+        <li><AppIcon name="leave-monthly" />ติดตามรายการลาและวันลาคงเหลือ</li>
+        <li><AppIcon name="reports" />รายงานส่วนบุคคล ทีม และองค์กร</li>
+      </ul>
     </section>
+    <main class="login-panel">
+      <section class="card login-card" aria-labelledby="login-title">
+        <p v-if="isReviewFixtureMode" class="review-banner" role="status">
+          {{ reviewModeBannerText }}
+        </p>
+        <h1 id="login-title">เข้าสู่ระบบ</h1>
+        <p class="muted">
+          <template v-if="isReviewFixtureMode">Fixture review build — API calls are mocked in the browser.</template>
+          <template v-else-if="showLocalLogin">เข้าสู่ระบบด้วยบัญชี MJU (MJU SSO) หรือบัญชีภายในของระบบ</template>
+          <template v-else>เข้าสู่ระบบด้วยบัญชี MJU (MJU SSO) ของท่าน</template>
+        </p>
+        <p v-if="ssoQueryError" class="form-error" role="alert">{{ ssoQueryError }}</p>
+        <div v-if="!isReviewFixtureMode" class="form">
+          <button type="button" class="btn btn--primary btn--wide" :disabled="loading" @click="beginMjuSsoLogin">
+            <AppIcon name="shield" />เข้าสู่ระบบด้วย MJU SSO
+          </button>
+        </div>
+        <form v-if="showLocalLogin" class="form" @submit.prevent="submit">
+          <label class="field">
+            <span>อีเมล</span>
+            <input v-model="email" type="email" autocomplete="username" required />
+          </label>
+          <label class="field">
+            <span>รหัสผ่าน</span>
+            <input v-model="password" type="password" autocomplete="current-password" required />
+          </label>
+          <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+          <button type="submit" class="btn" :class="{ 'btn--primary': isReviewFixtureMode }" :disabled="loading">
+            {{ loading ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบด้วยอีเมล' }}
+          </button>
+        </form>
+        <p v-if="isReviewFixtureMode" class="hint muted">Fixture user: user@example.test / valid-pass (admin: admin@example.test)</p>
+        <p class="login-foot">{{ ORGANIZATION_LINE }}</p>
+      </section>
+    </main>
   </div>
 </template>

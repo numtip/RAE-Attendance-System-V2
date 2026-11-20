@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { ApiError, api } from '../api/client';
 import type { DivisionBucket, DivisionReport, OrganizationReportRow } from '../api/types';
 import AsyncState from '../components/AsyncState.vue';
+import PageHeader from '../components/PageHeader.vue';
 import KpiTile from '../components/KpiTile.vue';
 import PeriodPicker from '../components/PeriodPicker.vue';
 
@@ -75,10 +76,8 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="card">
-    <div class="page-head">
-      <h2>แดชบอร์ดผู้บริหาร</h2>
-    </div>
+  <section>
+    <PageHeader eyebrow="ผู้บริหาร" title="แดชบอร์ดผู้บริหาร" subtitle="เปรียบเทียบรายกองจากข้อมูลที่นำเข้า" />
     <PeriodPicker v-model:year="year" v-model:month="month" :loading="loading" @submit="load" />
     <AsyncState :loading="loading" :error="error" :empty="false">
       <template v-if="report">

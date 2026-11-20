@@ -41,8 +41,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="login-page">
-    <section class="card login-card" role="status">
+  <div class="login-panel" style="min-height: 100vh">
+    <section class="card login-card login-card--status" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
       <h1>MJU SSO</h1>
       <p class="muted">{{ statusMessage }}</p>
     </section>

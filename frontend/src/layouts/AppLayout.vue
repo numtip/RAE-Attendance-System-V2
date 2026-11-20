@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import logoUrl from '../assets/brand/logo.png';
 import { ORGANIZATION_LINE, SYSTEM_NAME_TH } from '../config/organization';
-import { computed } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api/client';
 import { clearSession, getRefreshToken, getStoredEmployee } from '../auth/session';
+import AppIcon from '../components/AppIcon.vue';
 import { roleLabel } from '../utils/thai';
 
 const route = useRoute();
@@ -71,48 +72,111 @@ async function logout() {
   }
   await router.push({ name: 'login' });
 }
-</script>
 
+// ---- responsive navigation: below 1024px the sidebar is a drawer (Esc closes, Tab is trapped, focus returns) ----
+const drawerOpen = ref(false);
+const menuButton = ref<HTMLButtonElement | null>(null);
+const sidebar = ref<HTMLElement | null>(null);
+const mainEl = ref<HTMLElement | null>(null);
+const initial = computed(() => (employee.value?.email ?? '?').trim().charAt(0).toUpperCase());
+
+async function openDrawer() {
+  drawerOpen.value = true;
+  await nextTick();
+  sidebar.value?.querySelector<HTMLElement>('a, button')?.focus();
+}
+function closeDrawer(restoreFocus = true) {
+  if (!drawerOpen.value) return;
+  drawerOpen.value = false;
+  if (restoreFocus) menuButton.value?.focus();
+}
+function onKeydown(event: KeyboardEvent) {
+  if (!drawerOpen.value) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeDrawer();
+    return;
+  }
+  if (event.key !== 'Tab' || !sidebar.value) return;
+  const focusable = Array.from(sidebar.value.querySelectorAll<HTMLElement>('a[href], button:not([disabled])'));
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+document.addEventListener('keydown', onKeydown);
+onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
+
+// After a route change the keyboard/screen-reader user lands on the new page, not on the old link.
+watch(() => route.name, async () => {
+  closeDrawer(false);
+  await nextTick();
+  mainEl.value?.focus({ preventScroll: true });
+  window.scrollTo({ top: 0 });
+});
+</script>
 <template>
-  <div class="app-shell-root">
+  <div class="shell">
     <a class="skip-link" href="#main">ข้ามไปยังเนื้อหา</a>
-    <header class="app-top">
-      <div class="app-top-inner">
+    <header class="topbar">
+      <button
+        ref="menuButton"
+        type="button"
+        class="icon-btn"
+        aria-controls="sidenav"
+        :aria-expanded="drawerOpen"
+        aria-label="เปิดเมนู"
+        @click="openDrawer"
+      >
+        <AppIcon name="menu" />
+      </button>
+      <p class="topbar-title">{{ SYSTEM_NAME_TH }}</p>
+    </header>
+    <div v-if="drawerOpen" class="scrim" aria-hidden="true" @click="closeDrawer()"></div>
+    <aside id="sidenav" ref="sidebar" class="sidebar" :class="{ 'sidebar--open': drawerOpen }" aria-label="เมนูหลัก">
+      <div class="sidebar-head">
         <div class="brand">
-          <img class="brand-logo" :src="logoUrl" alt="" width="40" height="40" />
+          <img class="brand-logo" :src="logoUrl" alt="" width="48" height="48" />
           <div>
             <p class="brand-name">{{ SYSTEM_NAME_TH }}</p>
             <p class="brand-sub">{{ ORGANIZATION_LINE }}</p>
           </div>
         </div>
-        <div v-if="employee" class="app-user">
-          <span class="app-user-id" :title="employee.email">{{ employee.email }}</span>
-          <span class="badge">{{ roleLabel(employee.role) }}</span>
-          <button type="button" class="btn btn--ghost" @click="logout">ออกจากระบบ</button>
+        <button type="button" class="icon-btn sidebar-close" aria-label="ปิดเมนู" @click="closeDrawer()">
+          <AppIcon name="close" />
+        </button>
+      </div>
+      <nav class="app-nav" aria-label="เมนูหลัก">
+        <div v-for="group in groups" :key="group.title" class="nav-group">
+          <p class="nav-heading">{{ group.title }}</p>
+          <RouterLink
+            v-for="item in group.items"
+            :key="item.name"
+            :to="{ name: item.name }"
+            class="nav-link"
+            :class="{ 'nav-link--active': isActive(item.name) }"
+            :aria-current="isActive(item.name) ? 'page' : undefined"
+          >
+            <AppIcon :name="item.name" />
+            <span>{{ item.label }}</span>
+          </RouterLink>
         </div>
+      </nav>
+      <div v-if="employee" class="sidebar-user">
+        <span class="avatar" aria-hidden="true">{{ initial }}</span>
+        <span class="sidebar-user-id" :title="employee.email">{{ employee.email }}</span>
+        <span class="badge">{{ roleLabel(employee.role) }}</span>
+        <button type="button" class="btn btn--ghost" @click="logout"><AppIcon name="logout" />ออกจากระบบ</button>
       </div>
-    </header>
-    <div class="app-shell">
-      <div class="app-body">
-        <nav class="app-nav" aria-label="เมนูหลัก">
-          <div v-for="group in groups" :key="group.title" class="nav-group">
-            <p class="nav-heading">{{ group.title }}</p>
-            <RouterLink
-              v-for="item in group.items"
-              :key="item.name"
-              :to="{ name: item.name }"
-              class="nav-link"
-              :class="{ 'nav-link--active': isActive(item.name) }"
-              :aria-current="isActive(item.name) ? 'page' : undefined"
-            >
-              {{ item.label }}
-            </RouterLink>
-          </div>
-        </nav>
-        <main id="main" class="app-main" tabindex="-1">
-          <RouterView />
-        </main>
-      </div>
-    </div>
+    </aside>
+    <main id="main" ref="mainEl" class="content" tabindex="-1">
+      <RouterView />
+    </main>
   </div>
 </template>
