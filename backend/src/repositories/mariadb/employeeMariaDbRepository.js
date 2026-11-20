@@ -5,7 +5,7 @@ function createEmployeeMariaDbRepository(pool) {
   return {
     async findByEmail(email) {
       const [rows] = await pool.query(
-        `SELECT employee_uid, employee_id, first_name_th, last_name_th, first_name_en, last_name_en,
+        `SELECT employee_uid, employee_id, title_th, first_name_th, last_name_th, first_name_en, last_name_en,
                 email, password_hash, last_login, login_attempts, locked_until, phone, department,
                 position, employee_type, hire_date, status, role, created_at, updated_at
          FROM employees WHERE email = ? LIMIT 1`,
@@ -18,7 +18,7 @@ function createEmployeeMariaDbRepository(pool) {
       const normalized = String(employeeId || '').trim();
       if (!normalized) return null;
       const [rows] = await pool.query(
-        `SELECT employee_uid, employee_id, first_name_th, last_name_th, first_name_en, last_name_en,
+        `SELECT employee_uid, employee_id, title_th, first_name_th, last_name_th, first_name_en, last_name_en,
                 email, password_hash, last_login, login_attempts, locked_until, phone, department,
                 position, employee_type, hire_date, status, role, created_at, updated_at
          FROM employees WHERE employee_id = ? LIMIT 1`,
@@ -29,7 +29,7 @@ function createEmployeeMariaDbRepository(pool) {
 
     async findByUid(employeeUid) {
       const [rows] = await pool.query(
-        `SELECT employee_uid, employee_id, first_name_th, last_name_th, email, department,
+        `SELECT employee_uid, employee_id, title_th, first_name_th, last_name_th, email, department,
                 position, employee_type, status, role
          FROM employees WHERE employee_uid = ? LIMIT 1`,
         [employeeUid],
@@ -38,9 +38,25 @@ function createEmployeeMariaDbRepository(pool) {
       return row ? publicFields(row) : null;
     },
 
+    /**
+     * Profile fields only (title, display name, position, department, type, status, role). Never touches
+     * credentials, email, identifiers or login counters. Returns true when a row matched.
+     */
+    async updateProfile(employeeUid, fields) {
+      const [result] = await pool.query(
+        `UPDATE employees
+            SET title_th = ?, first_name_th = ?, last_name_th = ?, position = ?, department = ?,
+                employee_type = ?, status = ?, role = ?, updated_at = NOW()
+          WHERE employee_uid = ?`,
+        [fields.titleTh, fields.firstNameTh, fields.lastNameTh, fields.position, fields.department,
+          fields.employeeType, fields.status, fields.role, employeeUid],
+      );
+      return result.affectedRows > 0;
+    },
+
     async list() {
       const [rows] = await pool.query(
-        `SELECT employee_uid, employee_id, first_name_th, last_name_th, email, department,
+        `SELECT employee_uid, employee_id, title_th, first_name_th, last_name_th, email, department,
                 position, employee_type, status, role
          FROM employees ORDER BY employee_id`,
       );

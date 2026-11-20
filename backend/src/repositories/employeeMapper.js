@@ -2,6 +2,7 @@ function publicFields(row) {
   return {
     employeeUid: row.employeeUid,
     employeeId: row.employeeId,
+    titleTh: row.titleTh ?? null,
     firstNameTh: row.firstNameTh,
     lastNameTh: row.lastNameTh,
     email: row.email,

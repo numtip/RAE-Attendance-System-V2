@@ -12,6 +12,8 @@ export interface ApiSuccessBody<T> {
 export interface EmployeePublic {
   employeeUid: string;
   employeeId: string;
+  /** คำนำหน้านาม — shown on the profile page only; reports keep the title-free name. */
+  titleTh?: string | null;
   firstNameTh: string;
   lastNameTh: string;
   email: string;

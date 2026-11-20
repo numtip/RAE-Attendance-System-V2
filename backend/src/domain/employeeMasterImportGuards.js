@@ -26,7 +26,7 @@
  * No I/O, no clock, no database.
  */
 
-const EMPLOYEE_TYPES = Object.freeze(['university', 'department', 'contract']);
+const EMPLOYEE_TYPES = Object.freeze(['university', 'department', 'contract', 'procurement_academic']);
 
 /** Dates that are obviously placeholders rather than evidence. */
 const PLACEHOLDER_DATES = Object.freeze(new Set(['1900-01-01', '1970-01-01', '9999-12-31', '0000-00-00']));

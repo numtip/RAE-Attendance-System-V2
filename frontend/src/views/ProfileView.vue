@@ -24,6 +24,9 @@ async function load() {
   }
 }
 
+const fullName = computed(() => (profile.value
+  ? `${profile.value.titleTh ?? ''}${profile.value.firstNameTh} ${profile.value.lastNameTh}`
+  : ''));
 const initial = computed(() => (profile.value?.firstNameTh ?? '?').trim().charAt(0));
 
 onMounted(load);
@@ -39,7 +42,7 @@ onMounted(load);
         <div class="profile-hero">
           <span class="avatar" aria-hidden="true">{{ initial }}</span>
           <div>
-            <h3>{{ profile.firstNameTh }} {{ profile.lastNameTh }}</h3>
+            <h3>{{ fullName }}</h3>
             <p>{{ profile.position || profile.department }}</p>
             <div class="profile-meta">
               <span class="badge">{{ roleLabel(profile.role) }}</span>
@@ -49,7 +52,7 @@ onMounted(load);
         </div>
         <div class="card">
           <dl class="detail-grid">
-            <div><dt>ชื่อ-นามสกุล</dt><dd>{{ profile.firstNameTh }} {{ profile.lastNameTh }}</dd></div>
+            <div><dt>ชื่อ-นามสกุล</dt><dd>{{ fullName }}</dd></div>
             <div><dt>รหัสพนักงาน</dt><dd>{{ profile.employeeId }}</dd></div>
             <div><dt>อีเมล</dt><dd>{{ profile.email }}</dd></div>
             <div><dt>หน่วยงาน</dt><dd>{{ profile.department }}</dd></div>
