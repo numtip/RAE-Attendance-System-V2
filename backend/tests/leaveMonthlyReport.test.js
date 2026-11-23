@@ -118,8 +118,8 @@ test('recorded leave sums 0.5/1.0 days per type, keeps review items out of total
   ], ['2026-03']);
   const report = await createLeaveMonthlyReportService({ repositories: repos }).monthly(exec, { year: '2026', month: '3' });
   const a = report.rows.find((r) => r.employeeId === '1001');
-  assert.deepEqual(a.recorded.personal, { days: 1.5, approvedDays: 0, records: 2, fullDays: 1, halfDays: 1 });
-  assert.deepEqual(a.recorded.sick, { days: 0.5, approvedDays: 0, records: 1, fullDays: 0, halfDays: 1 });
+  assert.deepEqual(a.recorded.personal, { days: 1.5, approvedDays: 0, awaitingApprovalDays: 1.5, records: 2, fullDays: 1, halfDays: 1 });
+  assert.deepEqual(a.recorded.sick, { days: 0.5, approvedDays: 0, awaitingApprovalDays: 0.5, records: 1, fullDays: 0, halfDays: 1 });
   assert.equal(a.recorded.vacation.days, 0, 'the needs_review record is not counted');
   assert.equal(a.recordedNeedsReview, 1);
   assert.equal(report.recordedTotals.byType.vacation.days, 1, 'only the other employee full day counts');
@@ -174,4 +174,87 @@ test('exports carry fractional days and no absence wording', async () => {
   const p = await service.export(exec, { year: '2026', month: '3', format: 'pdf' });
   assert.equal(p.buffer.subarray(0, 5).toString(), '%PDF-');
   await assert.rejects(() => service.export(exec, { year: '2026', month: '3', format: 'csv' }), (e) => e.status === 400);
+});
+
+// ---- range / filters / status split / divisions -----------------------------------------------
+function withDivisions(records, coveredPeriods, memberships) {
+  const repos = withRecorded(records, coveredPeriods);
+  repos.authorization.listMemberships = async () => memberships;
+  return repos;
+}
+const memberships = [
+  { employeeUid: A, orgUnitCode: 'DIV_OFFICE' },
+  { employeeUid: B, orgUnitCode: 'DIV_RESEARCH' },
+];
+const yearRecords = [
+  rec({ leaveDate: '2026-01-05' }),
+  rec({ leaveDate: '2026-02-05', leaveType: 'sick', approvalStatus: 'approved' }),
+  rec({ leaveDate: '2026-02-06', dayPart: 'AM', dayFraction: 0.5, approvalStatus: 'approved' }),
+  rec({ employeeUid: B, leaveDate: '2026-02-09', leaveType: 'vacation' }),
+  rec({ employeeUid: B, leaveDate: '2026-02-10', dayPart: 'UNKNOWN', dayFraction: null, reviewStatus: 'needs_review', reviewReason: 'both_scans_present' }),
+  rec({ employeeUid: B, leaveDate: '2026-02-11', approvalStatus: 'rejected' }),
+  rec({ leaveDate: '2026-03-05' }), // March is not covered: never shown or counted
+];
+
+test('year view splits recorded / approved / awaiting / needs-review and reconciles with the record list', async () => {
+  const repos = withDivisions(yearRecords, ['2026-01', '2026-02'], memberships);
+  const report = await createLeaveMonthlyReportService({ repositories: repos }).monthly(exec, { year: '2026' });
+  assert.equal(report.month, null);
+  assert.deepEqual(report.recordedCoverage.coveredMonths, ['2026-01', '2026-02']);
+  assert.equal(report.recordedCoverage.uncoveredMonths.length, 10);
+  const all = report.recordedTotals.all;
+  assert.equal(all.recordedDays, 3.5);
+  assert.equal(all.approvedDays, 1.5);
+  assert.equal(all.awaitingApprovalDays, 2);
+  assert.equal(all.needsReviewRecords, 1);
+  assert.equal(all.rejectedRecords, 1);
+  assert.equal(report.records.length, 6, 'the uncovered March record is not shown');
+  assert.equal(report.reconciliation.reconciled, true);
+  assert.deepEqual(report.records.map((r) => r.status).sort(), ['approved', 'approved', 'needs_review', 'rejected', 'unverified', 'unverified']);
+  const office = report.byDivision.find((d) => d.code === 'DIV_OFFICE');
+  const research = report.byDivision.find((d) => d.code === 'DIV_RESEARCH');
+  assert.equal(office.recordedDays, 2.5);
+  assert.equal(research.recordedDays, 1);
+  assert.equal(research.needsReviewRecords, 1);
+});
+
+test('month, date range, division, employee, status and type filters narrow records and totals', async () => {
+  const repos = withDivisions(yearRecords, ['2026-01', '2026-02'], memberships);
+  const service = createLeaveMonthlyReportService({ repositories: repos });
+  const feb = await service.monthly(exec, { year: '2026', month: '2' });
+  assert.equal(feb.records.length, 5);
+  const range = await service.monthly(exec, { year: '2026', from: '2026-02-06', to: '2026-02-09' });
+  assert.deepEqual(range.records.map((r) => r.date), ['2026-02-06', '2026-02-09']);
+  const div = await service.monthly(exec, { year: '2026', division: 'DIV_RESEARCH' });
+  assert.deepEqual([...new Set(div.rows.map((r) => r.employeeId))], ['1002']);
+  const one = await service.monthly(exec, { year: '2026', employeeUid: A });
+  assert.ok(one.records.every((r) => r.employeeUid === A));
+  const approved = await service.monthly(exec, { year: '2026', status: 'approved' });
+  assert.equal(approved.recordedTotals.all.recordedDays, 1.5);
+  assert.equal(approved.recordedTotals.all.awaitingApprovalDays, 0);
+  const sick = await service.monthly(exec, { year: '2026', type: 'sick' });
+  assert.equal(sick.recordedTotals.all.recordedDays, 1);
+  assert.equal(sick.filters.active, true);
+});
+
+test('invalid filters are rejected and an out-of-scope employee is forbidden', async () => {
+  const repos = withDivisions(yearRecords, ['2026-02'], memberships);
+  const service = createLeaveMonthlyReportService({ repositories: repos });
+  for (const bad of [{ status: 'x' }, { type: 'x' }, { division: 'x' }, { from: '2026-13-01' }, { from: '2026-05-01', to: '2026-04-01' }]) {
+    await assert.rejects(() => service.monthly(exec, { year: '2026', ...bad }), (e) => e.status === 400);
+  }
+  const self = { role: 'employee', employeeUid: B };
+  await assert.rejects(() => service.monthly(self, { year: '2026', employeeUid: A }), (e) => e.status === 403);
+  const mine = await service.monthly(self, { year: '2026', employeeUid: B });
+  assert.deepEqual([...new Set(mine.records.map((r) => r.employeeId))], ['1002']);
+});
+
+test('xlsx and pdf are built from the same report (year view, filtered)', async () => {
+  const repos = withDivisions(yearRecords, ['2026-01', '2026-02'], memberships);
+  const service = createLeaveMonthlyReportService({ repositories: repos });
+  const pdf = await service.export(exec, { year: '2026', status: 'approved', format: 'pdf' });
+  assert.equal(pdf.filename, 'leave-organization-2569-all.pdf');
+  assert.equal(pdf.buffer.subarray(0, 4).toString(), '%PDF');
+  const xlsx = await service.export(exec, { year: '2026', format: 'xlsx' });
+  assert.equal(xlsx.buffer.subarray(0, 2).toString(), 'PK');
 });

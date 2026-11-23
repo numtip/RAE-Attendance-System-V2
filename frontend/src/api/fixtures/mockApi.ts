@@ -325,9 +325,13 @@ function handleLeaveMonthly(role: string, year: number, month: number): import('
         ? [{ leaveType: 'personal', typeLabel: 'ลากิจ', startLabel: '10 พฤษภาคม 2569', endLabel: '10 พฤษภาคม 2569', status: 'pending', statusLabel: 'รออนุมัติ', daysInMonth: 1, crossesMonth: false, counted: false }]
         : [];
     return {
+      employeeUid: `uid-${index + 1}`,
+      divisionCode: 'DIV_OFFICE',
+      divisionName: 'กองตัวอย่าง',
+      recordedTotals: { records: 0, recordedDays: 0, approvedDays: 0, awaitingApprovalDays: 0, needsReviewRecords: 0, rejectedRecords: 0 },
       employeeId: `S${String(index + 1).padStart(3, '0')}`,
       employeeName,
-      recorded: { personal: { approvedDays: 0, days: index === 3 ? 1.5 : 0, records: index === 3 ? 2 : 0, fullDays: index === 3 ? 1 : 0, halfDays: index === 3 ? 1 : 0 }, sick: { approvedDays: 0, days: index === 1 ? 0.5 : 0, records: index === 1 ? 1 : 0, fullDays: 0, halfDays: index === 1 ? 1 : 0 }, vacation: { approvedDays: 0, days: index === 4 ? 3 : 0, records: index === 4 ? 1 : 0, fullDays: index === 4 ? 3 : 0, halfDays: 0 } },
+      recorded: { personal: { approvedDays: 0, awaitingApprovalDays: 0, days: index === 3 ? 1.5 : 0, records: index === 3 ? 2 : 0, fullDays: index === 3 ? 1 : 0, halfDays: index === 3 ? 1 : 0 }, sick: { approvedDays: 0, awaitingApprovalDays: 0, days: index === 1 ? 0.5 : 0, records: index === 1 ? 1 : 0, fullDays: 0, halfDays: index === 1 ? 1 : 0 }, vacation: { approvedDays: 0, awaitingApprovalDays: 0, days: index === 4 ? 3 : 0, records: index === 4 ? 1 : 0, fullDays: index === 4 ? 3 : 0, halfDays: 0 } },
       recordedNeedsReview: index === 2 ? 1 : 0,
       recordedDetails: index === 1
         ? [{ date: '2026-05-04', dateLabel: '4 พฤษภาคม 2569', leaveType: 'sick', typeLabel: 'ลาป่วย', dayPart: 'AM' as const, partLabel: 'ครึ่งวันเช้า', dayFraction: 0.5, reviewStatus: 'candidate' as const, reasonLabels: [], approvalStatus: 'unverified' }]
@@ -352,8 +356,16 @@ function handleLeaveMonthly(role: string, year: number, month: number): import('
     buddhistYear: year + 543,
     periodLabel: `${thaiDate(start)} – ${thaiDate(end)}`,
     types: [{ type: 'personal', labelTh: 'ลากิจ' }, { type: 'sick', labelTh: 'ลาป่วย' }, { type: 'vacation', labelTh: 'ลาพักผ่อน' }],
-    recordedCoverage: { periodCovered: true, note: null },
-    recordedTotals: { byType: { personal: { approvedDays: 0, days: 1.5, records: 2, fullDays: 1, halfDays: 1 }, sick: { approvedDays: 0, days: 0.5, records: 1, fullDays: 0, halfDays: 1 }, vacation: { approvedDays: 0, days: 3, records: 1, fullDays: 3, halfDays: 0 } }, needsReviewRecords: 1 },
+    from: start,
+    to: end,
+    divisions: [{ code: 'DIV_OFFICE', nameTh: 'กองตัวอย่าง' }],
+    statuses: [{ code: 'approved', label: 'อนุมัติแล้ว' }, { code: 'unverified', label: 'บันทึกจาก HIP · รออนุมัติ' }, { code: 'needs_review', label: 'รอตรวจสอบ' }, { code: 'rejected', label: 'ไม่อนุมัติ' }],
+    filters: { division: null, employeeUid: null, status: null, type: null, divisionName: null, statusLabel: null, typeLabel: null, active: false },
+    byDivision: null,
+    records: [],
+    reconciliation: { recordsMatched: 0, recordsInRows: 0, recordsInList: 0, recordsInDivisions: 0, recordedDaysInDivisions: 0, recordedDaysInTotals: 0, reconciled: true },
+    recordedCoverage: { periodCovered: true, coveredMonths: [], uncoveredMonths: [], note: null },
+    recordedTotals: { byType: { personal: { approvedDays: 0, awaitingApprovalDays: 0, days: 1.5, records: 2, fullDays: 1, halfDays: 1 }, sick: { approvedDays: 0, awaitingApprovalDays: 0, days: 0.5, records: 1, fullDays: 0, halfDays: 1 }, vacation: { approvedDays: 0, awaitingApprovalDays: 0, days: 3, records: 1, fullDays: 3, halfDays: 0 } }, needsReviewRecords: 1, all: { records: 1, recordedDays: 5, approvedDays: 0, awaitingApprovalDays: 5, needsReviewRecords: 1, rejectedRecords: 0 } },
     coverage: { leaveRecordsInSystem: 0, hasLeaveData: false, unmatchedRecordsExcluded: 0, note: 'ยังไม่มีข้อมูลการลาในระบบ' },
     totals: null,
     rows,
@@ -526,7 +538,7 @@ export async function fixtureApiRequest<T>(
     return (await handleLeaveBalance(decodeURIComponent(balanceMatch[1]), Number(balanceMatch[2]))) as T;
   }
 
-  const leaveMonthlyMatch = path.match(/^\/reports\/leave-monthly\?year=(\d+)&month=(\d+)$/);
+  const leaveMonthlyMatch = path.match(/^\/reports\/leave-monthly\?year=(\d+)&month=(\d+)/);
   if (auth && method === 'GET' && leaveMonthlyMatch) {
     return handleLeaveMonthly(authFromSession().role, Number(leaveMonthlyMatch[1]), Number(leaveMonthlyMatch[2])) as T;
   }
