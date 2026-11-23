@@ -1,12 +1,11 @@
 const { HttpError } = require('../utils/httpError');
 const { assertCanReadEmployee } = require('./access');
 const {
-  PART_LABEL, REASON_LABEL, TYPE_LABEL, RECORD_STATUS_LABEL, SOURCE_LABEL, recordStatus,
+  PART_LABEL, REASON_LABEL, TYPE_LABEL, RECORD_STATUS_LABEL, LEGACY_STATUS_LABEL, SOURCE_LABEL, recordStatus,
 } = require('./leaveLabels');
 
 /** Types whose deductions we can verify from employee_leave_record / employee_leave. */
 const TRACKED = ['personal', 'sick', 'vacation'];
-const LEGACY_STATUS_LABEL = { approved: 'อนุมัติแล้ว', pending: 'รออนุมัติ', rejected: 'ไม่อนุมัติ' };
 const DAY_MS = 86400000;
 
 function utcMs(iso) {

@@ -303,6 +303,7 @@ async function handlePersonalReport(search: string): Promise<PersonalReport> {
     lateMinutes: summary ? summary.totalLateMinutes : null,
     scans: empty ? [] : scans,
     leaveRows: empty ? [] : leaveRows,
+    leaveBalances: balances,
     remainingLeaveDays: balances.length ? balances.reduce((sum, row) => sum + (row.remainingDays ?? 0), 0) : null,
     source: 'stored-monthly-and-leave',
     notices: {

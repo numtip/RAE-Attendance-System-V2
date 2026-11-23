@@ -10,6 +10,7 @@ import PeriodPicker from '../components/PeriodPicker.vue';
 import PageHeader from '../components/PageHeader.vue';
 import StatusChip from '../components/StatusChip.vue';
 import { isReviewFixtureMode } from '../config/reviewMode';
+import { leaveRecordChipClass } from '../utils/thai';
 
 const now = new Date();
 const employeeUid = computed(() => getStoredEmployee()?.employeeUid ?? '');
@@ -20,6 +21,13 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const exportError = ref<string | null>(null);
 const report = ref<PersonalReport | null>(null);
+
+// Per-type balance summary; a type without a verified entitlement is "ไม่มีข้อมูล", never 0.
+function balanceHint(r: PersonalReport): string {
+  return r.leaveBalances
+    .map((b) => `${b.typeLabel ?? b.leaveType}: ${b.available ? `${b.remainingDays} วัน` : 'ไม่มีข้อมูล'}`)
+    .join(' · ');
+}
 
 async function load() {
   if (!employeeUid.value) {
@@ -73,7 +81,7 @@ onMounted(load);
             <KpiTile label="มาทำงาน" :value="report.present ?? '—'" :hint="`จาก ${report.workDays ?? '—'} วันทำงาน`" />
             <KpiTile label="มาสาย" tone="late" :value="report.late ?? '—'" :hint="`รวม ${report.lateMinutes ?? 0} นาที`" />
             <KpiTile label="ลา (บันทึกจาก HIP)" tone="leave" :value="report.leaveRecordedDays ?? '—'" :hint="report.leaveRecordedDays === null ? 'เดือนนี้ยังไม่มีข้อมูลการลา' : `วัน — ยังไม่ยืนยันอนุมัติ${report.leaveNeedsReview ? ` · รอตรวจสอบ ${report.leaveNeedsReview}` : ''}`" />
-            <KpiTile label="วันลาคงเหลือ" :value="report.remainingLeaveDays ?? '—'" hint="วัน" />
+            <KpiTile label="วันลาคงเหลือ" :value="report.remainingLeaveDays ?? 'ไม่มีข้อมูล'" :hint="balanceHint(report)" />
           </dl>
           <h3 class="section-title">รายการสแกน</h3>
           <p v-if="report.scans.length === 0" class="muted">ไม่มีรายการสแกนที่บันทึกไว้</p>
@@ -100,14 +108,17 @@ onMounted(load);
           <div v-else class="table-scroll">
             <table class="data-table data-table--stack">
               <thead>
-                <tr><th>ประเภท</th><th>เริ่ม</th><th>สิ้นสุด</th><th>สถานะ</th></tr>
+                <tr><th>ประเภท</th><th>เริ่ม</th><th>สิ้นสุด</th><th>ช่วงเวลา</th><th class="num">จำนวนวัน</th><th>สถานะ</th><th>แหล่งข้อมูล</th></tr>
               </thead>
               <tbody>
                 <tr v-for="row in report.leaveRows" :key="`${row.startLabel}-${row.typeLabel}`">
                   <td data-label="ประเภท">{{ row.typeLabel }}</td>
                   <td data-label="เริ่ม">{{ row.startLabel }}</td>
                   <td data-label="สิ้นสุด">{{ row.endLabel }}</td>
-                  <td data-label="สถานะ"><StatusChip :label="row.statusLabel" /></td>
+                  <td data-label="ช่วงเวลา">{{ row.partLabel ?? '—' }}</td>
+                  <td class="num" data-label="จำนวนวัน">{{ row.dayFraction ?? '—' }}</td>
+                  <td data-label="สถานะ"><span :class="leaveRecordChipClass(row.status ?? '')">{{ row.statusLabel }}</span></td>
+                  <td data-label="แหล่งข้อมูล">{{ row.sourceLabel ?? '—' }}</td>
                 </tr>
               </tbody>
             </table>

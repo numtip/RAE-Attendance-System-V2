@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { leaveTypeLabel } from '../utils/i18n';
-import { formatThaiDate } from '../utils/thai';
+import { formatThaiDate, leaveRecordChipClass } from '../utils/thai';
 import type { LeaveRow } from '../api/types';
 
 defineProps<{ rows: LeaveRow[] }>();
@@ -8,12 +8,6 @@ defineProps<{ rows: LeaveRow[] }>();
 function days(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-function chip(status: string): string {
-  if (status === 'approved') return 'chip chip--ok';
-  if (status === 'needs_review' || status === 'pending') return 'chip chip--late';
-  if (status === 'rejected') return 'chip chip--muted';
-  return 'chip chip--leave';
 }
 function dateText(row: LeaveRow): string {
   return row.startDate === row.endDate
@@ -35,7 +29,7 @@ function dateText(row: LeaveRow): string {
           <td data-label="ช่วงเวลา">{{ row.partLabel ?? '—' }}</td>
           <td data-label="จำนวนวัน" class="num">{{ days(row.dayFraction) }}</td>
           <td data-label="สถานะ">
-            <span :class="chip(row.status)">{{ row.statusLabel ?? row.status }}</span>
+            <span :class="leaveRecordChipClass(row.status)">{{ row.statusLabel ?? row.status }}</span>
             <span v-if="row.reasonLabels?.length" class="muted"> {{ row.reasonLabels.join('; ') }}</span>
           </td>
           <td data-label="แหล่งข้อมูล">{{ row.sourceLabel ?? '—' }}</td>
