@@ -68,6 +68,11 @@ const router = createRouter({
           component: () => import('../views/LeaveReviewView.vue'),
         },
         {
+          path: 'leave/entitlements',
+          name: 'leave-entitlements',
+          component: () => import('../views/LeaveEntitlementDashboardView.vue'),
+        },
+        {
           path: 'leave/monthly',
           name: 'leave-monthly',
           component: () => import('../views/LeaveMonthlyView.vue'),

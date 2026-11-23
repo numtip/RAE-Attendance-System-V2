@@ -5,7 +5,7 @@ import { THAI_MONTHS, buddhistYear, buddhistYearOptions, gregorianYear } from '.
 // Thai date picker: day / month (Thai names) / year (พ.ศ.) selects. The model is an ISO (CE) date string,
 // so the API and all internal logic keep using YYYY-MM-DD; only the labels are Buddhist Era.
 const model = defineModel<string>({ required: true });
-defineProps<{ label?: string }>();
+const props = defineProps<{ label?: string; span?: number }>();
 
 const nowCe = new Date().getUTCFullYear();
 
@@ -17,7 +17,7 @@ function parse(value: string): { y: number; m: number; d: number } {
 
 const parts = computed(() => parse(model.value));
 const years = computed(() => {
-  const list = buddhistYearOptions(nowCe, 10);
+  const list = buddhistYearOptions(nowCe, props.span ?? 10);
   const current = buddhistYear(parts.value.y);
   return list.includes(current) ? list : [...list, current].sort((a, b) => b - a);
 });

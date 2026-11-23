@@ -180,6 +180,14 @@ export const api = {
     apiRequest<import('./types').LeaveBalanceRow[]>(
       `/leave/balance/${encodeURIComponent(employeeUid)}?year=${year}${basis === 'fiscal' ? '&basis=fiscal' : ''}`,
     ),
+  // Everyone in the caller's scope in ONE request (executive / manager). `division` is optional.
+  leaveEntitlements: (year: number, division = '') =>
+    apiRequest<import('./types').EntitlementOverview>(`/leave/entitlements?year=${year}${division ? `&division=${encodeURIComponent(division)}` : ''}`),
+  // The owner's data entry (executive with an organization grant). Absent key = unchanged, null = clear.
+  saveLeaveEntitlementFacts: (employeeUid: string, year: number, body: import('./types').EntitlementFactsInput) =>
+    apiRequest<{ changed: number; rows: import('./types').LeaveBalanceRow[] }>(
+      `/leave/entitlements/${encodeURIComponent(employeeUid)}?year=${year}`, { method: 'PUT', body },
+    ),
   leaveHistory: (employeeUid: string) =>
     apiRequest<import('./types').LeaveRow[]>(`/leave/history/${employeeUid}`),
   organizationReport: (year: number, month: number) =>

@@ -34,6 +34,7 @@ const ERROR_CODE_TH: Record<string, string> = {
   IDENTITY_EMAIL_MISMATCH: 'อีเมลไม่ตรงกับข้อมูลพนักงาน',
   ATTENDANCE_CORE_TIMEOUT: 'ระบบใช้เวลาตอบสนองนานเกินไป กรุณาลองใหม่อีกครั้ง',
   ATTENDANCE_CORE_ERROR: 'ไม่สามารถเชื่อมต่อระบบข้อมูลลงเวลาได้',
+  LEAVE_ENTITLEMENT_ENGINE_OFF: 'ระบบคำนวณสิทธิ์วันลาตามปีงบประมาณยังไม่เปิดใช้งาน',
   ATTENDANCE_CORE_UNAVAILABLE: 'ระบบข้อมูลลงเวลาไม่พร้อมใช้งาน',
 };
 

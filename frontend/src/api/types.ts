@@ -402,3 +402,73 @@ export interface LeaveBalanceRow {
   usageComplete?: boolean;
   uncoveredMonths?: string[];
 }
+
+// ---------- Fiscal-year entitlement overview (one request for everyone in scope) ----------
+export type EntitlementStatus = 'ok' | 'unknown' | 'pending_policy' | 'pending_hr_decision' | 'needs_hr' | 'out_of_scope' | 'not_started';
+export type EntitlementScope = 'in_policy' | 'unconfirmed' | 'excluded';
+export interface EntitlementCell {
+  status: EntitlementStatus;
+  source: 'hr_verified' | 'computed' | null;
+  available: boolean;
+  /** null = not determined (NOT zero). */
+  entitlementDays: number | null;
+  carryoverDays: number | null;
+  totalDays: number | null;
+  usedDays: number | null;
+  pendingDays: number | null;
+  remainingDays: number | null;
+  usageComplete: boolean;
+  missing: string[];
+  reasons: string[];
+  flags: string[];
+}
+export interface EntitlementProfile {
+  hireDate: string | null;
+  continuousServiceStart: string | null;
+  appointmentKind: 'first' | 'rehire_after_resignation' | 'rehire_after_dismissal' | 'other' | null;
+  eligibilityConfirmed: boolean | null;
+  eligibilityReference: string | null;
+}
+export interface EntitlementRow {
+  employeeUid: string;
+  employeeId: string;
+  name: string;
+  employeeType: string;
+  division: { code: string; nameTh: string };
+  scope: EntitlementScope;
+  missing: string[];
+  types: Partial<Record<LeaveKind, EntitlementCell>>;
+  /** Only for the executive with an organization grant. */
+  profile?: EntitlementProfile;
+}
+export interface EntitlementTypeSummary {
+  label: string;
+  byStatus: Record<string, number>;
+  determined: number;
+  entitlementDays: number;
+  usedDays: number;
+  remainingDays: number;
+}
+export interface EntitlementOverview {
+  fiscalYear: { be: number; start: string; end: string };
+  flag: 'shadow' | 'on';
+  canEdit: boolean;
+  types: { type: LeaveKind; labelTh: string }[];
+  divisions: { code: string; nameTh: string }[];
+  summary: {
+    headcount: number; inPolicy: number; excluded: number; unconfirmed: number; fullyDetermined: number;
+    byType: Record<LeaveKind, EntitlementTypeSummary>;
+    missing: Record<string, number>;
+  };
+  rows: EntitlementRow[];
+}
+export interface EntitlementFactsInput {
+  hireDate?: string | null;
+  continuousServiceStart?: string | null;
+  appointmentKind?: EntitlementProfile['appointmentKind'];
+  eligibility?: { confirmed: boolean | null; reference?: string };
+  entitlements?: Array<
+    | { fiscalYearBe: number; leaveType: LeaveKind; remove: true }
+    | { fiscalYearBe: number; leaveType: LeaveKind; entitlementDays: number; carryoverDays?: number | null; usageBaselineDays?: number | null; usageBaselineThrough?: string | null }
+  >;
+}
