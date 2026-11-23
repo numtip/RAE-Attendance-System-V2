@@ -76,7 +76,6 @@ const bulkBusy = ref(false);
 const bulkError = ref<string | null>(null);
 const selectable = (r: EntitlementRow) => r.scope !== 'excluded';
 const selectedCount = computed(() => selected.value.size);
-const unmappedSelected = computed(() => (data.value?.rows ?? []).filter((r) => selected.value.has(r.employeeUid) && r.policy.family === null).length);
 const allVisibleSelected = computed(() => visible.value.filter(selectable).length > 0 && visible.value.filter(selectable).every((r) => selected.value.has(r.employeeUid)));
 function toggle(uid: string) {
   const next = new Set(selected.value);
@@ -182,7 +181,7 @@ onMounted(load);
         <dl class="kpi-grid">
           <KpiTile label="พนักงานในขอบเขต" :value="`${data.summary.headcount} คน`" />
           <KpiTile label="อยู่ในหลักเกณฑ์" :value="`${data.summary.inPolicy} คน`" tone="info" />
-          <KpiTile label="รอยืนยันสิทธิ์" :value="`${data.summary.unconfirmed} คน`" hint="พนักงานจ้างเหมา/ประเภทที่ยังไม่กำหนดหลักเกณฑ์" tone="late" />
+          <KpiTile label="รอยืนยันสิทธิ์" :value="`${data.summary.unconfirmed} คน`" hint="พนักงานจ้างเหมาที่เจ้าของระบบยังไม่ยืนยัน" tone="late" />
           <KpiTile label="อยู่นอกหลักเกณฑ์" :value="`${data.summary.excluded} คน`" hint="เจ้าของระบบตัดสินว่าไม่อยู่ในหลักเกณฑ์" />
           <KpiTile label="คำนวณครบทั้ง 3 ประเภท" :value="`${data.summary.fullyDetermined} คน`" tone="leave" />
         </dl>
@@ -317,7 +316,6 @@ onMounted(load);
 
  <ConfirmDialog :open="bulkOpen" title="ยืนยันสิทธิ์ตามหลักเกณฑ์" confirm-label="บันทึก" :busy="bulkBusy" @confirm="confirmBulk" @cancel="bulkOpen = false">
       <p>ผู้ที่เลือก {{ selectedCount }} คน</p>
-      <p v-if="unmappedSelected > 0 && bulkChoice === 'yes'" class="callout" role="note">มี {{ unmappedSelected }} คนที่ยังไม่ได้กำหนดว่าใช้หลักเกณฑ์ใด — การยืนยันจะใช้เกณฑ์ของพนักงานมหาวิทยาลัยเหมือนเดิม (ระบบแสดงหมายเหตุกำกับไว้)</p>
       <label class="field">
         <span>การตัดสิน</span>
         <select v-model="bulkChoice">

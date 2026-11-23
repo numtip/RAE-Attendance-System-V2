@@ -276,13 +276,14 @@ test('vacation carry-over is refused for section policies with a reason, and kep
   assert.deepEqual(ok.report.files.entitlement.errors, {});
 });
 
-test('a confirmed type with no mapped policy is accepted with a warning (the university rules apply, as before)', async () => {
+test('procurement_academic is mapped to the university policy: a confirmation is accepted without a policy warning', async () => {
   const ctx = setup();
   ctx.employees.rows.push({ employeeUid: 'u-pro', employeeId: '1005', employeeType: 'procurement_academic', status: 'active', hireDate: null, firstNameTh: 'พัสดุ', lastNameTh: 'ทดสอบ' });
   const f = file(P, [pRow({ employeeId: '1005', name: 'นายพัสดุ ทดสอบ', type: 'นักวิชาการพัสดุ', eligibilityConfirmed: 'ใช่', eligibilityReference: 'memo 1' })]);
   const r = await run(['--profile', f], ctx);
   assert.deepEqual(r.report.files.profile.errors, {});
-  assert.deepEqual(r.report.files.profile.warnings.policy_unmapped, 1);
+  assert.equal(r.report.files.profile.warnings.policy_unmapped, undefined);
+  assert.equal(r.report.files.profile.warnings.eligibility_unconfirmed, undefined);
   const declined = await run(['--profile', file(P, [pRow({ employeeId: '1005', name: 'นายพัสดุ ทดสอบ', type: 'นักวิชาการพัสดุ', eligibilityConfirmed: 'ไม่ใช่', eligibilityReference: 'memo 2' })])], ctx);
   assert.deepEqual(declined.report.files.profile.errors, {});
 });

@@ -169,11 +169,11 @@ test('entitlement upload applies only the rows that carry data; blank template r
 test('bulk eligibility: confirms section-contract workers with the owner\'s reference, audited; an unknown or duplicate person refuses the whole request', async () => {
   const { service, repositories, overview } = build();
   const before = await overview.overview(exec, { year: FY });
-  assert.equal(before.summary.unconfirmed, 2); // the contract worker and the procurement person
+  assert.equal(before.summary.unconfirmed, 1); // the contract worker (procurement is mapped to the university policy)
   const r = await service.bulkEligibility(exec, { employeeUids: [C1], confirmed: true, reference: 'คำสั่ง 12/2569' });
   assert.deepEqual([r.requested, r.changed, r.unchanged, r.failed.length], [1, 1, 0, 0]);
   const after = await overview.overview(exec, { year: FY });
-  assert.equal(after.summary.unconfirmed, 1);
+  assert.equal(after.summary.unconfirmed, 0);
   const row = after.rows.find((x) => x.employeeUid === C1);
   assert.deepEqual([row.profile.eligibilityConfirmed, row.profile.eligibilityReference], [true, 'คำสั่ง 12/2569']);
   assert.deepEqual(['sick', 'personal', 'vacation'].map((t) => row.types[t].totalDays), [10, 5, 10]);
@@ -193,12 +193,12 @@ test('bulk eligibility: confirms section-contract workers with the owner\'s refe
   assert.equal(repositories.leaveHr.audit.length, writes); // refused before anything was written
   assert.equal((await repositories.leaveHr.getProfile(U1)), null);
 
-  // an unmapped type can be confirmed too (university rules, flagged) and declined
+  // procurement_academic follows the university policy: no flag, and an explicit decline still works
   const procurement = await service.bulkEligibility(exec, { employeeUids: [P1], confirmed: true });
   assert.equal(procurement.changed, 1);
-  const flagged = (await overview.overview(exec, { year: FY })).rows.find((x) => x.employeeUid === P1);
-  assert.ok(flagged.types.sick.flags.includes('policy_assumed_university'));
-  assert.equal(flagged.policy.family, null);
+  const mapped = (await overview.overview(exec, { year: FY })).rows.find((x) => x.employeeUid === P1);
+  assert.ok(!mapped.types.sick.flags.includes('policy_assumed_university'));
+  assert.equal(mapped.policy.family, 'university');
   const declined = await service.bulkEligibility(exec, { employeeUids: [P1], confirmed: false, reference: 'ไม่อยู่ในหลักเกณฑ์' });
   assert.equal(declined.changed, 1);
   const cleared = await service.bulkEligibility(exec, { employeeUids: [C1], confirmed: null });

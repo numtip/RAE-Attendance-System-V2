@@ -35,7 +35,6 @@ const showHire = computed(() => (requires.value?.hireDateFor.length ?? 0) > 0);
 const showContinuity = computed(() => Boolean(requires.value?.continuousService));
 const showKind = computed(() => Boolean(requires.value?.appointmentKind));
 const showCarryover = computed(() => Boolean(requires.value?.carryover));
-const unmapped = computed(() => props.row?.policy?.family === null);
 const hireNote = computed(() => (requires.value?.hireDateFor ?? []).map((t) => leaveTypeLabel(t)).join(' และ '));
 const initial = computed<EntitlementProfile>(() => props.row?.profile ?? {
   hireDate: null, continuousServiceStart: null, appointmentKind: null, eligibilityConfirmed: null, eligibilityReference: null,
@@ -140,7 +139,7 @@ function onBackdrop(e: MouseEvent) { if (e.target === dialog.value && !props.bus
     <form v-if="row" class="dialog-body" @submit.prevent="submit">
       <h3 id="ent-edit-title">กรอกข้อมูลสิทธิ์วันลา</h3>
       <p class="muted">{{ row.name }} · {{ row.employeeId }} · ปีงบประมาณ {{ fiscalYearBe }}</p>
-      <p class="muted">หลักเกณฑ์: <strong>{{ policyLabelTh(row.policy) }}</strong><template v-if="unmapped"> — ยังไม่ได้ระบุว่าประเภทนี้ใช้หลักเกณฑ์ใด: เมื่อยืนยันสิทธิ์ ระบบใช้เกณฑ์ของพนักงานมหาวิทยาลัยเหมือนเดิม (และแสดงหมายเหตุกำกับ)</template></p>
+      <p class="muted">หลักเกณฑ์: <strong>{{ policyLabelTh(row.policy) }}</strong></p>
       <p v-if="row.missing.length" class="callout" role="note">ยังขาด: {{ row.missing.map(missingLabelTh).join(', ') }}</p>
       <p class="muted">เว้นว่างไว้หากยังไม่ทราบ — ระบบจะไม่เดาค่าให้ และทุกการแก้ไขถูกบันทึกประวัติ</p>
 

@@ -6,8 +6,9 @@
  *   university        -> MJU-LEAVE-2569               (sick 60 / personal 45 / vacation 10, carry-over cap 20/30)
  *   section_employee  -> RAE-SECTION-EMPLOYEE-2569    (15 / 5 / 10; personal needs 3 months, vacation 6 months; no carry-over)
  *   section_contract  -> RAE-SECTION-CONTRACT-2570-V3 (10 / 5 / 10; effective 2026-10-01; no tenure condition, carry-over or prorating)
- *   procurement_academic has NO mapped family: the owner has not said which policy applies, so it stays `needs_hr`
- *   and a confirmation cannot pick a policy for it.
+ *   procurement_academic -> university (OWNER DECISION 2026-11-23: explicit mapping to MJU-LEAVE-2569, 60/45/10, with all
+ *   its tenure, eligibility and carry-over rules). Only an unknown type has no family: it stays `needs_hr` and a
+ *   confirmation cannot pick a policy for it.
  *
  * Nothing here is anyone's verified entitlement; it is what the policy says. A policy that has been used to compute a
  * balance is never edited: it is superseded by a new id.
@@ -73,7 +74,7 @@ const SECTION_CONTRACT_2570_V3 = Object.freeze({
     Object.freeze({ date: '2026-11-23', decision: 'effective from FY2570 (2026-10-01); no carry-over, no prorating' }),
     Object.freeze({ date: '2026-11-23', decision: 'half-day vacation (0.5 day) is allowed' }),
     Object.freeze({ date: '2026-11-23', decision: 'medical certificate required for sick leave exceeding 3 consecutive working days' }),
-    Object.freeze({ date: '2026-11-23', decision: 'all 19 verified section contract workers are confirmed; procurement_academic stays unmapped' }),
+    Object.freeze({ date: '2026-11-23', decision: 'all 19 verified section contract workers are confirmed' }),
   ]),
   effectiveFrom: '2026-10-01', // owner decision: start of FY2570
   announcedOn: '2026-11-23',
@@ -103,7 +104,7 @@ const POLICY_FAMILY_BY_TYPE = Object.freeze({
   university: 'university',
   department: 'section_employee',
   contract: 'section_contract',
-  procurement_academic: null,
+  procurement_academic: 'university', // owner decision 2026-11-23
 });
 
 /**

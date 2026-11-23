@@ -269,7 +269,7 @@ const entRows: EntRow[] = [
     personal: entCell({ entitlementDays: 5, totalDays: 5, usedDays: 0, remainingDays: 5, flags: NOTE_FLAG }),
     vacation: entCell({ entitlementDays: 10, carryoverDays: 0, totalDays: 10, usedDays: 1, remainingDays: 9, flags: NOTE_FLAG }),
   } },
-  { employeeUid: 'e8', employeeId: 'P001', name: 'พัสดุ ตัวอย่าง', employeeType: 'procurement_academic', division: DIV_B, scope: 'unconfirmed', missing: [], policy: POLICY.unmapped, profile: { ...emptyProfile }, types: { sick: waitingCell(), personal: waitingCell(), vacation: waitingCell() } },
+  { employeeUid: 'e8', employeeId: 'P001', name: 'พัสดุ ตัวอย่าง', employeeType: 'procurement_academic', division: DIV_B, scope: 'in_policy', missing: ['hireDate'], policy: POLICY.university, profile: { ...emptyProfile }, types: { sick: entCell({ entitlementDays: 60, totalDays: 60, usedDays: 0, remainingDays: 60 }), personal: unknownCell(['hireDate']), vacation: unknownCell(['hireDate']) } },
 ];
 
 function handleEntitlements(role: string, year: number, division: string): import('../types').EntitlementOverview {
