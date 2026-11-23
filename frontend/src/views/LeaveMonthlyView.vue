@@ -160,7 +160,7 @@ onMounted(load);
           <option v-for="st in report?.statuses ?? []" :key="st.code" :value="st.code">{{ st.label }}</option>
         </select>
       </label>
-      <label class="field field--inline">
+      <label class="range-toggle">
         <input v-model="useRange" type="checkbox" />
         <span>ระบุช่วงวันที่</span>
       </label>
@@ -338,3 +338,20 @@ onMounted(load);
     </AsyncState>
   </section>
 </template>
+
+<style scoped>
+.range-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.range-toggle input {
+  width: 1.15rem;
+  height: 1.15rem;
+  min-height: 0;
+  accent-color: var(--navy-3);
+}
+</style>
