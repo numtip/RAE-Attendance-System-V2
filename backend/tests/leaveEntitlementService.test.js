@@ -158,7 +158,7 @@ test('an explicit denial is never overridden by a stored number; a confirmed con
   const rows = byType(await ok.service.balance(C, FY));
   assert.deepEqual(['sick', 'personal', 'vacation'].map((t) => [rows[t].status, rows[t].totalDays, rows[t].kind]), [['ok', 10, 'annual_limit'], ['ok', 5, 'annual_limit'], ['ok', 10, 'annual_limit']]);
   assert.equal(rows.vacation.carryoverDays, 0);
-  assert.ok(rows.sick.flags.some((f) => f.code === 'policy_effective_date_unspecified'));
+  assert.ok(!rows.sick.flags.some((f) => f.code === 'policy_effective_date_unspecified'));
 });
 
 // ------------------------------------------------------------ deduction

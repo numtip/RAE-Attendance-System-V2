@@ -5,7 +5,7 @@
  * Three policy FAMILIES, one per employment type (employees.employee_type):
  *   university        -> MJU-LEAVE-2569               (sick 60 / personal 45 / vacation 10, carry-over cap 20/30)
  *   section_employee  -> RAE-SECTION-EMPLOYEE-2569    (15 / 5 / 10; personal needs 3 months, vacation 6 months; no carry-over)
- *   section_contract  -> RAE-SECTION-CONTRACT-2569-V2 (10 / 5 / 10; no tenure condition; no carry-over)
+ *   section_contract  -> RAE-SECTION-CONTRACT-2570-V3 (10 / 5 / 10; effective 2026-10-01; no tenure condition, carry-over or prorating)
  *   procurement_academic has NO mapped family: the owner has not said which policy applies, so it stays `needs_hr`
  *   and a confirmation cannot pick a policy for it.
  *
@@ -54,47 +54,49 @@ const SECTION_EMPLOYEE_2569 = Object.freeze({
 });
 
 /**
- * พนักงานส่วนงานจ้างเหมา — source S2 (docs/policies/00pork.MD), which gives limits only.
+ * พนักงานส่วนงานจ้างเหมา — source S2 (docs/policies/00pork.MD), completed by the owner's decisions of 2026-11-23.
  *
- * OWNER DECISION 2026-11-23: personal leave is 5 working days per fiscal year. This supersedes the 10 days that an
- * earlier draft of the reference file showed in its comparison table (S2 itself says 5). Version 1 (personal 10) was
- * never deployed; V2 is the first version used to compute a balance.
- *
- * What S2 does not say is NOT filled in from another group's rules: no effective date (so `effectiveFrom` is null and
- * every result carries `policy_effective_date_unspecified`), no minimum service, no prorating, no half-day rule, no
- * statement on pay during leave (kind `annual_limit`, not `paid_leave_allowance`).
+ * Version 3. V1 (personal 10) and V2 (no effective date, FY2570 gate) were never used to compute a stored balance:
+ * no contract worker was confirmed before this version. The owner now states the period: it applies from FY2570
+ * (2026-10-01). Earlier years stay `pending_policy` (no backfill). Still NOT filled in from another group's rules:
+ * no minimum service and no hire date (so no prorating), no carry-over, no statement on pay during leave
+ * (kind `annual_limit`, not `paid_leave_allowance`).
  */
-const SECTION_CONTRACT_2569_V2 = Object.freeze({
-  id: 'RAE-SECTION-CONTRACT-2569-V2',
+const SECTION_CONTRACT_2570_V3 = Object.freeze({
+  id: 'RAE-SECTION-CONTRACT-2570-V3',
   family: 'section_contract',
-  version: 2,
-  supersedes: 'RAE-SECTION-CONTRACT-2569-V1 (personal 10 days; never deployed)',
-  source: 'S2: docs/policies/00pork.MD — หลักเกณฑ์การลา พนักงานส่วนงานจ้างเหมา สำนักวิจัยฯ',
+  version: 3,
+  supersedes: 'RAE-SECTION-CONTRACT-2569-V2 (no effective date) and V1 (personal 10); neither was ever used for a stored balance',
+  source: 'S2: docs/policies/00pork.MD — หลักเกณฑ์การลา พนักงานส่วนงานจ้างเหมา สำนักวิจัยฯ + owner decisions 2026-11-23',
   ownerDecisions: Object.freeze([
-    Object.freeze({ date: '2026-11-23', decision: 'sick 10 / personal 5 / vacation 10 working days per fiscal year; no vacation carry-over; personal leave is 5 (supersedes 10)' }),
+    Object.freeze({ date: '2026-11-23', decision: 'sick 10 / personal 5 / vacation 10 working days per fiscal year; personal leave is 5 (supersedes 10)' }),
+    Object.freeze({ date: '2026-11-23', decision: 'effective from FY2570 (2026-10-01); no carry-over, no prorating' }),
+    Object.freeze({ date: '2026-11-23', decision: 'half-day vacation (0.5 day) is allowed' }),
+    Object.freeze({ date: '2026-11-23', decision: 'medical certificate required for sick leave exceeding 3 consecutive working days' }),
+    Object.freeze({ date: '2026-11-23', decision: 'all 19 verified section contract workers are confirmed; procurement_academic stays unmapped' }),
   ]),
-  effectiveFrom: null, // not stated in S2: the engine does not guess it
-  // NOT an effective date. S2 must not be backfilled, so no fiscal year before the one in which the owner confirmed this
-  // policy (FY2570, from 2026-10-01) is calculated: earlier years stay `pending_policy` until the owner states the period.
-  applicableFromFiscalYearBe: 2570,
+  effectiveFrom: '2026-10-01', // owner decision: start of FY2570
+  announcedOn: '2026-11-23',
   yearBasis: 'fiscal',
   fiscalYearStartMonth: 10,
   unit: 'working_day',
   // `contract` = พนักงานส่วนงานจ้างเหมา (the registry label). The owner confirms each person before any number is shown.
   employeeTypes: Object.freeze({ contract: 'needs_hr' }),
+  prorating: false,
 
   sick: Object.freeze({
     kind: 'annual_limit',
     paidDaysPerFiscalYear: 10,
-    // S2: more than 3 working days needs a medical certificate. A review flag only.
+    // Owner: more than 3 consecutive working days needs a medical certificate. A review flag only.
     medicalCertificate: Object.freeze({ fromWorkingDays: 3, comparison: 'gt' }),
   }),
   personal: Object.freeze({ kind: 'annual_limit', paidDaysPerFiscalYear: 5, minDaysPerRequest: null }),
-  vacation: Object.freeze({ kind: 'annual_limit', daysPerFiscalYear: 10, minDaysPerRequest: null, carryoverAllowed: false }),
+  // Owner: half-day vacation allowed, so the smallest request is 0.5 day (anything smaller is flagged for review).
+  vacation: Object.freeze({ kind: 'annual_limit', daysPerFiscalYear: 10, minDaysPerRequest: 0.5, halfDayAllowed: true, carryoverAllowed: false }),
   nonDeductibleException: null,
 });
 
-const ALL_POLICIES = Object.freeze([...UNIVERSITY_POLICIES, SECTION_EMPLOYEE_2569, SECTION_CONTRACT_2569_V2]);
+const ALL_POLICIES = Object.freeze([...UNIVERSITY_POLICIES, SECTION_EMPLOYEE_2569, SECTION_CONTRACT_2570_V3]);
 
 /** employees.employee_type -> policy family. `null` = no policy is mapped (the owner must say which applies). */
 const POLICY_FAMILY_BY_TYPE = Object.freeze({
@@ -120,11 +122,11 @@ const FAMILIES = Object.freeze({
     requires: Object.freeze({ hireDateFor: ['personal', 'vacation'], continuousService: false, appointmentKind: false, carryover: false }),
   }),
   section_contract: Object.freeze({
-    labelTh: 'พนักงานส่วนงานจ้างเหมา', policyId: SECTION_CONTRACT_2569_V2.id,
+    labelTh: 'พนักงานส่วนงานจ้างเหมา', policyId: SECTION_CONTRACT_2570_V3.id,
     requires: Object.freeze({ hireDateFor: [], continuousService: false, appointmentKind: false, carryover: false }),
   }),
 });
 
 const familyForType = (employeeType) => (Object.prototype.hasOwnProperty.call(POLICY_FAMILY_BY_TYPE, employeeType) ? POLICY_FAMILY_BY_TYPE[employeeType] : null);
 
-module.exports = { SECTION_EMPLOYEE_2569, SECTION_CONTRACT_2569_V2, ALL_POLICIES, POLICY_FAMILY_BY_TYPE, FAMILIES, familyForType };
+module.exports = { SECTION_EMPLOYEE_2569, SECTION_CONTRACT_2570_V3, ALL_POLICIES, POLICY_FAMILY_BY_TYPE, FAMILIES, familyForType };

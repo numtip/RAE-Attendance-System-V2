@@ -232,11 +232,11 @@ const emptyProfile = { hireDate: null, continuousServiceStart: null, appointment
 const POLICY: Record<string, import('../types').EntitlementPolicy> = {
   university: { family: 'university', id: 'MJU-LEAVE-2569', labelTh: 'พนักงานมหาวิทยาลัย', requires: { hireDateFor: ['personal', 'vacation'], continuousService: true, appointmentKind: true, carryover: true } },
   section_employee: { family: 'section_employee', id: 'RAE-SECTION-EMPLOYEE-2569', labelTh: 'พนักงานส่วนงาน', requires: { hireDateFor: ['personal', 'vacation'], continuousService: false, appointmentKind: false, carryover: false } },
-  section_contract: { family: 'section_contract', id: 'RAE-SECTION-CONTRACT-2569-V2', labelTh: 'พนักงานส่วนงานจ้างเหมา', requires: { hireDateFor: [], continuousService: false, appointmentKind: false, carryover: false } },
+  section_contract: { family: 'section_contract', id: 'RAE-SECTION-CONTRACT-2570-V3', labelTh: 'พนักงานส่วนงานจ้างเหมา', requires: { hireDateFor: [], continuousService: false, appointmentKind: false, carryover: false } },
   unmapped: { family: null, id: null, labelTh: null, requires: null },
 };
 const waitingCell = () => entCell({ status: 'needs_hr', available: false });
-const NOTE_FLAG = ['policy_effective_date_unspecified'];
+const NOTE_FLAG: string[] = [];
 const entRows: EntRow[] = [
   { employeeUid: 'e1', employeeId: 'S001', name: 'สมชาย ตัวอย่าง', employeeType: 'university', division: DIV_A, scope: 'in_policy', missing: [], policy: POLICY.university, profile: { ...emptyProfile, hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', appointmentKind: 'first' }, types: {
     sick: entCell({ entitlementDays: 60, totalDays: 60, usedDays: 3, remainingDays: 57 }),

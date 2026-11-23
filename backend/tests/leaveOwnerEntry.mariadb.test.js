@@ -137,7 +137,7 @@ test('owner entry + bulk overview on MariaDB', { skip: !shouldRunMariaDb() }, as
     const rows = await single.balance(other, FY);
     assert.deepEqual(rows.map((r) => [r.status, r.totalDays]), [['ok', 10], ['ok', 5], ['ok', 10]]);
     assert.equal(rows.find((r) => r.leaveType === 'vacation').carryoverDays, 0);
-    assert.equal(rows[0].policyVersion, 'RAE-SECTION-CONTRACT-2569-V2');
+    assert.equal(rows[0].policyVersion, 'RAE-SECTION-CONTRACT-2570-V3');
     // carry-over is refused for a section policy, with the reason
     await assert.rejects(() => ownerEntry.apply(auth, other, { entitlements: [{ fiscalYearBe: FY, leaveType: 'vacation', entitlementDays: 10, carryoverDays: 2 }] }), (e) => e.status === 400 && /carry-over/.test(e.message));
   });
