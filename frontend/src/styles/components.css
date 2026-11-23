@@ -855,3 +855,8 @@
   flex: 1 1 auto;
   min-width: 4.5rem;
 }
+
+/* Fiscal-year entitlement breakdown inside a balance card */
+.balance dl { margin: 0.5rem 0; display: grid; gap: 0.15rem; }
+.balance dl div { display: flex; justify-content: space-between; gap: 1rem; }
+.balance dl dt, .balance dl dd { margin: 0; }

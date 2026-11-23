@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build && node scripts/copy-spa-404.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --experimental-strip-types --no-warnings --test tests/*.test.mjs"
   },
   "dependencies": {
     "vue": "^3.5.13",

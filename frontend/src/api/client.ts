@@ -175,9 +175,10 @@ export const api = {
     const query = params.toString();
     return apiRequest<import('./types').LeaveRow[]>(`/leave${query ? `?${query}` : ''}`);
   },
-  leaveBalance: (employeeUid: string, year: number) =>
+  // `basis` omitted = the long-standing calendar-year balance. `fiscal` takes a พ.ศ. fiscal year (e.g. 2570).
+  leaveBalance: (employeeUid: string, year: number, basis: 'calendar' | 'fiscal' = 'calendar') =>
     apiRequest<import('./types').LeaveBalanceRow[]>(
-      `/leave/balance/${employeeUid}?year=${year}`,
+      `/leave/balance/${encodeURIComponent(employeeUid)}?year=${year}${basis === 'fiscal' ? '&basis=fiscal' : ''}`,
     ),
   leaveHistory: (employeeUid: string) =>
     apiRequest<import('./types').LeaveRow[]>(`/leave/history/${employeeUid}`),
