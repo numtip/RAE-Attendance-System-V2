@@ -54,23 +54,27 @@ const lastDayOfMonth = (key) => {
   return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
 };
 
+/** Day-rows in the engine's shape from stored records plus the legacy days no record covers (pure). */
+function toEngineRecords(records, legacy) {
+  const covered = new Set(records.map((r) => `${r.leaveType}|${r.leaveDate}`)); // a recorded day of any status
+  const rows = records.map((r) => ({
+    date: r.leaveDate, leaveType: r.leaveType, dayPart: r.dayPart, dayFraction: r.dayFraction === null ? null : Number(r.dayFraction), status: recordStatus(r),
+  }));
+  for (const row of legacy) {
+    if (String(row.status || '').toLowerCase() !== 'approved' || (row.matchStatus && row.matchStatus !== 'matched')) continue;
+    for (const date of eachDate(row.startDate, row.endDate)) {
+      if (!covered.has(`${row.leaveType}|${date}`)) rows.push({ date, leaveType: row.leaveType, dayPart: 'FULL', dayFraction: 1, status: 'approved' });
+    }
+  }
+  return rows;
+}
+
 function createLeaveEntitlementService({ repositories, now = () => new Date() }) {
   /** Approved/other day-rows in the engine's shape: leave records first, then legacy days no record covers. */
   async function engineRecords(employeeUid) {
     const records = typeof repositories.leaveRecords?.listForEmployee === 'function'
       ? await repositories.leaveRecords.listForEmployee(employeeUid) : [];
-    const legacy = await repositories.leave.list(employeeUid);
-    const covered = new Set(records.map((r) => `${r.leaveType}|${r.leaveDate}`)); // a recorded day of any status
-    const rows = records.map((r) => ({
-      date: r.leaveDate, leaveType: r.leaveType, dayPart: r.dayPart, dayFraction: r.dayFraction === null ? null : Number(r.dayFraction), status: recordStatus(r),
-    }));
-    for (const row of legacy) {
-      if (String(row.status || '').toLowerCase() !== 'approved' || (row.matchStatus && row.matchStatus !== 'matched')) continue;
-      for (const date of eachDate(row.startDate, row.endDate)) {
-        if (!covered.has(`${row.leaveType}|${date}`)) rows.push({ date, leaveType: row.leaveType, dayPart: 'FULL', dayFraction: 1, status: 'approved' });
-      }
-    }
-    return rows;
+    return toEngineRecords(records, await repositories.leave.list(employeeUid));
   }
 
   async function coveredMonths() {
@@ -195,55 +199,92 @@ function createLeaveEntitlementService({ repositories, now = () => new Date() })
         coveredMonths(),
       ]);
       if (!facts) throw new HttpError(404, 'NOT_FOUND', 'Employee was not found');
+      return computeRows({ employeeUid, fiscalYearBe, fy, facts, profile, hrRows, records, covered, today: bangkokDate(now()) });
+    },
+
+    /**
+     * The same rows as `balance` for MANY employees with a fixed number of queries (facts, profiles, HR rows,
+     * leave records, legacy leave, coverage) however many people there are. Both paths share `computeRows`, so a
+     * person's row is identical either way. Authorization (which people) is the caller's job.
+     * @returns {Promise<Map<string, object[]>>} employeeUid -> rows (one per leave type); unknown uids are omitted
+     */
+    async balances(employeeUids, fiscalYearBe) {
+      const fy = fiscalYearByBE(fiscalYearBe);
+      const uids = [...new Set(employeeUids)];
+      const [factsList, profiles, hrRows, records, legacy, covered] = await Promise.all([
+        repositories.employees.listLeaveFacts(uids),
+        repositories.leaveHr.listProfiles(uids),
+        repositories.leaveHr.listEntitlementsForYear(uids, fiscalYearBe),
+        typeof repositories.leaveRecords?.listBetween === 'function' ? repositories.leaveRecords.listBetween(fy.start, fy.end) : [],
+        repositories.leave.listOverlapping(fy.start, fy.end),
+        coveredMonths(),
+      ]);
+      const group = (rows) => { const m = new Map(); for (const r of rows) { if (!m.has(r.employeeUid)) m.set(r.employeeUid, []); m.get(r.employeeUid).push(r); } return m; };
+      const profileBy = new Map(profiles.map((p) => [p.employeeUid, p]));
+      const hrBy = group(hrRows);
+      const recordsBy = group(records);
+      const legacyBy = group(legacy);
       const today = bangkokDate(now());
-      const hrByType = new Map(hrRows.map((row) => [row.leaveType, row]));
-      const vacationHr = hrByType.get('vacation');
-
-      // An HR row for a type is HR's confirmation for the year, so it settles a `needs_hr` type; an explicit
-      // denial (or outsourced staff) is never overridden by a stored number.
-      const employee = engineEmployee(facts, profile);
-      const eligibility = classifyEligibility(employee, policyForDate(fy.end) || POLICIES[0]);
-      const carryover = { vacationDays: vacationHr ? (vacationHr.carryoverDays ?? null) : null };
-      // `actual` is what the facts say. `assumed` is the same person treated as confirmed by HR; it is used only
-      // to compare against a type that HR has a verified row for, never to produce a number for a type without one.
-      const asIfConfirmed = hrRows.length > 0 && eligibility.status === 'needs_hr';
-      const actual = computeEntitlements({ fiscalYear: fiscalYearBe, records, carryover, employee });
-      const assumed = asIfConfirmed
-        ? computeEntitlements({ fiscalYear: fiscalYearBe, records, carryover, employee: { ...employee, eligibilityConfirmation: { confirmed: true, reference: 'hr-verified-entitlement-row' } } })
-        : actual;
-      const engine = actual;
-
-      return TYPES.map((type) => {
-        const hr = hrByType.get(type);
-        const out = actual.results[type];
-        let row;
-        if (hr && eligibility.status !== 'out_of_scope' && out.status !== STATUS.NOT_STARTED) {
-          row = fromHr({ type, hr, engineOut: assumed.results[type], fy, profile, records, covered, today, eligibility });
-        } else {
-          row = fromEngine({ out, fy, covered, today });
-          if (hr) row.flags = [...row.flags, { code: 'hr_row_ignored_out_of_scope' }];
-        }
-        const available = row.status === STATUS.OK && row.remainingDays !== null;
-        return {
-          employeeUid,
-          year: fiscalYearBe,
-          basis: 'fiscal',
-          fiscalYear: { be: fy.be, start: fy.start, end: fy.end },
-          policyVersion: engine.policyVersion,
-          leaveType: type,
-          typeLabel: TYPE_LABEL[type],
-          // Existing balance-row fields keep their meaning; they are null whenever the value is not determined.
-          totalDays: row.availableDays,
-          usedDays: row.usedDays,
-          pendingDays: pendingDaysOf(records, fy, type),
-          remainingDays: row.remainingDays,
-          available,
-          unavailableReason: available ? null : (row.status === STATUS.OK ? 'deductions_not_tracked' : 'no_entitlement'),
-          ...row,
-        };
-      });
+      const out = new Map();
+      for (const facts of factsList) {
+        const uid = facts.employeeUid;
+        out.set(uid, computeRows({
+          employeeUid: uid, fiscalYearBe, fy, facts, profile: profileBy.get(uid) || null, hrRows: hrBy.get(uid) || [],
+          records: toEngineRecords(recordsBy.get(uid) || [], legacyBy.get(uid) || []), covered, today,
+        }));
+      }
+      return out;
     },
   };
+
+  function computeRows({ employeeUid, fiscalYearBe, fy, facts, profile, hrRows, records, covered, today }) {
+    const hrByType = new Map(hrRows.map((row) => [row.leaveType, row]));
+    const vacationHr = hrByType.get('vacation');
+
+    // An HR row for a type is HR's confirmation for the year, so it settles a `needs_hr` type; an explicit
+    // denial (or outsourced staff) is never overridden by a stored number.
+    const employee = engineEmployee(facts, profile);
+    const eligibility = classifyEligibility(employee, policyForDate(fy.end) || POLICIES[0]);
+    const carryover = { vacationDays: vacationHr ? (vacationHr.carryoverDays ?? null) : null };
+    // `actual` is what the facts say. `assumed` is the same person treated as confirmed by HR; it is used only
+    // to compare against a type that HR has a verified row for, never to produce a number for a type without one.
+    const asIfConfirmed = hrRows.length > 0 && eligibility.status === 'needs_hr';
+    const actual = computeEntitlements({ fiscalYear: fiscalYearBe, records, carryover, employee });
+    const assumed = asIfConfirmed
+      ? computeEntitlements({ fiscalYear: fiscalYearBe, records, carryover, employee: { ...employee, eligibilityConfirmation: { confirmed: true, reference: 'hr-verified-entitlement-row' } } })
+      : actual;
+    const engine = actual;
+
+    return TYPES.map((type) => {
+      const hr = hrByType.get(type);
+      const out = actual.results[type];
+      let row;
+      if (hr && eligibility.status !== 'out_of_scope' && out.status !== STATUS.NOT_STARTED) {
+        row = fromHr({ type, hr, engineOut: assumed.results[type], fy, profile, records, covered, today, eligibility });
+      } else {
+        row = fromEngine({ out, fy, covered, today });
+        if (hr) row.flags = [...row.flags, { code: 'hr_row_ignored_out_of_scope' }];
+      }
+      const available = row.status === STATUS.OK && row.remainingDays !== null;
+      return {
+        employeeUid,
+        year: fiscalYearBe,
+        basis: 'fiscal',
+        fiscalYear: { be: fy.be, start: fy.start, end: fy.end },
+        policyVersion: engine.policyVersion,
+        leaveType: type,
+        typeLabel: TYPE_LABEL[type],
+        // Existing balance-row fields keep their meaning; they are null whenever the value is not determined.
+        totalDays: row.availableDays,
+        usedDays: row.usedDays,
+        pendingDays: pendingDaysOf(records, fy, type),
+        remainingDays: row.remainingDays,
+        available,
+        unavailableReason: available ? null : (row.status === STATUS.OK ? 'deductions_not_tracked' : 'no_entitlement'),
+        ...row,
+      };
+    });
+  }
 }
 
 module.exports = { createLeaveEntitlementService, bangkokDate };

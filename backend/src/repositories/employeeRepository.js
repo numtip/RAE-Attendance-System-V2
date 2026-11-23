@@ -79,6 +79,13 @@ class EmployeeRepository {
     return row ? { employeeUid: row.employeeUid, employeeId: row.employeeId, employeeType: row.employeeType, status: row.status, hireDate: row.hireDate ?? null } : null;
   }
 
+  /** Facts for many people in one read (same shape as getLeaveFacts); unknown uids are omitted. */
+  async listLeaveFacts(employeeUids) {
+    const wanted = new Set(employeeUids);
+    return this.rows.filter((row) => wanted.has(row.employeeUid))
+      .map((row) => ({ employeeUid: row.employeeUid, employeeId: row.employeeId, employeeType: row.employeeType, status: row.status, hireDate: row.hireDate ?? null }));
+  }
+
   async setHireDate(employeeUid, hireDate) {
     const row = this.rows.find((item) => item.employeeUid === employeeUid);
     if (!row) return false;

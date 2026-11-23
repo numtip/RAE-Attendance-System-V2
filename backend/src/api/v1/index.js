@@ -17,6 +17,8 @@ const { createLeaveReviewService } = require('../../services/leaveReviewService'
 const { createDivisionReportService } = require('../../services/divisionReportService');
 const { createLeaveMonthlyReportService } = require('../../services/leaveMonthlyReportService');
 const { createLeaveService } = require('../../services/leaveService');
+const { createLeaveEntitlementOverviewService } = require('../../services/leaveEntitlementOverviewService');
+const { createLeaveOwnerEntryService } = require('../../services/leaveOwnerEntryService');
 const { createSsoService } = require('../../services/ssoService');
 const { createLoginAttemptStore } = require('../../services/sso/ssoLoginAttemptStore');
 const { getPool, isDatabaseConfigured } = require('../../db/pool');
@@ -56,7 +58,7 @@ function createV1Router(container) {
     attendanceRecordService,
     facescanIngestionService,
   );
-  const leave = createLeaveController(leaveService);
+  const leave = createLeaveController(leaveService, createLeaveEntitlementOverviewService(container), createLeaveOwnerEntryService(container));
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
   const organizationReports = createOrganizationReportService(container);
   const reports = createReportController(
@@ -117,6 +119,8 @@ function createV1Router(container) {
   router.post('/attendance/explain', authenticate, attendanceCompute.explainResult);
 
   router.get('/leave', authenticate, leave.list);
+  router.get('/leave/entitlements', authenticate, leave.entitlements);
+  router.put('/leave/entitlements/:employeeUid', authenticate, leave.saveEntitlementFacts);
   router.get('/leave/balance/:employeeUid', authenticate, leave.balance);
   router.get('/leave/history/:employeeUid', authenticate, leave.history);
 
