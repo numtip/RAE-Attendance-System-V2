@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import type { EntitlementFactsInput, EntitlementProfile, EntitlementRow, LeaveKind } from '../api/types';
-import { APPOINTMENT_KIND_TH, LEAVE_KINDS, missingLabelTh, parseDaysInput } from '../utils/leaveEntitlement';
+import { APPOINTMENT_KIND_TH, LEAVE_KINDS, missingLabelTh, parseDaysInput, policyLabelTh } from '../utils/leaveEntitlement';
 import { leaveTypeLabel } from '../utils/i18n';
 import ThaiDateInput from './ThaiDateInput.vue';
 
@@ -29,6 +29,14 @@ const baseDate = ref<Record<LeaveKind, string>>({ sick: todayIso, personal: toda
 const remove = ref<Record<LeaveKind, boolean>>({ sick: false, personal: false, vacation: false });
 const localError = ref<string | null>(null);
 
+// What this person's policy needs. A field the policy does not use is not shown, so it can never be asked for.
+const requires = computed(() => props.row?.policy?.requires ?? null);
+const showHire = computed(() => (requires.value?.hireDateFor.length ?? 0) > 0);
+const showContinuity = computed(() => Boolean(requires.value?.continuousService));
+const showKind = computed(() => Boolean(requires.value?.appointmentKind));
+const showCarryover = computed(() => Boolean(requires.value?.carryover));
+const unmapped = computed(() => props.row?.policy?.family === null);
+const hireNote = computed(() => (requires.value?.hireDateFor ?? []).map((t) => leaveTypeLabel(t)).join(' และ '));
 const initial = computed<EntitlementProfile>(() => props.row?.profile ?? {
   hireDate: null, continuousServiceStart: null, appointmentKind: null, eligibilityConfirmed: null, eligibilityReference: null,
 });
@@ -69,7 +77,7 @@ function clampToYear(iso: string): string {
 }
 function policyHint(t: LeaveKind): string | null {
   const cell = props.row?.types[t];
-  return cell && cell.source === 'computed' && cell.entitlementDays !== null ? `ตามประกาศ ${cell.entitlementDays} วัน` : null;
+  return cell && cell.source === 'computed' && cell.entitlementDays !== null ? `ตามหลักเกณฑ์ ${cell.entitlementDays} วัน` : null;
 }
 const storedOverride = (t: LeaveKind) => props.row?.types[t]?.source === 'hr_verified';
 
@@ -93,7 +101,7 @@ function submit() {
     if (remove.value[t] && storedOverride(t)) { rows.push({ fiscalYearBe: props.fiscalYearBe, leaveType: t, remove: true }); continue; }
     const d = parseDaysInput(days.value[t], 120);
     if (d === 'invalid') { localError.value = `จำนวนวันของ${leaveTypeLabel(t)}ต้องเป็นตัวเลขหลายเท่าของ 0.5`; return; }
-    const c = t === 'vacation' ? parseDaysInput(carryover.value, 30) : null;
+    const c = t === 'vacation' && showCarryover.value ? parseDaysInput(carryover.value, 30) : null;
     if (c === 'invalid') { localError.value = 'วันลาพักผ่อนสะสมต้องเป็นตัวเลขหลายเท่าของ 0.5 ไม่เกิน 30'; return; }
     const cell = props.row?.types[t];
     const st = props.row?.stored?.[t];
@@ -132,16 +140,21 @@ function onBackdrop(e: MouseEvent) { if (e.target === dialog.value && !props.bus
     <form v-if="row" class="dialog-body" @submit.prevent="submit">
       <h3 id="ent-edit-title">กรอกข้อมูลสิทธิ์วันลา</h3>
       <p class="muted">{{ row.name }} · {{ row.employeeId }} · ปีงบประมาณ {{ fiscalYearBe }}</p>
+      <p class="muted">หลักเกณฑ์: <strong>{{ policyLabelTh(row.policy) }}</strong><template v-if="unmapped"> — ยังไม่ได้ระบุว่าประเภทนี้ใช้หลักเกณฑ์ใด: เมื่อยืนยันสิทธิ์ ระบบใช้เกณฑ์ของพนักงานมหาวิทยาลัยเหมือนเดิม (และแสดงหมายเหตุกำกับ)</template></p>
       <p v-if="row.missing.length" class="callout" role="note">ยังขาด: {{ row.missing.map(missingLabelTh).join(', ') }}</p>
       <p class="muted">เว้นว่างไว้หากยังไม่ทราบ — ระบบจะไม่เดาค่าให้ และทุกการแก้ไขถูกบันทึกประวัติ</p>
 
-      <fieldset class="ent-group">
+      <fieldset v-if="showHire || showContinuity || showKind" class="ent-group">
         <legend>ข้อมูลการจ้างงาน</legend>
-        <label class="field field--inline"><input v-model="hasHire" type="checkbox" /> <span>ทราบวันที่เริ่มจ้าง</span></label>
-        <ThaiDateInput v-if="hasHire" v-model="hire" label="วันที่เริ่มจ้าง" :span="45" />
-        <label class="field field--inline"><input v-model="hasContinuous" type="checkbox" /> <span>ทราบวันที่เริ่มนับอายุงานต่อเนื่อง</span></label>
-        <ThaiDateInput v-if="hasContinuous" v-model="continuous" label="เริ่มนับอายุงานต่อเนื่อง" :span="45" />
-        <label class="field">
+        <template v-if="showHire">
+          <label class="field field--inline"><input v-model="hasHire" type="checkbox" /> <span>ทราบวันที่เริ่มจ้าง (ใช้คำนวณ{{ hireNote }})</span></label>
+          <ThaiDateInput v-if="hasHire" v-model="hire" label="วันที่เริ่มจ้าง" :span="45" />
+        </template>
+        <template v-if="showContinuity">
+          <label class="field field--inline"><input v-model="hasContinuous" type="checkbox" /> <span>ทราบวันที่เริ่มนับอายุงานต่อเนื่อง</span></label>
+          <ThaiDateInput v-if="hasContinuous" v-model="continuous" label="เริ่มนับอายุงานต่อเนื่อง" :span="45" />
+        </template>
+        <label v-if="showKind" class="field">
           <span>ลักษณะการบรรจุ</span>
           <select v-model="kind">
             <option value="">ไม่ระบุ</option>
@@ -149,15 +162,16 @@ function onBackdrop(e: MouseEvent) { if (e.target === dialog.value && !props.bus
           </select>
         </label>
       </fieldset>
+      <p v-else class="muted">หลักเกณฑ์นี้ไม่ต้องใช้วันที่เริ่มงาน อายุงานต่อเนื่อง หรือลักษณะการบรรจุ</p>
 
       <fieldset class="ent-group">
-        <legend>การยืนยันสิทธิ์ตามประกาศ</legend>
+        <legend>การยืนยันสิทธิ์ตามหลักเกณฑ์</legend>
         <label class="field">
           <span>การตัดสิน</span>
           <select v-model="eligibility">
             <option value="">ยังไม่ยืนยัน (ใช้ประเภทบุคลากรตามเดิม)</option>
-            <option value="yes">อยู่ในประกาศ — ได้สิทธิ์ตามประกาศ</option>
-            <option value="no">อยู่นอกประกาศ — ไม่ใช้เกณฑ์นี้</option>
+            <option value="yes">อยู่ในหลักเกณฑ์ — ได้สิทธิ์ตามหลักเกณฑ์ของตน</option>
+            <option value="no">อยู่นอกหลักเกณฑ์ — ไม่คำนวณสิทธิ์</option>
           </select>
         </label>
         <label v-if="eligibility" class="field">
@@ -174,7 +188,7 @@ function onBackdrop(e: MouseEvent) { if (e.target === dialog.value && !props.bus
             <span>{{ leaveTypeLabel(t) }} (วัน)</span>
             <input v-model="days[t]" type="text" inputmode="decimal" :placeholder="policyHint(t) ?? 'ไม่ระบุ'" />
           </label>
-          <label v-if="t === 'vacation'" class="field">
+          <label v-if="t === 'vacation' && showCarryover" class="field">
             <span>วันสะสมยกมา (วัน)</span>
             <input v-model="carryover" type="text" inputmode="decimal" placeholder="0 = ไม่มี, เว้นว่าง = ไม่ทราบ" />
           </label>

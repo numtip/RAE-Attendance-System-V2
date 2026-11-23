@@ -3,6 +3,7 @@ const { HttpError } = require('../utils/httpError');
 const { resolveScope } = require('./authorizationService');
 const { createLeaveEntitlementService, bangkokDate } = require('./leaveEntitlementService');
 const { fiscalYearByBE } = require('../domain/leavePolicyEngine');
+const { familyForType } = require('../domain/leavePolicySection');
 
 const LEAVE_TYPES = ['sick', 'personal', 'vacation'];
 const APPOINTMENT_KINDS = ['first', 'rehire_after_resignation', 'rehire_after_dismissal', 'other'];
@@ -109,7 +110,12 @@ function createLeaveOwnerEntryService({ repositories, now = () => new Date() }) 
       const input = parse(payload, today);
       const facts = await repositories.employees.getLeaveFacts(employeeUid);
       if (!facts) throw new HttpError(404, 'NOT_FOUND', 'Employee was not found');
-      if (facts.employeeType === 'contract') throw bad('contract staff are outside the leave policy and cannot be onboarded');
+      // The policy of this person decides what may be entered (a section policy has no carry-over).
+      const family = familyForType(facts.employeeType);
+      if (family !== 'university' && family !== null && Array.isArray(payload?.entitlements)
+        && payload.entitlements.some((e) => e && typeof e.carryoverDays === 'number' && e.carryoverDays > 0)) {
+        throw bad('this leave policy has no vacation carry-over; carryoverDays must be 0 or left empty');
+      }
       const profileNow = await repositories.leaveHr.getProfile(employeeUid);
       const operator = auth.employeeUid;
 

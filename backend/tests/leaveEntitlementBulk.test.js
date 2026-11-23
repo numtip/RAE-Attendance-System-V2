@@ -88,16 +88,23 @@ test('overview: missing data for one person does not block the others, and incom
   const { overview } = build({ withHr: true });
   const data = await overview().overview(exec, { year: FY });
   const by = Object.fromEntries(data.rows.map((r) => [r.employeeUid, r]));
-  // U1 is fully determined; U2 lacks a hire date for vacation/personal only; D1 needs the owner; C1 is excluded.
+  // U1 is fully determined; U2 lacks a hire date for vacation/personal only; D1 (section employee) is covered by
+  // its own policy; C1 (section contract) waits for the owner's confirmation.
   assert.equal(by[U1].scope, 'in_policy');
   assert.deepEqual(['sick', 'personal', 'vacation'].map((t) => by[U1].types[t].status), ['ok', 'ok', 'ok']);
   assert.deepEqual(by[U1].types.sick.remainingDays, 59);
   assert.equal(by[U2].types.vacation.remainingDays, null);
   assert.ok(by[U2].missing.includes('hireDate'));
-  assert.equal(by[D1].scope, 'unconfirmed');
-  assert.equal(by[C1].scope, 'excluded');
-  assert.equal(data.summary.excluded, 1);
+  assert.equal(by[D1].scope, 'in_policy');
+  assert.deepEqual(['sick', 'personal', 'vacation'].map((t) => by[D1].types[t].totalDays), [15, 5, 10]);
+  assert.equal(by[D1].types.vacation.carryoverDays, 0);
+  assert.deepEqual([by[D1].policy.family, by[D1].policy.requires.carryover, by[D1].policy.requires.appointmentKind], ['section_employee', false, false]);
+  assert.equal(by[C1].scope, 'unconfirmed');
+  assert.deepEqual(by[C1].policy.requires.hireDateFor, []);
+  assert.equal(data.summary.excluded, 0);
   assert.equal(data.summary.unconfirmed, 1);
+  assert.deepEqual(data.summary.byPolicy.section_contract, { people: 1, unconfirmed: 1, fullyDetermined: 0 });
+  assert.equal(data.summary.byPolicy.section_employee.fullyDetermined, 1);
   assert.equal(data.summary.fullyDetermined >= 1, true);
   // totals only add determined rows: sick determined for U1 (and U2: sick needs no hire date) – never more than that
   const sick = data.summary.byType.sick;
@@ -161,19 +168,31 @@ test('owner entry: a hire date turns an unknown balance into a number and is aud
   assert.equal(repositories.leaveHr.audit.length, 3);
 });
 
-test('owner entry: confirming eligibility of an unconfirmed type records a reference and lets the engine compute', async () => {
+test('owner entry: confirming a section-contract worker records a reference and lets the engine compute (10 / 5 / 10, no carry-over)', async () => {
   const { owner, overview } = build();
-  const result = await owner.apply(exec, D1, { eligibility: { confirmed: true }, continuousServiceStart: '2018-01-01', appointmentKind: 'first' }, { fiscalYearBe: FY });
-  assert.ok(result.rows.every((r) => r.status !== 'needs_hr'));
-  const row = (await overview().overview(exec, { year: FY })).rows.find((r) => r.employeeUid === D1);
+  const result = await owner.apply(exec, C1, { eligibility: { confirmed: true } }, { fiscalYearBe: FY });
+  assert.deepEqual(result.rows.map((r) => [r.status, r.totalDays]), [['ok', 10], ['ok', 5], ['ok', 10]]);
+  const row = (await overview().overview(exec, { year: FY })).rows.find((r) => r.employeeUid === C1);
   assert.equal(row.profile.eligibilityConfirmed, true);
   assert.match(row.profile.eligibilityReference, /^owner-confirmed 2026-11-23$/);
-  // the owner can also decide that a person is outside the announcement
-  const out = await owner.apply(exec, D1, { eligibility: { confirmed: false, reference: 'owner decision' } }, { fiscalYearBe: FY });
+  // the owner can also decide that a person is outside the policy
+  const out = await owner.apply(exec, C1, { eligibility: { confirmed: false, reference: 'owner decision' } }, { fiscalYearBe: FY });
   assert.ok(out.rows.every((r) => r.status === 'out_of_scope'));
   // and clear the decision again
-  const cleared = await owner.apply(exec, D1, { eligibility: { confirmed: null } }, { fiscalYearBe: FY });
+  const cleared = await owner.apply(exec, C1, { eligibility: { confirmed: null } }, { fiscalYearBe: FY });
   assert.ok(cleared.rows.every((r) => r.status === 'needs_hr'));
+});
+
+test('owner entry follows the person\'s policy: no carry-over for section policies, no confirmation into an unmapped type', async () => {
+  const { owner, repositories } = build();
+  for (const uid of [D1, C1]) {
+    await assert.rejects(() => owner.apply(exec, uid, { entitlements: [{ fiscalYearBe: FY, leaveType: 'vacation', entitlementDays: 10, carryoverDays: 2 }] }), (e) => e.status === 400 && /carry-over/.test(e.message));
+  }
+  const ok = await owner.apply(exec, D1, { entitlements: [{ fiscalYearBe: FY, leaveType: 'vacation', entitlementDays: 10, carryoverDays: 0 }] }, { fiscalYearBe: FY });
+  assert.equal(ok.rows.find((r) => r.leaveType === 'vacation').carryoverDays, 0);
+  // a section employee needs no appointment kind or continuous-service date: the vacation figure is there without them
+  assert.equal(ok.rows.find((r) => r.leaveType === 'vacation').status, 'ok');
+  assert.equal(await repositories.leaveHr.getProfile(D1), null);
 });
 
 test('owner entry: entitlement override, carry-over and removal, with validation', async () => {

@@ -2,6 +2,7 @@ const { HttpError } = require('../utils/httpError');
 const { resolveScope } = require('./authorizationService');
 const { createLeaveEntitlementService, bangkokDate } = require('./leaveEntitlementService');
 const { fiscalYearOf, fiscalYearByBE, STATUS } = require('../domain/leavePolicyEngine');
+const { FAMILIES, familyForType } = require('../domain/leavePolicySection');
 const { DIVISIONS } = require('../config/organization');
 const { TYPE_LABEL } = require('./leaveLabels');
 
@@ -96,6 +97,8 @@ function createLeaveEntitlementOverviewService({ repositories, config, now = () 
         headcount: people.length, inPolicy: 0, excluded: 0, unconfirmed: 0, fullyDetermined: 0,
         byType: Object.fromEntries(TYPES.map((t) => [t, { label: TYPE_LABEL[t], byStatus: {}, determined: 0, entitlementDays: 0, usedDays: 0, remainingDays: 0, missing: {} }])),
         missing: {},
+        // Readiness per policy: people, how many are waiting for the owner's confirmation, how many are fully determined.
+        byPolicy: Object.fromEntries([...Object.keys(FAMILIES), 'unmapped'].map((f) => [f, { people: 0, unconfirmed: 0, fullyDetermined: 0 }])),
       };
       const rows = people.map((p) => {
         const typeRows = rowsByUid.get(p.employeeUid) || [];
@@ -120,12 +123,21 @@ function createLeaveEntitlementOverviewService({ repositories, config, now = () 
           }
         }
         if (determined === TYPES.length) summary.fullyDetermined += 1;
+        const family = familyForType(p.employeeType);
+        const policyBucket = summary.byPolicy[family || 'unmapped'];
+        policyBucket.people += 1;
+        if (scopeState === 'unconfirmed') policyBucket.unconfirmed += 1;
+        if (determined === TYPES.length) policyBucket.fullyDetermined += 1;
         const fact = factBy.get(p.employeeUid);
         const profile = profileBy.get(p.employeeUid);
         const code = divisionOf(p.employeeUid);
         return {
           employeeUid: p.employeeUid, employeeId: p.employeeId, name: `${p.firstNameTh || ''} ${p.lastNameTh || ''}`.trim(),
           employeeType: p.employeeType, division: { code, nameTh: divisionName(code) },
+          // The policy of this person and the facts it needs: the screens ask for these and nothing else.
+          policy: familyForType(p.employeeType)
+            ? { family: familyForType(p.employeeType), id: typeRows[0]?.policyVersion ?? FAMILIES[familyForType(p.employeeType)].policyId, labelTh: FAMILIES[familyForType(p.employeeType)].labelTh, requires: FAMILIES[familyForType(p.employeeType)].requires }
+            : { family: null, id: null, labelTh: null, requires: null },
           scope: scopeState, missing, types: byType,
           ...(scope.all ? {
             profile: {

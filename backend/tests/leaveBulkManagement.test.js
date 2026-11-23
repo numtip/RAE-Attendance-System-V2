@@ -58,15 +58,15 @@ test('only an executive with an organization grant may export, import or confirm
   }
 });
 
-test('profile template: the import\'s own columns, everyone except contract staff, current values only', async () => {
+test('profile template: the import\'s own columns, every employment type, current values only', async () => {
   const { service } = build();
   const file = await service.exportTemplate(exec, { kind: 'profile' });
   assert.match(file.contentType, /text\/csv/);
   assert.equal(file.buffer[0], 0xef); // UTF-8 BOM for Excel
   const rows = lines(file);
   assert.deepEqual(rows[0].split(','), Object.values(csv.PROFILE_COLUMNS));
-  assert.equal(rows.length - 1, 6); // 7 people, 1 contract
-  assert.ok(!rows.some((r) => r.startsWith('1006,')));
+  assert.equal(rows.length - 1, 7); // all 7 people, section contract staff included
+  assert.ok(rows.some((r) => r.startsWith('1006,')));
   const u2 = rows.find((r) => r.startsWith('1003,')).split(',');
   assert.equal(u2[3], '2015-04-01');
   assert.equal(rows.find((r) => r.startsWith('1002,')).split(',')[3], ''); // an unknown hire date stays blank, never invented
@@ -78,7 +78,7 @@ test('entitlement template: three rows per person for the year, blank unless sto
   const file = await service.exportTemplate(exec, { kind: 'entitlement', year: FY });
   const rows = lines(file);
   assert.deepEqual(rows[0].split(','), Object.values(csv.ENTITLEMENT_COLUMNS));
-  assert.equal(rows.length - 1, 6 * 3);
+  assert.equal(rows.length - 1, 7 * 3);
   const vac = rows.find((r) => r.startsWith('1003,2570,ลาพักผ่อน'));
   assert.deepEqual(vac.split(',').slice(3, 8), ['10', '3', '', '', 'owner-entry']);
   assert.deepEqual(rows.find((r) => r.startsWith('1002,2570,ลาป่วย')).split(',').slice(3, 8), ['', '', '', '', '']);
@@ -127,15 +127,15 @@ test('upload: dry run writes nothing, confirm applies with audit, the same file 
   assert.equal(repositories.leaveHr.audit.length, auditCount);
 });
 
-test('upload: validation errors block the confirm, contract rows are refused, nothing is written', async () => {
+test('upload: validation errors block the confirm and nothing is written; contract rows are accepted', async () => {
   const { service, repositories } = build();
   const c = csv.PROFILE_COLUMNS;
   const head = [c.employeeId, c.name, c.type, c.hireDate, c.continuousServiceStart, c.appointmentKind, c.eligibilityConfirmed, c.eligibilityReference, c.sourceReference, c.note].join(',');
-  const file = [head, '1006,ทดสอบ ระบบ1006,พนักงานส่วนงานจ้างเหมา,2018-01-01,,อื่น ๆ (เปลี่ยนสถานภาพ/จ้างต่อเนื่อง),,,เอกสาร,', '1002,ทดสอบ ระบบ1002,พนักงานมหาวิทยาลัย,2030-13-40,,,,,เอกสาร,'].join('\n');
+  const file = [head, '1006,ทดสอบ ระบบ1006,พนักงานส่วนงานจ้างเหมา,2018-01-01,,,,,เอกสาร,', '1002,ทดสอบ ระบบ1002,พนักงานมหาวิทยาลัย,2030-13-40,,,,,เอกสาร,'].join('\n');
   const r = await service.importFiles(exec, { profile: file, confirm: true });
   assert.equal(r.written, false);
-  assert.ok(r.blockingErrors >= 2);
-  assert.ok(r.findings.some((f) => f.code === 'type_out_of_scope'));
+  assert.equal(r.blockingErrors, 1); // only the impossible date; the contract row is fine (no appointment kind needed)
+  assert.ok(!r.findings.some((f) => f.code === 'type_out_of_scope' || f.code === 'appointment_kind_missing'));
   assert.ok(r.findings.some((f) => f.code === 'date_format'));
   assert.equal(repositories.leaveHr.batches.length, 0);
   assert.equal((await repositories.employees.getLeaveFacts(C1)).hireDate, null);
@@ -166,39 +166,51 @@ test('entitlement upload applies only the rows that carry data; blank template r
   assert.equal(await repositories.leaveHr.getEntitlement(U2, FY, 'sick'), null);
 });
 
-test('bulk eligibility: confirms several people with the owner\'s reference, audited; contract or unknown people refuse the whole request', async () => {
+test('bulk eligibility: confirms section-contract workers with the owner\'s reference, audited; an unknown or duplicate person refuses the whole request', async () => {
   const { service, repositories, overview } = build();
   const before = await overview.overview(exec, { year: FY });
-  assert.equal(before.summary.unconfirmed, 2);
-  const r = await service.bulkEligibility(exec, { employeeUids: [D1, P1], confirmed: true, reference: 'คำสั่ง 12/2569' });
-  assert.deepEqual([r.requested, r.changed, r.unchanged, r.failed.length], [2, 2, 0, 0]);
+  assert.equal(before.summary.unconfirmed, 2); // the contract worker and the procurement person
+  const r = await service.bulkEligibility(exec, { employeeUids: [C1], confirmed: true, reference: 'คำสั่ง 12/2569' });
+  assert.deepEqual([r.requested, r.changed, r.unchanged, r.failed.length], [1, 1, 0, 0]);
   const after = await overview.overview(exec, { year: FY });
-  assert.equal(after.summary.unconfirmed, 0);
-  const row = after.rows.find((x) => x.employeeUid === D1);
+  assert.equal(after.summary.unconfirmed, 1);
+  const row = after.rows.find((x) => x.employeeUid === C1);
   assert.deepEqual([row.profile.eligibilityConfirmed, row.profile.eligibilityReference], [true, 'คำสั่ง 12/2569']);
+  assert.deepEqual(['sick', 'personal', 'vacation'].map((t) => row.types[t].totalDays), [10, 5, 10]);
   const audits = repositories.leaveHr.audit.filter((a) => a.fieldName === 'eligibility_confirmed');
-  assert.equal(audits.length, 2);
+  assert.equal(audits.length, 1);
   assert.ok(audits.every((a) => a.actorUid === EXEC && a.afterValue === 'true'));
   assert.ok(repositories.leaveHr.audit.some((a) => a.fieldName === 'eligibility_reference' && a.afterValue === 'คำสั่ง 12/2569'));
 
-  const repeat = await service.bulkEligibility(exec, { employeeUids: [D1, P1], confirmed: true, reference: 'คำสั่ง 12/2569' });
-  assert.deepEqual([repeat.changed, repeat.unchanged], [0, 2]);
+  const repeat = await service.bulkEligibility(exec, { employeeUids: [C1], confirmed: true, reference: 'คำสั่ง 12/2569' });
+  assert.deepEqual([repeat.changed, repeat.unchanged], [0, 1]);
 
   const writes = repositories.leaveHr.audit.length;
   for (const body of [
-    { employeeUids: [U1, C1], confirmed: true }, { employeeUids: ['nobody'], confirmed: true }, { employeeUids: [], confirmed: true },
+    { employeeUids: ['nobody'], confirmed: true }, { employeeUids: [], confirmed: true },
     { employeeUids: [U1, U1], confirmed: true }, { employeeUids: [U1], confirmed: 'yes' },
   ]) await assert.rejects(() => service.bulkEligibility(exec, body), (e) => e.status === 400);
   assert.equal(repositories.leaveHr.audit.length, writes); // refused before anything was written
   assert.equal((await repositories.leaveHr.getProfile(U1)), null);
 
-  const cleared = await service.bulkEligibility(exec, { employeeUids: [D1], confirmed: null });
+  // an unmapped type can be confirmed too (university rules, flagged) and declined
+  const procurement = await service.bulkEligibility(exec, { employeeUids: [P1], confirmed: true });
+  assert.equal(procurement.changed, 1);
+  const flagged = (await overview.overview(exec, { year: FY })).rows.find((x) => x.employeeUid === P1);
+  assert.ok(flagged.types.sick.flags.includes('policy_assumed_university'));
+  assert.equal(flagged.policy.family, null);
+  const declined = await service.bulkEligibility(exec, { employeeUids: [P1], confirmed: false, reference: 'ไม่อยู่ในหลักเกณฑ์' });
+  assert.equal(declined.changed, 1);
+  const cleared = await service.bulkEligibility(exec, { employeeUids: [C1], confirmed: null });
   assert.equal(cleared.changed, 1);
   assert.equal((await overview.overview(exec, { year: FY })).summary.unconfirmed, 1);
 });
 
-test('the owner entry refuses contract staff too', async () => {
+test('the owner entry refuses a carry-over for a section policy and accepts a hire date for contract staff', async () => {
   const { repositories } = build();
   const { createLeaveOwnerEntryService } = require('../src/services/leaveOwnerEntryService');
-  await assert.rejects(() => createLeaveOwnerEntryService({ repositories, now: NOW }).apply(exec, C1, { hireDate: '2018-01-01' }), (e) => e.status === 400);
+  const owner = createLeaveOwnerEntryService({ repositories, now: NOW });
+  await assert.rejects(() => owner.apply(exec, C1, { entitlements: [{ fiscalYearBe: FY, leaveType: 'vacation', entitlementDays: 10, carryoverDays: 1 }] }), (e) => e.status === 400);
+  const ok = await owner.apply(exec, C1, { hireDate: '2018-01-01' });
+  assert.equal(ok.changed, 1); // a hire date is optional for contract staff but accepted
 });

@@ -10,7 +10,7 @@ import PageHeader from '../components/PageHeader.vue';
 import { errorMessageTh, leaveTypeLabel } from '../utils/i18n';
 import { employeeTypeLabel } from '../utils/thai';
 import {
-  DEFAULT_FISCAL_YEAR_BE, LEAVE_KINDS, canConfirmImport, cellView, findingLabelTh, groupFindings, filterRows, fiscalRangeTh, fiscalYearOptions, formatDays, missingLabelTh, scopeLabelTh,
+  DEFAULT_FISCAL_YEAR_BE, LEAVE_KINDS, POLICY_FAMILIES, canConfirmImport, cellView, findingLabelTh, flagNotesTh, groupFindings, policyLabelTh, filterRows, fiscalRangeTh, fiscalYearOptions, formatDays, missingLabelTh, scopeLabelTh,
 } from '../utils/leaveEntitlement';
 
 // One request loads everyone in scope; the filters below work on that data in the browser (no per-person requests).
@@ -46,6 +46,7 @@ async function load() {
 }
 
 const visible = computed(() => (data.value ? filterRows(data.value.rows, { query: query.value, scope: scope.value, division: '', missingOnly: missingOnly.value }) : []));
+const policyCards = computed(() => POLICY_FAMILIES.filter((f) => data.value?.summary.byPolicy[f.key]?.people));
 const missingChips = computed(() => Object.entries(data.value?.summary.missing ?? {}).sort((a, b) => b[1] - a[1]));
 
 function openEdit(row: EntitlementRow) { saveError.value = null; notice.value = null; editing.value = row; }
@@ -75,6 +76,7 @@ const bulkBusy = ref(false);
 const bulkError = ref<string | null>(null);
 const selectable = (r: EntitlementRow) => r.scope !== 'excluded';
 const selectedCount = computed(() => selected.value.size);
+const unmappedSelected = computed(() => (data.value?.rows ?? []).filter((r) => selected.value.has(r.employeeUid) && r.policy.family === null).length);
 const allVisibleSelected = computed(() => visible.value.filter(selectable).length > 0 && visible.value.filter(selectable).every((r) => selected.value.has(r.employeeUid)));
 function toggle(uid: string) {
   const next = new Set(selected.value);
@@ -153,7 +155,7 @@ onMounted(load);
 
 <template>
   <section>
-    <PageHeader eyebrow="การลา" title="สิทธิ์วันลาตามปีงบประมาณ" subtitle="สิทธิ์ ยกยอด วันลาที่อนุมัติแล้ว และวันคงเหลือของพนักงานทุกคนในขอบเขต ตามประกาศ มจ. พ.ศ. 2569 (ปีงบประมาณ 1 ต.ค. – 30 ก.ย.) — ข้อมูลที่ยังไม่ครบแสดงว่า ไม่มีข้อมูล ไม่ใช่ 0" />
+    <PageHeader eyebrow="การลา" title="สิทธิ์วันลาตามปีงบประมาณ" subtitle="สิทธิ์ ยกยอด วันลาที่อนุมัติแล้ว และวันคงเหลือของพนักงานทุกคนในขอบเขต ตามหลักเกณฑ์ของแต่ละประเภทบุคลากร (ปีงบประมาณ 1 ต.ค. – 30 ก.ย.) — ข้อมูลที่ยังไม่ครบแสดงว่า ไม่มีข้อมูล ไม่ใช่ 0" />
     <form class="period" @submit.prevent="load">
       <label class="field">
         <span>ปีงบประมาณ (พ.ศ.)</span>
@@ -179,9 +181,9 @@ onMounted(load);
         <p class="muted">ปีงบประมาณ {{ data.fiscalYear.be }}: {{ fiscalRangeTh({ fiscalYear: data.fiscalYear }) }}<template v-if="data.flag === 'shadow'"> · อยู่ระหว่างตรวจสอบ (shadow)</template></p>
         <dl class="kpi-grid">
           <KpiTile label="พนักงานในขอบเขต" :value="`${data.summary.headcount} คน`" />
-          <KpiTile label="อยู่ในประกาศ" :value="`${data.summary.inPolicy} คน`" tone="info" />
-          <KpiTile label="รอยืนยันสิทธิ์" :value="`${data.summary.unconfirmed} คน`" hint="ประเภทบุคลากรที่ประกาศไม่ได้ระบุ" tone="late" />
-          <KpiTile label="อยู่นอกประกาศ" :value="`${data.summary.excluded} คน`" hint="เช่น พนักงานจ้างเหมา" />
+          <KpiTile label="อยู่ในหลักเกณฑ์" :value="`${data.summary.inPolicy} คน`" tone="info" />
+          <KpiTile label="รอยืนยันสิทธิ์" :value="`${data.summary.unconfirmed} คน`" hint="พนักงานจ้างเหมา/ประเภทที่ยังไม่กำหนดหลักเกณฑ์" tone="late" />
+          <KpiTile label="อยู่นอกหลักเกณฑ์" :value="`${data.summary.excluded} คน`" hint="เจ้าของระบบตัดสินว่าไม่อยู่ในหลักเกณฑ์" />
           <KpiTile label="คำนวณครบทั้ง 3 ประเภท" :value="`${data.summary.fullyDetermined} คน`" tone="leave" />
         </dl>
 
@@ -193,8 +195,17 @@ onMounted(load);
           </li>
         </ul>
 
+        <ul class="ent-type-grid">
+          <li v-for="f in policyCards" :key="f.key">
+            <p class="balance-type">{{ f.labelTh }}</p>
+            <p><strong>{{ data!.summary.byPolicy[f.key].people }}</strong> <span class="muted">คน</span></p>
+            <p class="muted">คำนวณครบ 3 ประเภท {{ data!.summary.byPolicy[f.key].fullyDetermined }} · รอยืนยันสิทธิ์ {{ data!.summary.byPolicy[f.key].unconfirmed }}</p>
+          </li>
+        </ul>
+        <p v-if="data.summary.byPolicy.section_contract?.people" class="callout" role="note">พนักงานส่วนงานจ้างเหมา: ลาป่วย 10 · ลากิจ 5 · ลาพักผ่อน 10 วันทำการ/ปีงบประมาณ ไม่มียอดสะสม — หลักเกณฑ์ไม่ระบุวันที่เริ่มมีผล จึงคำนวณตั้งแต่ปีงบประมาณ 2570 เป็นต้นไป และแสดงเมื่อเจ้าของระบบยืนยันสิทธิ์แล้ว</p>
+
         <template v-if="missingChips.length">
-          <p class="muted">ข้อมูลที่ยังขาด (นับจำนวนคนที่อยู่ในประกาศหรือรอยืนยัน):</p>
+          <p class="muted">ข้อมูลที่ยังขาด (นับจำนวนคนที่อยู่ในหลักเกณฑ์หรือรอยืนยัน):</p>
           <ul class="ent-missing">
             <li v-for="[code, n] in missingChips" :key="code" class="chip chip--late">{{ missingLabelTh(code) }} · {{ n }} คน</li>
           </ul>
@@ -239,11 +250,11 @@ onMounted(load);
 
         <div v-if="data.canEdit && selectedCount > 0" class="ent-bulkbar" role="status">
           <strong>เลือกแล้ว {{ selectedCount }} คน</strong>
-          <button type="button" class="btn btn--primary" @click="openBulk">ยืนยันสิทธิ์ตามประกาศ…</button>
+          <button type="button" class="btn btn--primary" @click="openBulk">ยืนยันสิทธิ์ตามหลักเกณฑ์…</button>
           <button type="button" class="btn btn--ghost" @click="selected = new Set()">ล้างที่เลือก</button>
         </div>
         <div v-else-if="data.canEdit && data.summary.unconfirmed > 0" class="ent-bulkbar">
-          <span>มี {{ data.summary.unconfirmed }} คนรอยืนยันสิทธิ์ตามประกาศ</span>
+          <span>มี {{ data.summary.unconfirmed }} คนรอยืนยันสิทธิ์ตามหลักเกณฑ์</span>
           <button type="button" class="btn" @click="selectUnconfirmed">เลือกทั้งหมดที่รอยืนยัน</button>
         </div>
 
@@ -253,9 +264,9 @@ onMounted(load);
             <span>สถานะ</span>
             <select v-model="scope">
               <option value="">ทั้งหมด</option>
-              <option value="in_policy">อยู่ในประกาศ</option>
+              <option value="in_policy">อยู่ในหลักเกณฑ์</option>
               <option value="unconfirmed">รอยืนยันสิทธิ์</option>
-              <option value="excluded">อยู่นอกประกาศ</option>
+              <option value="excluded">อยู่นอกหลักเกณฑ์</option>
             </select>
           </label>
           <label class="field field--inline"><input v-model="missingOnly" type="checkbox" /> <span>เฉพาะที่ต้องกรอกข้อมูล</span></label>
@@ -280,7 +291,7 @@ onMounted(load);
                 <td v-if="data.canEdit"><input v-if="selectable(row)" type="checkbox" :checked="selected.has(row.employeeUid)" :aria-label="`เลือก ${row.name}`" @change="toggle(row.employeeUid)" /></td>
                 <td class="ent-person">
                   <strong>{{ row.name }}</strong>
-                  <span class="muted">{{ row.employeeId }} · {{ employeeTypeLabel(row.employeeType) }}</span>
+                  <span class="muted">{{ row.employeeId }} · {{ policyLabelTh(row.policy) }}</span>
                   <span class="muted">{{ row.division.nameTh }}</span>
                 </td>
                 <td>
@@ -291,10 +302,11 @@ onMounted(load);
                   <div class="ent-cell" :class="`ent-cell--${cellView(row.types[t]).tone}`">
                     <strong>{{ cellView(row.types[t]).text }}</strong>
                     <span v-if="cellView(row.types[t]).sub" class="muted">{{ cellView(row.types[t]).sub }}</span>
+                    <span v-for="note in flagNotesTh(row.types[t])" :key="note" class="muted ent-note">{{ note }}</span>
                     <div v-if="cellView(row.types[t]).meter !== null" class="ent-meter" aria-hidden="true"><span class="meter-fill" :style="{ width: `${cellView(row.types[t]).meter}%` }"></span></div>
                   </div>
                 </td>
-                <td>{{ row.scope === 'excluded' ? '—' : formatDays(row.types.vacation?.carryoverDays) }}</td>
+                <td>{{ row.scope === 'excluded' || row.scope === 'unconfirmed' ? '—' : (row.policy.requires?.carryover ? formatDays(row.types.vacation?.carryoverDays) : 'ไม่มีสะสม') }}</td>
                 <td v-if="data.canEdit"><button v-if="selectable(row)" type="button" class="btn btn--ghost" @click="openEdit(row)">กรอก/แก้ไข</button></td>
               </tr>
             </tbody>
@@ -303,13 +315,14 @@ onMounted(load);
       </template>
     </AsyncState>
 
- <ConfirmDialog :open="bulkOpen" title="ยืนยันสิทธิ์ตามประกาศ" confirm-label="บันทึก" :busy="bulkBusy" @confirm="confirmBulk" @cancel="bulkOpen = false">
-      <p>ผู้ที่เลือก {{ selectedCount }} คน (ไม่รวมพนักงานจ้างเหมา)</p>
+ <ConfirmDialog :open="bulkOpen" title="ยืนยันสิทธิ์ตามหลักเกณฑ์" confirm-label="บันทึก" :busy="bulkBusy" @confirm="confirmBulk" @cancel="bulkOpen = false">
+      <p>ผู้ที่เลือก {{ selectedCount }} คน</p>
+      <p v-if="unmappedSelected > 0 && bulkChoice === 'yes'" class="callout" role="note">มี {{ unmappedSelected }} คนที่ยังไม่ได้กำหนดว่าใช้หลักเกณฑ์ใด — การยืนยันจะใช้เกณฑ์ของพนักงานมหาวิทยาลัยเหมือนเดิม (ระบบแสดงหมายเหตุกำกับไว้)</p>
       <label class="field">
         <span>การตัดสิน</span>
         <select v-model="bulkChoice">
-          <option value="yes">อยู่ในประกาศ — ได้สิทธิ์ตามประกาศ</option>
-          <option value="no">อยู่นอกประกาศ — ไม่ใช้เกณฑ์นี้</option>
+          <option value="yes">อยู่ในหลักเกณฑ์ — ได้สิทธิ์ตามหลักเกณฑ์ของตน</option>
+          <option value="no">อยู่นอกหลักเกณฑ์ — ไม่คำนวณสิทธิ์</option>
           <option value="clear">ล้างการยืนยัน (กลับไปรอยืนยัน)</option>
         </select>
       </label>

@@ -97,7 +97,7 @@ test('a determined cell shows the number and a bar; anything else shows no numbe
 });
 
 test('Thai labels for scope and missing facts, with a neutral fallback', () => {
-  assert.equal(scopeLabelTh('excluded'), 'อยู่นอกประกาศ');
+  assert.equal(scopeLabelTh('excluded'), 'อยู่นอกหลักเกณฑ์');
   assert.equal(missingLabelTh('hireDate'), 'วันที่เริ่มจ้าง');
   assert.equal(missingLabelTh('something_new'), 'ข้อมูลที่ยังไม่ครบ');
 });
@@ -153,4 +153,28 @@ test('confirm is offered only after a clean dry run that would change something'
   assert.equal(canConfirmImport({ ...clean, files: { profile: { toApply: 0, alreadyApplied: false } } }), false);
   assert.equal(canConfirmImport({ ...clean, mode: 'apply' }), false);
   assert.equal(canConfirmImport(null), false);
+});
+
+// ------------------------------------------------------------ multiple policies
+
+import { flagNotesTh, policyLabelTh, POLICY_FAMILIES } from '../src/utils/leaveEntitlement.ts';
+
+test('policy labels: each employment type has its own, and an unmapped one says the owner has to choose', () => {
+  assert.equal(policyLabelTh({ family: 'section_contract', labelTh: 'พนักงานส่วนงานจ้างเหมา' }), 'พนักงานส่วนงานจ้างเหมา');
+  assert.equal(policyLabelTh({ family: null, labelTh: null }), 'ยังไม่กำหนดหลักเกณฑ์การลา');
+  assert.equal(policyLabelTh(undefined), 'ยังไม่กำหนดหลักเกณฑ์การลา');
+  assert.deepEqual(POLICY_FAMILIES.map((f) => f.key), ['university', 'section_employee', 'section_contract', 'unmapped']);
+});
+
+test('review flags become Thai notes (never numbers); unknown flags show nothing; duplicates collapse', () => {
+  assert.deepEqual(flagNotesTh({ flags: ['medical_certificate_review', 'policy_effective_date_unspecified', 'medical_certificate_review'] }), ['ตรวจใบรับรองแพทย์']);
+  assert.match(flagNotesTh({ flags: ['carryover_not_allowed'] })[0], /ไม่มียอดสะสม/);
+  assert.deepEqual(flagNotesTh(undefined), []);
+  assert.deepEqual(flagNotesTh({ flags: ['something_new'] }), []);
+});
+
+test('the new reasons and the owner-decision status are in Thai', () => {
+  const row = { ...ok, reasons: ['qualification_mid_year_pending_owner_decision', 'service_under_3_months', 'policy_period_not_confirmed', 'service_under_6_months'] };
+  assert.equal(reasonsTh(row).length, 4);
+  assert.equal(statusLabelTh('pending_hr_decision'), 'รอ Owner พิจารณา');
 });
