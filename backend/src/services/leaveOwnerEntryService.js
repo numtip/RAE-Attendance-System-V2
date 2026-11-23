@@ -2,6 +2,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const { HttpError } = require('../utils/httpError');
 const { resolveScope } = require('./authorizationService');
 const { createLeaveEntitlementService, bangkokDate } = require('./leaveEntitlementService');
+const { fiscalYearByBE } = require('../domain/leavePolicyEngine');
 
 const LEAVE_TYPES = ['sick', 'personal', 'vacation'];
 const APPOINTMENT_KINDS = ['first', 'rehire_after_resignation', 'rehire_after_dismissal', 'other'];
@@ -89,6 +90,10 @@ function createLeaveOwnerEntryService({ repositories, now = () => new Date() }) 
         if (hasDays !== hasThrough) throw bad('usageBaselineDays and usageBaselineThrough go together');
         row.usageBaselineDays = hasDays ? days(e.usageBaselineDays, 'usageBaselineDays', 120) : null;
         row.usageBaselineThrough = hasThrough ? optionalDate(e.usageBaselineThrough, 'usageBaselineThrough', today) : null;
+        if (row.usageBaselineThrough) {
+          const fy = fiscalYearByBE(e.fiscalYearBe);
+          if (row.usageBaselineThrough < fy.start || row.usageBaselineThrough > fy.end) throw bad('usageBaselineThrough must fall inside the fiscal year');
+        }
         out.entitlements.push(row);
       }
     }
@@ -104,6 +109,7 @@ function createLeaveOwnerEntryService({ repositories, now = () => new Date() }) 
       const input = parse(payload, today);
       const facts = await repositories.employees.getLeaveFacts(employeeUid);
       if (!facts) throw new HttpError(404, 'NOT_FOUND', 'Employee was not found');
+      if (facts.employeeType === 'contract') throw bad('contract staff are outside the leave policy and cannot be onboarded');
       const profileNow = await repositories.leaveHr.getProfile(employeeUid);
       const operator = auth.employeeUid;
 

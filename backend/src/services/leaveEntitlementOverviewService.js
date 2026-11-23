@@ -76,17 +76,25 @@ function createLeaveEntitlementOverviewService({ repositories, config, now = () 
       if (query.division) people = people.filter((e) => divisionOf(e.employeeUid) === query.division);
 
       const uids = people.map((p) => p.employeeUid);
-      const [rowsByUid, facts, profiles] = await Promise.all([
+      const [rowsByUid, facts, profiles, stored] = await Promise.all([
         entitlement.balances(uids, year),
         repositories.employees.listLeaveFacts(uids),
         scope.all ? repositories.leaveHr.listProfiles(uids) : [],
+        scope.all ? repositories.leaveHr.listEntitlementsForYear(uids, year) : [],
       ]);
+      const storedBy = new Map();
+      for (const r of stored) {
+        if (!storedBy.has(r.employeeUid)) storedBy.set(r.employeeUid, {});
+        storedBy.get(r.employeeUid)[r.leaveType] = {
+          entitlementDays: r.entitlementDays, carryoverDays: r.carryoverDays, usageBaselineDays: r.usageBaselineDays, usageBaselineThrough: r.usageBaselineThrough,
+        };
+      }
       const factBy = new Map(facts.map((f) => [f.employeeUid, f]));
       const profileBy = new Map(profiles.map((p) => [p.employeeUid, p]));
 
       const summary = {
         headcount: people.length, inPolicy: 0, excluded: 0, unconfirmed: 0, fullyDetermined: 0,
-        byType: Object.fromEntries(TYPES.map((t) => [t, { label: TYPE_LABEL[t], byStatus: {}, determined: 0, entitlementDays: 0, usedDays: 0, remainingDays: 0 }])),
+        byType: Object.fromEntries(TYPES.map((t) => [t, { label: TYPE_LABEL[t], byStatus: {}, determined: 0, entitlementDays: 0, usedDays: 0, remainingDays: 0, missing: {} }])),
         missing: {},
       };
       const rows = people.map((p) => {
@@ -105,6 +113,7 @@ function createLeaveEntitlementOverviewService({ repositories, config, now = () 
           if (!cell) continue;
           const bucket = summary.byType[t];
           bucket.byStatus[cell.status] = (bucket.byStatus[cell.status] || 0) + 1;
+          if (scopeState !== 'excluded') for (const m of cell.missing) bucket.missing[m] = (bucket.missing[m] || 0) + 1;
           if (cell.available && cell.remainingDays !== null) {
             determined += 1; bucket.determined += 1;
             bucket.entitlementDays += cell.totalDays; bucket.usedDays += cell.usedDays; bucket.remainingDays += cell.remainingDays;
@@ -124,6 +133,7 @@ function createLeaveEntitlementOverviewService({ repositories, config, now = () 
               appointmentKind: profile?.appointmentKind ?? null, eligibilityConfirmed: profile?.eligibilityConfirmed ?? null,
               eligibilityReference: profile?.eligibilityReference ?? null,
             },
+            stored: storedBy.get(p.employeeUid) || {},
           } : {}),
         };
       });

@@ -261,6 +261,15 @@ function validateEntitlement(parsed, { currentFiscalYearBe }) {
       seen.add(key);
     }
 
+    // A template row nobody has filled in carries no data: it is skipped with a warning, it is not an error.
+    const cells = ['entitlementDays', 'carryoverDays', 'usageBaselineDays', 'usageBaselineThrough'].map((k) => get(k));
+    if (cells.every((c) => c === '')) {
+      out.skip = true;
+      out.warnings.push('no_data');
+      if (get('note').length > NOTE_MAX) out.errors.push('note_too_long');
+      return out;
+    }
+
     const entitlement = parseDays(get('entitlementDays'), 120);
     if (entitlement === null) out.errors.push('days_format'); else out.data.entitlementDays = entitlement;
 

@@ -190,6 +190,10 @@ test('owner entry: entitlement override, carry-over and removal, with validation
   await reject({ entitlements: [{ fiscalYearBe: FY, leaveType: 'sick', entitlementDays: 10, carryoverDays: 2 }] });
   await reject({ entitlements: [{ fiscalYearBe: 2568, leaveType: 'sick', entitlementDays: 10 }] });
   await reject({ entitlements: [{ fiscalYearBe: FY, leaveType: 'vacation', entitlementDays: 10, usageBaselineDays: 2 }] });
+  await reject({ entitlements: [{ fiscalYearBe: FY, leaveType: 'sick', entitlementDays: 60, usageBaselineDays: 3, usageBaselineThrough: '2026-09-30' }] }); // before the fiscal year
+  const baseline = await owner.apply(exec, U1, { entitlements: [{ fiscalYearBe: FY, leaveType: 'sick', entitlementDays: 60, usageBaselineDays: 3, usageBaselineThrough: '2026-10-31' }] });
+  assert.equal(baseline.changed, 3);
+  assert.equal(baseline.rows.find((r) => r.leaveType === 'sick').usedDays >= 3, true);
   await reject({ hireDate: '2030-01-01' });
   await reject({ hireDate: '2020-02-30' });
   await reject({ appointmentKind: 'whatever' });

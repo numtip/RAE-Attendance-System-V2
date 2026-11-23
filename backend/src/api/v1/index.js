@@ -19,6 +19,7 @@ const { createLeaveMonthlyReportService } = require('../../services/leaveMonthly
 const { createLeaveService } = require('../../services/leaveService');
 const { createLeaveEntitlementOverviewService } = require('../../services/leaveEntitlementOverviewService');
 const { createLeaveOwnerEntryService } = require('../../services/leaveOwnerEntryService');
+const { createLeaveBulkManagementService } = require('../../services/leaveBulkManagementService');
 const { createSsoService } = require('../../services/ssoService');
 const { createLoginAttemptStore } = require('../../services/sso/ssoLoginAttemptStore');
 const { getPool, isDatabaseConfigured } = require('../../db/pool');
@@ -58,7 +59,7 @@ function createV1Router(container) {
     attendanceRecordService,
     facescanIngestionService,
   );
-  const leave = createLeaveController(leaveService, createLeaveEntitlementOverviewService(container), createLeaveOwnerEntryService(container));
+  const leave = createLeaveController(leaveService, createLeaveEntitlementOverviewService(container), createLeaveOwnerEntryService(container), createLeaveBulkManagementService(container));
   const attendanceCompute = createAttendanceComputeController(attendanceComputeService);
   const organizationReports = createOrganizationReportService(container);
   const reports = createReportController(
@@ -120,6 +121,9 @@ function createV1Router(container) {
 
   router.get('/leave', authenticate, leave.list);
   router.get('/leave/entitlements', authenticate, leave.entitlements);
+  router.get('/leave/entitlements/template', authenticate, leave.entitlementTemplate);
+  router.post('/leave/entitlements/import', authenticate, leave.importEntitlementFiles);
+  router.post('/leave/entitlements/eligibility', authenticate, leave.bulkEligibility);
   router.put('/leave/entitlements/:employeeUid', authenticate, leave.saveEntitlementFacts);
   router.get('/leave/balance/:employeeUid', authenticate, leave.balance);
   router.get('/leave/history/:employeeUid', authenticate, leave.history);

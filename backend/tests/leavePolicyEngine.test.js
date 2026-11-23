@@ -451,7 +451,7 @@ test('the salary-increment indicator is informational and independent of the lea
 
 test('the engine is used only by the integration layer and the HR import preview; the salary-increment note is used by nothing', () => {
   const root = path.join(backendRoot, 'src');
-  const allowed = new Set(['leaveEntitlementService.js', 'leaveService.js', 'leaveController.js', 'leaveHrImportCli.js', 'leaveEntitlementOverviewService.js']);
+  const allowed = new Set(['leaveEntitlementService.js', 'leaveService.js', 'leaveController.js', 'leaveHrImportCli.js', 'leaveEntitlementOverviewService.js', 'leaveBulkManagementService.js']);
   const usingEngine = [];
   const usingSalary = [];
   (function walk(dir) {
