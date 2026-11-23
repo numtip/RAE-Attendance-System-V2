@@ -167,6 +167,12 @@ function buildRepository(db, withTransaction) {
     },
 
     /** employees.hire_date (existing column): the only column of `employees` this repository writes. */
+    /** Removes one verified entitlement row (the owner undoing an override); the audit row is written by the caller. */
+    async deleteEntitlement(employeeUid, fiscalYearBe, leaveType) {
+      const [result] = await db.query('DELETE FROM employee_leave_entitlement WHERE employee_uid = ? AND fiscal_year_be = ? AND leave_type = ?', [employeeUid, fiscalYearBe, leaveType]);
+      return result.affectedRows > 0;
+    },
+
     async setHireDate(employeeUid, hireDate) {
       const [result] = await db.query('UPDATE employees SET hire_date = ?, updated_at = NOW() WHERE employee_uid = ?', [hireDate, employeeUid]);
       return result.affectedRows > 0;

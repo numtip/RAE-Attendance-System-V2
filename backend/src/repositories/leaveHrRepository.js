@@ -48,6 +48,10 @@ class LeaveHrRepository {
     this.entitlements.set(this._key(e.employeeUid, e.fiscalYearBe, e.leaveType), { ...e });
   }
 
+  async deleteEntitlement(employeeUid, fiscalYearBe, leaveType) {
+    return this.entitlements.delete(this._key(employeeUid, fiscalYearBe, leaveType));
+  }
+
   async findBatch(kind, fileSha256) {
     const b = this.batches.find((row) => row.kind === kind && row.fileSha256 === fileSha256);
     return b ? { ...b } : null;

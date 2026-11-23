@@ -30,6 +30,7 @@ const managementNav = computed(() => (['executive', 'manager'].includes(employee
   ? [
     { name: 'dashboard', label: 'แดชบอร์ดผู้บริหาร' },
     { name: 'reports-organization', label: 'รายงานองค์กร / ทีม' },
+    { name: 'leave-entitlements', label: 'สิทธิ์วันลาตามปีงบประมาณ' },
   ]
   : []));
 // Leave review is limited to executives (the server also requires the organization grant).

@@ -49,6 +49,17 @@ function createEmployeeMariaDbRepository(pool) {
       return row ? { employeeUid: row.employeeUid, employeeId: row.employeeId, employeeType: row.employeeType, status: row.status, hireDate: row.hireDate ?? null } : null;
     },
 
+    /** Same facts as getLeaveFacts for many people in ONE query; unknown uids are omitted. */
+    async listLeaveFacts(employeeUids) {
+      if (!employeeUids.length) return [];
+      const [rows] = await pool.query(
+        `SELECT employee_uid, employee_id, employee_type, status, DATE_FORMAT(hire_date, '%Y-%m-%d') AS hire_date
+           FROM employees WHERE employee_uid IN (?)`,
+        [employeeUids],
+      );
+      return rows.map(mapRow).map((row) => ({ employeeUid: row.employeeUid, employeeId: row.employeeId, employeeType: row.employeeType, status: row.status, hireDate: row.hireDate ?? null }));
+    },
+
     /**
      * Profile fields only (title, display name, position, department, type, status, role). Never touches
      * credentials, email, identifiers or login counters. Returns true when a row matched.

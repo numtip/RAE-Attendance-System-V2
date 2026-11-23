@@ -3,7 +3,7 @@ const { asyncRoute } = require('../utils/asyncRoute');
 const { fiscalYearOf } = require('../domain/leavePolicyEngine');
 const { bangkokDate } = require('../services/leaveEntitlementService');
 
-function createLeaveController(leaveService) {
+function createLeaveController(leaveService, overviewService, ownerEntryService) {
   return {
     list: asyncRoute(async (req, res) => {
       const data = await leaveService.list(req.auth, req.query.employeeUid, { year: req.query.year });
@@ -16,6 +16,16 @@ function createLeaveController(leaveService) {
       const year = Number(req.query.year || fallbackYear);
       const data = await leaveService.balance(req.auth, req.params.employeeUid, year, { basis });
       success(res, data, 'วันลาคงเหลือ');
+    }),
+    // One request for the whole organisation (fiscal basis). Executive or manager scope only.
+    entitlements: asyncRoute(async (req, res) => {
+      success(res, await overviewService.overview(req.auth, req.query), 'สิทธิ์วันลาตามปีงบประมาณ');
+    }),
+    // The owner's data entry. Executive with an organization grant only; every changed field is audited.
+    saveEntitlementFacts: asyncRoute(async (req, res) => {
+      overviewService.assertEnabled();
+      const data = await ownerEntryService.apply(req.auth, req.params.employeeUid, req.body, { fiscalYearBe: req.query.year ? Number(req.query.year) : undefined });
+      success(res, data, 'บันทึกข้อมูลสิทธิ์วันลาแล้ว');
     }),
     history: asyncRoute(async (req, res) => {
       const data = await leaveService.history(req.auth, req.params.employeeUid);

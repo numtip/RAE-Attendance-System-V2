@@ -217,6 +217,88 @@ async function handleLeaveList(query: string): Promise<LeaveRow[]> {
   return fixtureLeave.filter((row) => row.employeeUid === target);
 }
 
+// ---------- Fiscal entitlement overview (review build): synthetic people only ----------
+type EntRow = import('../types').EntitlementRow;
+type EntCell = import('../types').EntitlementCell;
+const entCell = (extra: Partial<EntCell>): EntCell => ({
+  status: 'ok', source: 'computed', available: true, entitlementDays: null, carryoverDays: null, totalDays: null, usedDays: null,
+  pendingDays: 0, remainingDays: null, usageComplete: true, missing: [], reasons: [], flags: [], ...extra,
+});
+const unknownCell = (missing: string[]): EntCell => entCell({ status: 'unknown', available: false, missing });
+const excludedCell = (): EntCell => entCell({ status: 'out_of_scope', available: false });
+const DIV_A = { code: 'DIV_RESEARCH', nameTh: 'กองบริหารงานวิจัย' };
+const DIV_B = { code: 'DIV_OFFICE', nameTh: 'กองบริหารงานสำนักวิจัยฯ' };
+const emptyProfile = { hireDate: null, continuousServiceStart: null, appointmentKind: null, eligibilityConfirmed: null, eligibilityReference: null };
+const entRows: EntRow[] = [
+  { employeeUid: 'e1', employeeId: 'S001', name: 'สมชาย ตัวอย่าง', employeeType: 'university', division: DIV_A, scope: 'in_policy', missing: [], profile: { ...emptyProfile, hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', appointmentKind: 'first' }, types: {
+    sick: entCell({ entitlementDays: 60, totalDays: 60, usedDays: 3, remainingDays: 57 }),
+    personal: entCell({ entitlementDays: 45, totalDays: 45, usedDays: 2, remainingDays: 43 }),
+    vacation: entCell({ source: 'hr_verified', entitlementDays: 10, carryoverDays: 8, totalDays: 18, usedDays: 4, remainingDays: 14 }),
+  } },
+  { employeeUid: 'e2', employeeId: 'S002', name: 'สมหญิง ตัวอย่าง', employeeType: 'university', division: DIV_A, scope: 'in_policy', missing: ['hireDate'], profile: { ...emptyProfile }, types: {
+    sick: entCell({ entitlementDays: 60, totalDays: 60, usedDays: 0, remainingDays: 60 }),
+    personal: unknownCell(['hireDate']),
+    vacation: unknownCell(['hireDate']),
+  } },
+  { employeeUid: 'e3', employeeId: 'S003', name: 'สมศรี ตัวอย่าง', employeeType: 'university', division: DIV_B, scope: 'in_policy', missing: ['vacationCarryoverDays'], profile: { ...emptyProfile, hireDate: '2019-06-01', continuousServiceStart: '2019-06-01', appointmentKind: 'first' }, types: {
+    sick: entCell({ entitlementDays: 60, totalDays: 60, usedDays: 1, remainingDays: 59 }),
+    personal: entCell({ entitlementDays: 45, totalDays: 45, usedDays: 0, remainingDays: 45 }),
+    vacation: unknownCell(['vacationCarryoverDays']),
+  } },
+  { employeeUid: 'e4', employeeId: 'S004', name: 'สมปอง ตัวอย่าง', employeeType: 'department', division: DIV_B, scope: 'unconfirmed', missing: [], profile: { ...emptyProfile }, types: {
+    sick: entCell({ status: 'needs_hr', available: false }), personal: entCell({ status: 'needs_hr', available: false }), vacation: entCell({ status: 'needs_hr', available: false }),
+  } },
+  { employeeUid: 'e5', employeeId: 'S005', name: 'สมใจ ตัวอย่าง', employeeType: 'university', division: DIV_B, scope: 'in_policy', missing: [], profile: { ...emptyProfile, hireDate: '2012-01-01', continuousServiceStart: '2012-01-01', appointmentKind: 'first' }, types: {
+    sick: entCell({ entitlementDays: 60, totalDays: 60, usedDays: 5, remainingDays: null, available: false, usageComplete: false }),
+    personal: entCell({ entitlementDays: 45, totalDays: 45, usedDays: 0, remainingDays: null, available: false, usageComplete: false }),
+    vacation: entCell({ entitlementDays: 10, carryoverDays: 5, totalDays: 15, usedDays: 2, remainingDays: null, available: false, usageComplete: false }),
+  } },
+  { employeeUid: 'e6', employeeId: 'S006', name: 'จ้างเหมา ตัวอย่าง', employeeType: 'contract', division: DIV_A, scope: 'excluded', missing: [], profile: { ...emptyProfile }, types: { sick: excludedCell(), personal: excludedCell(), vacation: excludedCell() } },
+];
+
+function handleEntitlements(role: string, year: number, division: string): import('../types').EntitlementOverview {
+  if (!['executive', 'manager'].includes(role)) throw new ApiError(403, 'FORBIDDEN', 'The organisation overview needs an executive or manager role');
+  if (!Number.isInteger(year) || year < 2569 || year > 2700) throw new ApiError(400, 'VALIDATION_ERROR', 'a fiscal year is a Buddhist-era year such as 2570');
+  const rows = entRows.filter((r) => !division || r.division.code === division).map((r) => (role === 'executive' ? r : { ...r, profile: undefined }));
+  const kinds = ['sick', 'personal', 'vacation'] as const;
+  const byType = Object.fromEntries(kinds.map((t) => {
+    const cells = rows.map((r) => r.types[t]).filter((c): c is EntCell => Boolean(c));
+    const ok = cells.filter((c) => c.available && c.remainingDays !== null);
+    const byStatus: Record<string, number> = {};
+    for (const c of cells) byStatus[c.status] = (byStatus[c.status] || 0) + 1;
+    return [t, {
+      label: t, byStatus, determined: ok.length,
+      entitlementDays: ok.reduce((n, c) => n + (c.totalDays ?? 0), 0), usedDays: ok.reduce((n, c) => n + (c.usedDays ?? 0), 0), remainingDays: ok.reduce((n, c) => n + (c.remainingDays ?? 0), 0),
+    }];
+  })) as import('../types').EntitlementOverview['summary']['byType'];
+  const missing: Record<string, number> = {};
+  for (const r of rows) if (r.scope !== 'excluded') for (const m of r.missing) missing[m] = (missing[m] || 0) + 1;
+  return {
+    fiscalYear: { be: year, start: `${year - 544}-10-01`, end: `${year - 543}-09-30` }, flag: 'on', canEdit: role === 'executive',
+    types: [{ type: 'sick', labelTh: 'ลาป่วย' }, { type: 'personal', labelTh: 'ลากิจ' }, { type: 'vacation', labelTh: 'ลาพักผ่อน' }],
+    divisions: [DIV_A, DIV_B],
+    summary: {
+      headcount: rows.length, inPolicy: rows.filter((r) => r.scope === 'in_policy').length, excluded: rows.filter((r) => r.scope === 'excluded').length,
+      unconfirmed: rows.filter((r) => r.scope === 'unconfirmed').length,
+      fullyDetermined: rows.filter((r) => kinds.every((t) => r.types[t]?.available && r.types[t]?.remainingDays !== null)).length, byType, missing,
+    },
+    rows,
+  };
+}
+
+function handleSaveEntitlementFacts(role: string, uid: string, body: import('../types').EntitlementFactsInput): { changed: number; rows: LeaveBalanceRow[] } {
+  if (role !== 'executive') throw new ApiError(403, 'FORBIDDEN', 'Only an executive with an organization grant can enter leave data');
+  const row = entRows.find((r) => r.employeeUid === uid);
+  if (!row || !row.profile) throw new ApiError(404, 'NOT_FOUND', 'Employee was not found');
+  let changed = 0;
+  if ('hireDate' in body) { row.profile.hireDate = body.hireDate ?? null; changed += 1; if (body.hireDate) row.missing = row.missing.filter((m) => m !== 'hireDate'); }
+  if ('continuousServiceStart' in body) { row.profile.continuousServiceStart = body.continuousServiceStart ?? null; changed += 1; }
+  if ('appointmentKind' in body) { row.profile.appointmentKind = body.appointmentKind ?? null; changed += 1; }
+  if (body.eligibility) { row.profile.eligibilityConfirmed = body.eligibility.confirmed; changed += 1; if (body.eligibility.confirmed === true) row.scope = 'in_policy'; if (body.eligibility.confirmed === false) row.scope = 'excluded'; }
+  changed += body.entitlements?.length ?? 0;
+  return { changed, rows: [] };
+}
+
 /** Synthetic fiscal-basis rows (fixture build only). Mirrors the shape of the engine's rows; no real person or HR figure. */
 function fiscalFixtureRows(employeeUid: string, year: number): LeaveBalanceRow[] {
   const fiscalYear = { be: year, start: `${year - 544}-10-01`, end: `${year - 543}-09-30` };
@@ -561,6 +643,15 @@ export async function fixtureApiRequest<T>(
   const leaveMonthlyMatch = path.match(/^\/reports\/leave-monthly\?year=(\d+)&month=(\d+)/);
   if (auth && method === 'GET' && leaveMonthlyMatch) {
     return handleLeaveMonthly(authFromSession().role, Number(leaveMonthlyMatch[1]), Number(leaveMonthlyMatch[2])) as T;
+  }
+
+  const entMatch = path.match(/^\/leave\/entitlements\?year=(\d+)(?:&division=([\w%]+))?$/);
+  if (auth && method === 'GET' && entMatch) {
+    return handleEntitlements(authFromSession().role, Number(entMatch[1]), decodeURIComponent(entMatch[2] ?? '')) as T;
+  }
+  const entSaveMatch = path.match(/^\/leave\/entitlements\/([^/?]+)\?year=(\d+)$/);
+  if (auth && method === 'PUT' && entSaveMatch) {
+    return handleSaveEntitlementFacts(authFromSession().role, decodeURIComponent(entSaveMatch[1]), options.body as import('../types').EntitlementFactsInput) as T;
   }
 
   const reviewMatch = path.match(/^\/leave-review\?year=(\d+)&month=(\d+)&filter=(\w+)$/);

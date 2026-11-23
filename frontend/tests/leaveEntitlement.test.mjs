@@ -75,3 +75,50 @@ test('used days are unknown while usage coverage is incomplete (never a partial 
   assert.equal(usedDaysDisplay({ ...ok, usageComplete: false, usedDays: 0 }), null);
   assert.equal(usedDaysDisplay({ ...ok, usedDays: null }), null);
 });
+
+// ------------------------------------------------------------ organisation overview helpers
+
+import { cellView, filterRows, missingLabelTh, parseDaysInput, scopeLabelTh } from '../src/utils/leaveEntitlement.ts';
+
+const cell = (extra = {}) => ({ status: 'ok', source: 'computed', available: true, entitlementDays: 10, carryoverDays: 0, totalDays: 10, usedDays: 4, pendingDays: 0, remainingDays: 6, usageComplete: true, missing: [], reasons: [], flags: [], ...extra });
+const person = (extra = {}) => ({ employeeUid: 'u', employeeId: 'E001', name: 'สมชาย ใจดี', employeeType: 'university', division: { code: 'D1', nameTh: 'กอง 1' }, scope: 'in_policy', missing: [], types: {}, ...extra });
+
+test('a determined cell shows the number and a bar; anything else shows no number and no bar', () => {
+  assert.deepEqual(cellView(cell()), { text: '6', sub: 'จาก 10', tone: 'ok', meter: 40 });
+  for (const patch of [{ status: 'unknown', available: false, remainingDays: null }, { usageComplete: false, available: false, remainingDays: null }, { status: 'needs_hr', available: false, remainingDays: null }]) {
+    const v = cellView(cell(patch));
+    assert.equal(v.text, 'ไม่มีข้อมูล');
+    assert.equal(v.meter, null);
+  }
+  assert.equal(cellView(cell({ usageComplete: false, available: false, remainingDays: null })).sub, 'ข้อมูลการลาไม่ครบทุกเดือน');
+  assert.equal(cellView(cell({ status: 'out_of_scope', available: false, remainingDays: null })).text, '—');
+  assert.equal(cellView(undefined).text, '—');
+  assert.equal(cellView(cell({ remainingDays: 0, usedDays: 10 })).text, '0'); // a real zero stays a zero
+});
+
+test('Thai labels for scope and missing facts, with a neutral fallback', () => {
+  assert.equal(scopeLabelTh('excluded'), 'อยู่นอกประกาศ');
+  assert.equal(missingLabelTh('hireDate'), 'วันที่เริ่มจ้าง');
+  assert.equal(missingLabelTh('something_new'), 'ข้อมูลที่ยังไม่ครบ');
+});
+
+test('filters: name/id search, scope, division, and "needs attention" ignores excluded people', () => {
+  const rows = [
+    person(), person({ employeeUid: 'b', employeeId: 'E002', name: 'สมหญิง', scope: 'unconfirmed', missing: ['hireDate'] }),
+    person({ employeeUid: 'c', employeeId: 'E003', name: 'จ้างเหมา', scope: 'excluded', missing: ['hireDate'], division: { code: 'D2', nameTh: 'กอง 2' } }),
+  ];
+  const all = { query: '', scope: '', division: '', missingOnly: false };
+  assert.equal(filterRows(rows, all).length, 3);
+  assert.deepEqual(filterRows(rows, { ...all, query: 'e002' }).map((r) => r.employeeUid), ['b']);
+  assert.deepEqual(filterRows(rows, { ...all, query: 'สมชาย' }).map((r) => r.employeeUid), ['u']);
+  assert.deepEqual(filterRows(rows, { ...all, scope: 'excluded' }).map((r) => r.employeeUid), ['c']);
+  assert.deepEqual(filterRows(rows, { ...all, division: 'D2' }).map((r) => r.employeeUid), ['c']);
+  assert.deepEqual(filterRows(rows, { ...all, missingOnly: true }).map((r) => r.employeeUid), ['b']);
+});
+
+test('day input: blank is "not entered", halves are fine, everything else is invalid', () => {
+  assert.equal(parseDaysInput('', 30), null);
+  assert.equal(parseDaysInput(' 7.5 ', 30), 7.5);
+  assert.equal(parseDaysInput('0', 30), 0);
+  for (const bad of ['7.3', '-1', '31', 'abc', '1,5', '1e1']) assert.equal(parseDaysInput(bad, 30), 'invalid', bad);
+});
