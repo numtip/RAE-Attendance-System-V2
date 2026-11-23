@@ -172,7 +172,52 @@ export interface LeaveMonthlyDetail {
   crossesMonth: boolean;
   counted: boolean;
 }
-export interface RecordedBucket { days: number; approvedDays: number; records: number; fullDays: number; halfDays: number }
+export interface RecordedBucket { days: number; approvedDays: number; awaitingApprovalDays: number; records: number; fullDays: number; halfDays: number }
+export type LeaveRecordStatus = 'approved' | 'unverified' | 'needs_review' | 'rejected';
+export interface LeaveReportQuery {
+  year: number;
+  /** null/undefined = the whole year. */
+  month?: number | null;
+  from?: string;
+  to?: string;
+  division?: string;
+  employeeUid?: string;
+  status?: LeaveRecordStatus | '';
+  type?: LeaveKind | '';
+}
+export interface LeaveDayTotals {
+  records: number;
+  recordedDays: number;
+  approvedDays: number;
+  awaitingApprovalDays: number;
+  needsReviewRecords: number;
+  rejectedRecords: number;
+}
+export interface LeaveDivisionSummary extends LeaveDayTotals {
+  code: string;
+  nameTh: string;
+  headcount: number;
+  employeesWithRecords: number;
+  byType: Record<LeaveKind, RecordedBucket>;
+}
+export interface LeaveRecordItem {
+  employeeUid: string;
+  employeeId: string;
+  employeeName: string;
+  divisionCode: string;
+  divisionName: string;
+  date: string;
+  dateLabel: string;
+  leaveType: LeaveKind;
+  typeLabel: string;
+  dayPart: 'FULL' | 'AM' | 'PM' | 'UNKNOWN';
+  partLabel: string;
+  dayFraction: number | null;
+  status: LeaveRecordStatus;
+  statusLabel: string;
+  reasonLabels: string[];
+  sourceLabel: string | null;
+}
 export interface RecordedDetail {
   date: string;
   dateLabel: string;
@@ -185,6 +230,8 @@ export interface RecordedDetail {
   reasonLabels: string[];
   approvalStatus: string;
   approvalLabel?: string;
+  status?: LeaveRecordStatus;
+  statusLabel?: string;
 }
 
 export type ReviewBucket = 'needs_review' | 'unverified' | 'approved' | 'rejected';
@@ -228,6 +275,10 @@ export interface LeaveDecisionResult {
   results: { recordUid: string; ok: boolean; error?: string }[];
 }
 export interface LeaveMonthlyRow {
+  employeeUid: string;
+  divisionCode: string;
+  divisionName: string;
+  recordedTotals: LeaveDayTotals | null;
   /** HIP-recorded leave (not approval). null = that month was never imported (NOT zero). */
   recorded: Record<LeaveKind, RecordedBucket> | null;
   recordedNeedsReview: number | null;
@@ -244,13 +295,22 @@ export interface LeaveMonthlyRow {
 export interface LeaveMonthlyReport {
   scope: 'organization' | 'team' | 'self';
   year: number;
-  month: number;
+  /** null = the whole year. */
+  month: number | null;
+  from: string;
+  to: string;
   buddhistYear: number;
   periodLabel: string;
   dataThrough?: DataThrough;
   types: { type: LeaveKind; labelTh: string }[];
-  recordedCoverage: { periodCovered: boolean; note: string | null };
-  recordedTotals: { byType: Record<LeaveKind, RecordedBucket>; needsReviewRecords: number } | null;
+  divisions: { code: string; nameTh: string }[];
+  statuses: { code: LeaveRecordStatus; label: string }[];
+  filters: { division: string | null; employeeUid: string | null; status: string | null; type: string | null; divisionName: string | null; statusLabel: string | null; typeLabel: string | null; active: boolean };
+  recordedCoverage: { periodCovered: boolean; coveredMonths: string[]; uncoveredMonths: string[]; note: string | null };
+  recordedTotals: { byType: Record<LeaveKind, RecordedBucket>; needsReviewRecords: number; all: LeaveDayTotals } | null;
+  byDivision: LeaveDivisionSummary[] | null;
+  records: LeaveRecordItem[];
+  reconciliation: { recordsMatched: number; recordsInRows: number; recordsInList: number; recordsInDivisions: number; recordedDaysInDivisions: number; recordedDaysInTotals: number; reconciled: boolean };
   coverage: { leaveRecordsInSystem: number; hasLeaveData: boolean; unmatchedRecordsExcluded: number; note: string | null };
   totals: { byType: Record<LeaveKind, LeaveBucket>; pendingRequests: number; rejectedRequests: number; otherApprovedRequests: number } | null;
   rows: LeaveMonthlyRow[];

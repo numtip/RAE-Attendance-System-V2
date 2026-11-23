@@ -186,8 +186,8 @@ export const api = {
     apiRequest<import('./types').LeaveReviewList>(`/leave-review?year=${year}&month=${month}&filter=${filter}`),
   leaveReviewDecide: (decisions: import('./types').LeaveDecisionInput[]) =>
     apiRequest<import('./types').LeaveDecisionResult>('/leave-review/decisions', { method: 'POST', body: { decisions } }),
-  leaveMonthlyReport: (year: number, month: number) =>
-    apiRequest<import('./types').LeaveMonthlyReport>(`/reports/leave-monthly?year=${year}&month=${month}`),
+  leaveMonthlyReport: (query: import('./types').LeaveReportQuery) =>
+    apiRequest<import('./types').LeaveMonthlyReport>(`/reports/leave-monthly?${leaveReportParams(query)}`),
   personalReport: (year: number, month: number) =>
     apiRequest<import('./types').PersonalReport>(`/reports/personal?year=${year}&month=${month}`),
 };
@@ -200,8 +200,33 @@ export async function downloadOrganizationReport(year: number, month: number, fo
   return downloadReport('organization', year, month, format);
 }
 
-export async function downloadLeaveMonthly(year: number, month: number, format: 'pdf' | 'xlsx'): Promise<void> {
-  return downloadReport('leave-monthly', year, month, format);
+/** Query string for the leave report: only the filters that are set are sent (month null = whole year). */
+export function leaveReportParams(query: import('./types').LeaveReportQuery): string {
+  const params = new URLSearchParams({ year: String(query.year) });
+  if (query.month) params.set('month', String(query.month));
+  for (const key of ['from', 'to', 'division', 'employeeUid', 'status', 'type'] as const) {
+    const value = query[key];
+    if (value) params.set(key, value);
+  }
+  return params.toString();
+}
+
+export async function downloadLeaveMonthly(query: import('./types').LeaveReportQuery, format: 'pdf' | 'xlsx'): Promise<void> {
+  const token = getAccessToken();
+  const response = await fetch(
+    `${API_BASE}/reports/leave-monthly/export?${leaveReportParams(query)}&format=${format}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!response.ok) {
+    throw new ApiError(response.status, 'EXPORT_FAILED', response.status === 403 ? 'ไม่มีสิทธิ์ส่งออกรายงานนี้' : 'Export failed');
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `leave-${query.year + 543}-${query.month ? String(query.month).padStart(2, '0') : 'all'}.${format}`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 async function downloadReport(kind: 'personal' | 'organization' | 'leave-monthly', year: number, month: number, format: 'pdf' | 'xlsx'): Promise<void> {
