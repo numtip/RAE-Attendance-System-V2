@@ -4,6 +4,7 @@ const { AttendanceRepository } = require('./attendanceRepository');
 const { createAttendanceEventRepository } = require('./attendanceEventRepository');
 const { LeaveRepository } = require('./leaveRepository');
 const { LeaveRecordRepository } = require('./leaveRecordRepository');
+const { LeaveHrRepository } = require('./leaveHrRepository');
 const { createFixtureIdentityLinkRepository } = require('./fixtureIdentityLinkRepository');
 const { createFixtureEmployeeIdentifierRepository } = require('./fixtureEmployeeIdentifierRepository');
 const { createFixtureFacescanRawRepository } = require('./fixtureFacescanRawRepository');
@@ -11,12 +12,14 @@ const { createMemoryAccessTokenRevocationRepository } = require('./accessTokenRe
 const { createFixtureRefreshTokenRepository } = require('./fixtureRefreshTokenRepository');
 
 function createFixtureRepositories() {
+  const employees = new EmployeeRepository(fixtures.employees);
   return {
-    employees: new EmployeeRepository(fixtures.employees),
+    employees,
     attendance: new AttendanceRepository(fixtures.attendance, fixtures.monthly),
     attendanceEvents: createAttendanceEventRepository(fixtures.attendanceEvents || []),
     leave: new LeaveRepository(fixtures.leave, fixtures.balances),
     leaveRecords: new LeaveRecordRepository(),
+    leaveHr: new LeaveHrRepository({ employees }),
     refreshTokens: createFixtureRefreshTokenRepository(),
     authLogs: {
       async append() {},

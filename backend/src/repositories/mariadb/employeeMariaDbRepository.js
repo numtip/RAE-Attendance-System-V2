@@ -38,6 +38,17 @@ function createEmployeeMariaDbRepository(pool) {
       return row ? publicFields(row) : null;
     },
 
+    /** What the leave-entitlement engine needs about a person (hire date is not part of the public profile). */
+    async getLeaveFacts(employeeUid) {
+      const [rows] = await pool.query(
+        `SELECT employee_uid, employee_id, employee_type, status, DATE_FORMAT(hire_date, '%Y-%m-%d') AS hire_date
+           FROM employees WHERE employee_uid = ? LIMIT 1`,
+        [employeeUid],
+      );
+      const row = mapRow(rows[0]);
+      return row ? { employeeUid: row.employeeUid, employeeId: row.employeeId, employeeType: row.employeeType, status: row.status, hireDate: row.hireDate ?? null } : null;
+    },
+
     /**
      * Profile fields only (title, display name, position, department, type, status, role). Never touches
      * credentials, email, identifiers or login counters. Returns true when a row matched.

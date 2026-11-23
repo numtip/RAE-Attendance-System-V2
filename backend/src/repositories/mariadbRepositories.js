@@ -6,6 +6,7 @@ const { createAuthLogsMariaDbRepository } = require('./mariadb/authLogsMariaDbRe
 const { createEmployeeMariaDbRepository } = require('./mariadb/employeeMariaDbRepository');
 const { createLeaveMariaDbRepository } = require('./mariadb/leaveMariaDbRepository');
 const { createLeaveRecordMariaDbRepository } = require('./mariadb/leaveRecordMariaDbRepository');
+const { createLeaveHrMariaDbRepository } = require('./mariadb/leaveHrMariaDbRepository');
 const { createRefreshTokenMariaDbRepository } = require('./mariadb/refreshTokenMariaDbRepository');
 const { createAuthorizationMariaDbRepository } = require('./mariadb/authorizationMariaDbRepository');
 const { createIdentityLinkMariaDbRepository } = require('./mariadb/identityLinkMariaDbRepository');
@@ -28,6 +29,7 @@ function createMariaDbRepositories(database = config.database) {
       attendance: blockedRepo(),
       attendanceEvents: blockedRepo(),
       leave: blockedRepo(),
+      leaveHr: blockedRepo(),
       refreshTokens: blockedRepo(),
       authLogs: blockedRepo(),
       authorization: blockedRepo(),
@@ -45,6 +47,7 @@ function createMariaDbRepositories(database = config.database) {
     attendanceEvents: createAttendanceEventMariaDbRepository(pool),
     leave: createLeaveMariaDbRepository(pool),
     leaveRecords: createLeaveRecordMariaDbRepository(pool),
+    leaveHr: createLeaveHrMariaDbRepository(pool),
     refreshTokens: createRefreshTokenMariaDbRepository(pool),
     authLogs: createAuthLogsMariaDbRepository(pool),
     authorization: createAuthorizationMariaDbRepository(pool),

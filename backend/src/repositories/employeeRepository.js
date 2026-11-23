@@ -72,6 +72,19 @@ class EmployeeRepository {
   async list() {
     return this.rows.map(publicFields);
   }
+
+  /** What the leave-entitlement engine needs about a person (hire date is not part of the public profile). */
+  async getLeaveFacts(employeeUid) {
+    const row = this.rows.find((item) => item.employeeUid === employeeUid);
+    return row ? { employeeUid: row.employeeUid, employeeId: row.employeeId, employeeType: row.employeeType, status: row.status, hireDate: row.hireDate ?? null } : null;
+  }
+
+  async setHireDate(employeeUid, hireDate) {
+    const row = this.rows.find((item) => item.employeeUid === employeeUid);
+    if (!row) return false;
+    row.hireDate = hireDate;
+    return true;
+  }
 }
 
 module.exports = { EmployeeRepository };
