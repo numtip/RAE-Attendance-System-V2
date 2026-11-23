@@ -4,7 +4,7 @@ const { asyncRoute } = require('../utils/asyncRoute');
 function createLeaveController(leaveService) {
   return {
     list: asyncRoute(async (req, res) => {
-      const data = await leaveService.list(req.auth, req.query.employeeUid);
+      const data = await leaveService.list(req.auth, req.query.employeeUid, { year: req.query.year });
       success(res, data, 'รายการลา');
     }),
     balance: asyncRoute(async (req, res) => {
