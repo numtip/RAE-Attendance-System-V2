@@ -1,4 +1,20 @@
-# Status — 2026-11-20 (current)
+# Status — 2026-11-23 (current)
+
+**Gate:** LEAVE_SOFTWARE_COMPLETE · LEAVE_PRODUCTION_LIVE · EMPLOYEE_DATA_COMPLETE = PARTIAL.
+**Source baseline:** main `017d432` (PR #140); **Production (operator-reported):** backend `dark-017d432`, frontend `index-B1RpNuR1.js`, schema through 036, entitlement engine ON, healthy.
+**Day summary:** [DAY_SUMMARY_2026-11-23.md](reports/DAY_SUMMARY_2026-11-23.md).
+
+- PRs #126–140 delivered leave reports, analytics dashboard, fiscal entitlement engine, bulk owner management and three policy families covering 52 active employees (29 university-policy, 4 section, 19 contract).
+- Contract V3 effective 2026-10-01: sick/personal/vacation 10/5/10, no carryover or prorating; half-day vacation allowed. Procurement mapping explicitly university. Owner is approval authority; no external approval gate.
+- CI 9/9; reported local tests 616 backend / 20 frontend; dashboard reconciliation 265/265, multi-policy 24/24. Authenticated production visual acceptance remains outstanding; SSO functional acceptance is closed by owner.
+- Actual individual balances remain incomplete where employment data or carryover is missing. Owner entry and CSV import available. No fabricated data; unresolved policy interpretations remain pending.
+- Next: Attendance Data Completeness, then Attendance Analytics. Verify current HIP coverage before work. Leave development closed except real defects or owner decisions.
+
+The following earlier record is retained for history and is superseded where it conflicts with the above or the day summary.
+
+---
+
+# Status — 2026-11-20 (historical)
 
 **Gate:** `RELEASE1_PRODUCTION_ACCEPTED` · Release 2 (M1 + leave + division dashboard + leave review) **LIVE**
 **GitHub `main`:** `e4595af` (PR #122) · **Production:** backend `dark-4bd7790`, frontend built from `4bd7790` (same code as `e4595af`; only a test file differs), schema through `033_employee_title.sql` · health 200
