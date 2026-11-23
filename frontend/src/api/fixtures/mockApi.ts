@@ -229,31 +229,47 @@ const excludedCell = (): EntCell => entCell({ status: 'out_of_scope', available:
 const DIV_A = { code: 'DIV_RESEARCH', nameTh: 'กองบริหารงานวิจัย' };
 const DIV_B = { code: 'DIV_OFFICE', nameTh: 'กองบริหารงานสำนักวิจัยฯ' };
 const emptyProfile = { hireDate: null, continuousServiceStart: null, appointmentKind: null, eligibilityConfirmed: null, eligibilityReference: null };
+const POLICY: Record<string, import('../types').EntitlementPolicy> = {
+  university: { family: 'university', id: 'MJU-LEAVE-2569', labelTh: 'พนักงานมหาวิทยาลัย', requires: { hireDateFor: ['personal', 'vacation'], continuousService: true, appointmentKind: true, carryover: true } },
+  section_employee: { family: 'section_employee', id: 'RAE-SECTION-EMPLOYEE-2569', labelTh: 'พนักงานส่วนงาน', requires: { hireDateFor: ['personal', 'vacation'], continuousService: false, appointmentKind: false, carryover: false } },
+  section_contract: { family: 'section_contract', id: 'RAE-SECTION-CONTRACT-2569-V2', labelTh: 'พนักงานส่วนงานจ้างเหมา', requires: { hireDateFor: [], continuousService: false, appointmentKind: false, carryover: false } },
+  unmapped: { family: null, id: null, labelTh: null, requires: null },
+};
+const waitingCell = () => entCell({ status: 'needs_hr', available: false });
+const NOTE_FLAG = ['policy_effective_date_unspecified'];
 const entRows: EntRow[] = [
-  { employeeUid: 'e1', employeeId: 'S001', name: 'สมชาย ตัวอย่าง', employeeType: 'university', division: DIV_A, scope: 'in_policy', missing: [], profile: { ...emptyProfile, hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', appointmentKind: 'first' }, types: {
+  { employeeUid: 'e1', employeeId: 'S001', name: 'สมชาย ตัวอย่าง', employeeType: 'university', division: DIV_A, scope: 'in_policy', missing: [], policy: POLICY.university, profile: { ...emptyProfile, hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', appointmentKind: 'first' }, types: {
     sick: entCell({ entitlementDays: 60, totalDays: 60, usedDays: 3, remainingDays: 57 }),
     personal: entCell({ entitlementDays: 45, totalDays: 45, usedDays: 2, remainingDays: 43 }),
     vacation: entCell({ source: 'hr_verified', entitlementDays: 10, carryoverDays: 8, totalDays: 18, usedDays: 4, remainingDays: 14 }),
   } },
-  { employeeUid: 'e2', employeeId: 'S002', name: 'สมหญิง ตัวอย่าง', employeeType: 'university', division: DIV_A, scope: 'in_policy', missing: ['hireDate'], profile: { ...emptyProfile }, types: {
+  { employeeUid: 'e2', employeeId: 'S002', name: 'สมหญิง ตัวอย่าง', employeeType: 'university', division: DIV_A, scope: 'in_policy', missing: ['hireDate'], policy: POLICY.university, profile: { ...emptyProfile }, types: {
     sick: entCell({ entitlementDays: 60, totalDays: 60, usedDays: 0, remainingDays: 60 }),
     personal: unknownCell(['hireDate']),
     vacation: unknownCell(['hireDate']),
   } },
-  { employeeUid: 'e3', employeeId: 'S003', name: 'สมศรี ตัวอย่าง', employeeType: 'university', division: DIV_B, scope: 'in_policy', missing: ['vacationCarryoverDays'], profile: { ...emptyProfile, hireDate: '2019-06-01', continuousServiceStart: '2019-06-01', appointmentKind: 'first' }, types: {
+  { employeeUid: 'e3', employeeId: 'S003', name: 'สมศรี ตัวอย่าง', employeeType: 'university', division: DIV_B, scope: 'in_policy', missing: ['vacationCarryoverDays'], policy: POLICY.university, profile: { ...emptyProfile, hireDate: '2019-06-01', continuousServiceStart: '2019-06-01', appointmentKind: 'first' }, types: {
     sick: entCell({ entitlementDays: 60, totalDays: 60, usedDays: 1, remainingDays: 59 }),
     personal: entCell({ entitlementDays: 45, totalDays: 45, usedDays: 0, remainingDays: 45 }),
     vacation: unknownCell(['vacationCarryoverDays']),
   } },
-  { employeeUid: 'e4', employeeId: 'S004', name: 'สมปอง ตัวอย่าง', employeeType: 'department', division: DIV_B, scope: 'unconfirmed', missing: [], profile: { ...emptyProfile }, types: {
-    sick: entCell({ status: 'needs_hr', available: false }), personal: entCell({ status: 'needs_hr', available: false }), vacation: entCell({ status: 'needs_hr', available: false }),
+  { employeeUid: 'e4', employeeId: 'S004', name: 'สมปอง ตัวอย่าง', employeeType: 'department', division: DIV_B, scope: 'in_policy', missing: [], policy: POLICY.section_employee, profile: { ...emptyProfile, hireDate: '2020-02-01' }, types: {
+    sick: entCell({ entitlementDays: 15, totalDays: 15, usedDays: 3, remainingDays: 12, flags: ['medical_certificate_review'] }),
+    personal: entCell({ entitlementDays: 5, totalDays: 5, usedDays: 1, remainingDays: 4 }),
+    vacation: entCell({ entitlementDays: 10, carryoverDays: 0, totalDays: 10, usedDays: 2, remainingDays: 8 }),
   } },
-  { employeeUid: 'e5', employeeId: 'S005', name: 'สมใจ ตัวอย่าง', employeeType: 'university', division: DIV_B, scope: 'in_policy', missing: [], profile: { ...emptyProfile, hireDate: '2012-01-01', continuousServiceStart: '2012-01-01', appointmentKind: 'first' }, types: {
-    sick: entCell({ entitlementDays: 60, totalDays: 60, usedDays: 5, remainingDays: null, available: false, usageComplete: false }),
-    personal: entCell({ entitlementDays: 45, totalDays: 45, usedDays: 0, remainingDays: null, available: false, usageComplete: false }),
-    vacation: entCell({ entitlementDays: 10, carryoverDays: 5, totalDays: 15, usedDays: 2, remainingDays: null, available: false, usageComplete: false }),
+  { employeeUid: 'e5', employeeId: 'S005', name: 'สมใจ ตัวอย่าง', employeeType: 'department', division: DIV_B, scope: 'in_policy', missing: ['hireDate'], policy: POLICY.section_employee, profile: { ...emptyProfile }, types: {
+    sick: entCell({ entitlementDays: 15, totalDays: 15, usedDays: 0, remainingDays: 15 }),
+    personal: unknownCell(['hireDate']),
+    vacation: unknownCell(['hireDate']),
   } },
-  { employeeUid: 'e6', employeeId: 'S006', name: 'จ้างเหมา ตัวอย่าง', employeeType: 'contract', division: DIV_A, scope: 'excluded', missing: [], profile: { ...emptyProfile }, types: { sick: excludedCell(), personal: excludedCell(), vacation: excludedCell() } },
+  { employeeUid: 'e6', employeeId: 'C001', name: 'วิชัย ตัวอย่าง', employeeType: 'contract', division: DIV_A, scope: 'unconfirmed', missing: [], policy: POLICY.section_contract, profile: { ...emptyProfile }, types: { sick: waitingCell(), personal: waitingCell(), vacation: waitingCell() } },
+  { employeeUid: 'e7', employeeId: 'C002', name: 'วิไล ตัวอย่าง', employeeType: 'contract', division: DIV_A, scope: 'in_policy', missing: [], policy: POLICY.section_contract, profile: { ...emptyProfile, eligibilityConfirmed: true, eligibilityReference: 'owner-confirmed' }, types: {
+    sick: entCell({ entitlementDays: 10, totalDays: 10, usedDays: 4, remainingDays: 6, flags: [...NOTE_FLAG, 'medical_certificate_review'] }),
+    personal: entCell({ entitlementDays: 5, totalDays: 5, usedDays: 0, remainingDays: 5, flags: NOTE_FLAG }),
+    vacation: entCell({ entitlementDays: 10, carryoverDays: 0, totalDays: 10, usedDays: 1, remainingDays: 9, flags: NOTE_FLAG }),
+  } },
+  { employeeUid: 'e8', employeeId: 'P001', name: 'พัสดุ ตัวอย่าง', employeeType: 'procurement_academic', division: DIV_B, scope: 'unconfirmed', missing: [], policy: POLICY.unmapped, profile: { ...emptyProfile }, types: { sick: waitingCell(), personal: waitingCell(), vacation: waitingCell() } },
 ];
 
 function handleEntitlements(role: string, year: number, division: string): import('../types').EntitlementOverview {
@@ -282,6 +298,10 @@ function handleEntitlements(role: string, year: number, division: string): impor
       headcount: rows.length, inPolicy: rows.filter((r) => r.scope === 'in_policy').length, excluded: rows.filter((r) => r.scope === 'excluded').length,
       unconfirmed: rows.filter((r) => r.scope === 'unconfirmed').length,
       fullyDetermined: rows.filter((r) => kinds.every((t) => r.types[t]?.available && r.types[t]?.remainingDays !== null)).length, byType, missing,
+      byPolicy: Object.fromEntries((['university', 'section_employee', 'section_contract', 'unmapped'] as const).map((f) => {
+        const mine = rows.filter((r) => (r.policy.family ?? 'unmapped') === f);
+        return [f, { people: mine.length, unconfirmed: mine.filter((r) => r.scope === 'unconfirmed').length, fullyDetermined: mine.filter((r) => kinds.every((t) => r.types[t]?.available && r.types[t]?.remainingDays !== null)).length }];
+      })) as import('../types').EntitlementOverview['summary']['byPolicy'],
     },
     rows,
   };
@@ -311,7 +331,6 @@ function handleBulkEligibility(role: string, body: { employeeUids: string[]; con
   for (const uid of body.employeeUids) {
     const row = entRows.find((r) => r.employeeUid === uid);
     if (!row) throw new ApiError(400, 'VALIDATION_ERROR', 'an employee in the list was not found');
-    if (row.employeeType === 'contract') throw new ApiError(400, 'VALIDATION_ERROR', 'contract staff are outside the leave policy and cannot be onboarded');
   }
   for (const uid of body.employeeUids) {
     const row = entRows.find((r) => r.employeeUid === uid)!;

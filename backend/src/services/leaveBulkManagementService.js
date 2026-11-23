@@ -35,6 +35,8 @@ const toCsv = (header, rows) => Buffer.from(`${BOM}${[header, ...rows].map((r) =
  *  - `bulkEligibility`: confirm (or decline, or clear) the eligibility of several people at once, with the owner's
  *    reference, each person audited like a single entry.
  * Everything needs an executive with an organization grant. Nothing is invented: a blank cell stays blank.
+ * Every employment type is listed (university, section, section contract, procurement); what a row may contain follows
+ * the person's own policy, which the importer enforces.
  */
 function createLeaveBulkManagementService(container) {
   const { repositories } = container;
@@ -48,7 +50,7 @@ function createLeaveBulkManagementService(container) {
 
   async function onboardingPeople() {
     return (await repositories.employees.list())
-      .filter((e) => (e.status === undefined || e.status === 'active') && e.employeeType !== 'contract')
+      .filter((e) => e.status === undefined || e.status === 'active')
       .sort((a, b) => String(a.employeeId).localeCompare(String(b.employeeId), 'en', { numeric: true }));
   }
 
@@ -85,7 +87,7 @@ function createLeaveBulkManagementService(container) {
           ];
         });
         sheetName = 'ข้อมูลบุคลากร';
-        notes = ['กรอกเฉพาะข้อมูลที่ทราบจริง — เซลล์ว่าง = ไม่เปลี่ยนค่าที่บันทึกไว้, “-” = ลบค่า', 'วันที่: YYYY-MM-DD (ค.ศ.) หรือ DD/MM/YYYY (พ.ศ.)', 'ถ้ากรอกข้อมูลในแถวใด ต้องระบุ “แหล่งข้อมูล/เอกสารอ้างอิง” ในแถวนั้น', 'การยืนยันสิทธิ์: ใช่ / ไม่ใช่ (ต้องมีเลขที่หนังสือหรือเหตุผล)', 'พนักงานจ้างเหมาไม่อยู่ในประกาศนี้และไม่อยู่ในแบบฟอร์ม', 'บันทึกเป็นไฟล์ CSV (UTF-8) ก่อนอัปโหลดกลับเข้าระบบ'];
+        notes = ['กรอกเฉพาะข้อมูลที่ทราบจริง — เซลล์ว่าง = ไม่เปลี่ยนค่าที่บันทึกไว้, “-” = ลบค่า', 'วันที่: YYYY-MM-DD (ค.ศ.) หรือ DD/MM/YYYY (พ.ศ.)', 'ถ้ากรอกข้อมูลในแถวใด ต้องระบุ “แหล่งข้อมูล/เอกสารอ้างอิง” ในแถวนั้น', 'การยืนยันสิทธิ์: ใช่ / ไม่ใช่ (ต้องมีเลขที่หนังสือหรือเหตุผล)', 'แต่ละประเภทบุคลากรใช้หลักเกณฑ์ของตนเอง: พนักงานส่วนงานจ้างเหมาไม่ต้องกรอกวันที่เริ่มงานหรือยอดสะสม, พนักงานส่วนงานต้องมีวันที่เริ่มงานสำหรับลากิจและลาพักผ่อนเท่านั้น, ยอดสะสมและประเภทการบรรจุใช้กับพนักงานมหาวิทยาลัยเท่านั้น', 'บันทึกเป็นไฟล์ CSV (UTF-8) ก่อนอัปโหลดกลับเข้าระบบ'];
       } else {
         const hr = await repositories.leaveHr.listEntitlementsForYear(uids, fy);
         const hrBy = new Map(hr.map((r) => [`${r.employeeUid}|${r.leaveType}`, r]));
@@ -156,7 +158,6 @@ function createLeaveBulkManagementService(container) {
       // Check every person BEFORE writing anything: one contract worker or unknown id refuses the whole request.
       const facts = await repositories.employees.listLeaveFacts(employeeUids);
       if (facts.length !== employeeUids.length) throw bad('an employee in the list was not found');
-      if (facts.some((f) => f.employeeType === 'contract')) throw bad('contract staff are outside the leave policy and cannot be onboarded');
       if (facts.some((f) => f.status !== undefined && f.status !== 'active')) throw bad('an employee in the list is not active');
       let changed = 0;
       const failed = [];

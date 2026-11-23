@@ -87,8 +87,8 @@ test('university staff are eligible', () => {
   assert.equal(r.eligibility.status, 'eligible');
 });
 
-test('unconfirmed types (department, procurement_academic, unknown) need HR; they are not ineligible and get no numbers', () => {
-  for (const employeeType of ['department', 'procurement_academic', 'something_new', undefined]) {
+test('types waiting for the owner (section contract, procurement_academic, unknown) need confirmation; they are not ineligible and get no numbers', () => {
+  for (const employeeType of ['contract', 'procurement_academic', 'something_new', undefined]) {
     const res = entitlements({ employeeType, hireDate: '2015-04-01' }, { records: [day('2026-11-02', 'sick')] });
     for (const type of ['sick', 'personal', 'vacation']) {
       assert.equal(res[type].status, STATUS.NEEDS_HR, `${employeeType}/${type}`);
@@ -100,19 +100,25 @@ test('unconfirmed types (department, procurement_academic, unknown) need HR; the
   }
 });
 
-test('outsourced contract staff are out of scope', () => {
-  const res = entitlements({ employeeType: 'contract', hireDate: '2015-04-01' });
-  assert.equal(res.sick.status, STATUS.OUT_OF_SCOPE);
+test('section employees (department) are covered by their own policy without any confirmation', () => {
+  const res = entitlements({ employeeType: 'department', hireDate: '2015-04-01' });
+  assert.deepEqual(['sick', 'personal', 'vacation'].map((t) => res[t].status), ['ok', 'ok', 'ok']);
 });
 
 test('an HR confirmation with a reference settles eligibility; one without a reference is ignored and flagged', () => {
-  const confirmed = entitlements({ employeeType: 'department', hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', eligibilityConfirmation: { confirmed: true, reference: 'HR memo 12/2569' } });
+  const confirmed = entitlements({ employeeType: 'contract', eligibilityConfirmation: { confirmed: true, reference: 'HR memo 12/2569' } });
   assert.equal(confirmed.sick.status, STATUS.OK);
-  const noRef = entitlements({ employeeType: 'department', hireDate: '2015-04-01', eligibilityConfirmation: { confirmed: true } });
+  const noRef = entitlements({ employeeType: 'contract', eligibilityConfirmation: { confirmed: true } });
   assert.equal(noRef.sick.status, STATUS.NEEDS_HR);
   assert.ok(noRef.sick.flags.some((f) => f.code === 'eligibility_confirmation_missing_reference'));
   const denied = entitlements({ employeeType: 'university', hireDate: '2015-04-01', eligibilityConfirmation: { confirmed: false, reference: 'HR memo' } });
   assert.equal(denied.sick.status, STATUS.OUT_OF_SCOPE);
+  // a type with no mapped policy that the owner confirmed keeps the university rules it always had, visibly flagged
+  const unmapped = entitlements({ employeeType: 'procurement_academic', hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', eligibilityConfirmation: { confirmed: true, reference: 'memo' } });
+  assert.equal(unmapped.sick.status, STATUS.OK);
+  assert.equal(unmapped.sick.entitlementDays, 60);
+  assert.ok(unmapped.sick.flags.some((f) => f.code === 'policy_assumed_university'));
+  assert.equal(entitlements({ employeeType: 'procurement_academic', eligibilityConfirmation: { confirmed: false, reference: 'memo' } }).sick.status, STATUS.OUT_OF_SCOPE);
 });
 
 // ------------------------------------------------------------ sick: allowance, not a limit
@@ -451,7 +457,7 @@ test('the salary-increment indicator is informational and independent of the lea
 
 test('the engine is used only by the integration layer and the HR import preview; the salary-increment note is used by nothing', () => {
   const root = path.join(backendRoot, 'src');
-  const allowed = new Set(['leaveEntitlementService.js', 'leaveService.js', 'leaveController.js', 'leaveHrImportCli.js', 'leaveEntitlementOverviewService.js', 'leaveBulkManagementService.js', 'leaveOwnerEntryService.js']);
+  const allowed = new Set(['leaveEntitlementService.js', 'leaveService.js', 'leaveController.js', 'leaveHrImportCli.js', 'leaveEntitlementOverviewService.js', 'leaveBulkManagementService.js', 'leaveOwnerEntryService.js', 'leavePolicySection.js']);
   const usingEngine = [];
   const usingSalary = [];
   (function walk(dir) {

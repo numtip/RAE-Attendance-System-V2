@@ -33,6 +33,7 @@
  */
 
 const { POLICIES } = require('./leavePolicy2569');
+const { ALL_POLICIES, familyForType } = require('./leavePolicySection');
 
 const TYPES = Object.freeze(['sick', 'personal', 'vacation']);
 const STATUS = Object.freeze({
@@ -115,6 +116,16 @@ function policyForDate(date, policies = POLICIES) {
  * inside, is a transition year: the earlier rules are not on file, so it stays pending_policy.
  */
 function policyForFiscalYear(fy, policies = POLICIES) {
+  // A policy whose source states no effective date (section contract staff) is not gated by a date: it applies once
+  // the person is confirmed, and every result says so (`policy_effective_date_unspecified`). No date is guessed.
+  if (policies.length > 0 && policies.every((p) => p.effectiveFrom === null)) {
+    const policy = policies[0];
+    // No backfill: a year before the owner's first applicable year is not calculated under a period nobody stated.
+    if (policy.applicableFromFiscalYearBe && fy.be < policy.applicableFromFiscalYearBe) {
+      return { policy: null, reason: 'policy_period_not_confirmed', effectiveFrom: null, effectiveDateUnspecified: true };
+    }
+    return { policy, reason: null, effectiveFrom: null, effectiveDateUnspecified: true };
+  }
   const atStart = policyForDate(fy.start, policies);
   if (!atStart) {
     const inside = policies.find((p) => p.effectiveFrom > fy.start && p.effectiveFrom <= fy.end);
@@ -131,18 +142,35 @@ function policyForFiscalYear(fy, policies = POLICIES) {
  * Scope of the announcement for one employee. `employee.eligibilityConfirmation = { confirmed, reference }`
  * records an HR decision for the person; without a reference it is ignored (and flagged).
  */
-function classifyEligibility(employee, policy) {
+function classifyEligibility(employee, policy, { unmapped = false } = {}) {
   const flags = [];
   const confirmation = employee?.eligibilityConfirmation;
   if (confirmation && typeof confirmation.confirmed === 'boolean') {
     if (confirmation.reference && String(confirmation.reference).trim()) {
+      // A type with no mapped policy (procurement_academic) that the owner has confirmed keeps the treatment it has
+      // always had: the university rules, which were the only policy before. It is flagged, never silent, and the
+      // owner is asked which policy really applies.
+      if (confirmation.confirmed && unmapped) flags.push({ code: 'policy_assumed_university', detail: 'no leave policy is mapped to this employment type; the owner\'s confirmation applies the university rules as before' });
       return { status: confirmation.confirmed ? 'eligible' : 'out_of_scope', source: 'hr_confirmation', flags };
     }
     flags.push({ code: 'eligibility_confirmation_missing_reference' });
   }
-  const mapped = policy.employeeTypes[employee?.employeeType];
+  const mapped = unmapped ? null : policy.employeeTypes[employee?.employeeType];
   if (!mapped) return { status: 'needs_hr', source: 'employee_type', reason: 'employee_type_unmapped', flags };
   return { status: mapped, source: 'employee_type', reason: mapped === 'eligible' ? null : `employee_type_${mapped}`, flags };
+}
+
+/**
+ * The policy that applies to an employment type for a fiscal year: its family, the policy in force (or why none is),
+ * and `anyPolicy` — the family's latest policy, used to classify a person even in a year no policy covers yet.
+ * An unmapped type (procurement_academic, unknown) has no family: it is classified against the university table
+ * as `needs_hr`; once the owner has confirmed it, the university rules apply as before, with a visible flag.
+ */
+function policyContextFor(employeeType, fy, policies = ALL_POLICIES) {
+  const family = familyForType(employeeType);
+  const pool = policies.filter((p) => (p.family || 'university') === (family || 'university'));
+  const anyPolicy = pool.reduce((latest, p) => (!latest || (p.effectiveFrom || '') > (latest.effectiveFrom || '') ? p : latest), null);
+  return { family, unmapped: family === null, anyPolicy, ...policyForFiscalYear(fy, pool) };
 }
 
 // ---------------------------------------------------------------- usage
@@ -156,7 +184,7 @@ function dayKey(row) { return `${row.leaveType}|${row.date}`; }
  * the announcement's own review rules (half-day vacation, ...) still apply only from its effective date.
  * Returns the deductible total, the approved total before exceptions, and review flags.
  */
-function summarizeUsage(records, fy, policy, leaveType, { countFrom = policy.effectiveFrom } = {}) {
+function summarizeUsage(records, fy, policy, leaveType, { countFrom = policy.effectiveFrom || fy.start } = {}) {
   const flags = [];
   const byDay = new Map();
   for (const row of records || []) {
@@ -188,8 +216,9 @@ function summarizeUsage(records, fy, policy, leaveType, { countFrom = policy.eff
     for (const [, { fraction, exception }] of counted) {
       dayTotal += fraction;
       if (exception) {
-        const valid = exception.clause === policy.nonDeductibleException.clause
-          && policy.nonDeductibleException.requiredEvidence.every((k) => exception[k] && String(exception[k]).trim());
+        const rule = policy.nonDeductibleException;
+        const valid = Boolean(rule) && exception.clause === rule.clause
+          && rule.requiredEvidence.every((k) => exception[k] && String(exception[k]).trim());
         if (valid) dayExempt += fraction;
         else flags.push({ code: 'clause14_unauthorized', date, detail: 'exception needs authorizedBy and reference; the day is deducted' });
       }
@@ -199,15 +228,53 @@ function summarizeUsage(records, fy, policy, leaveType, { countFrom = policy.eff
     nonDeductible += dayExempt;
 
     // Rules of the announcement are not applied to days before it took effect, even when those days are counted.
-    const underPolicy = date >= policy.effectiveFrom;
-    if (underPolicy && leaveType === 'vacation' && dayTotal < policy.vacation.minDaysPerRequest) {
+    const underPolicy = policy.effectiveFrom ? date >= policy.effectiveFrom : true;
+    if (underPolicy && leaveType === 'vacation' && policy.vacation.minDaysPerRequest && dayTotal < policy.vacation.minDaysPerRequest) {
       flags.push({ code: 'vacation_half_day_review', date, detail: 'clause 25 sets a 1 working day minimum; kept as recorded, not rounded' });
     }
-    if (underPolicy && leaveType === 'personal' && dayTotal < policy.personal.minDaysPerRequest) {
+    if (underPolicy && leaveType === 'personal' && policy.personal.minDaysPerRequest && dayTotal < policy.personal.minDaysPerRequest) {
       flags.push({ code: 'personal_below_minimum', date });
     }
   }
+  if (leaveType === 'sick' && policy.sick.medicalCertificate) flags.push(...medicalCertificateFlags(byDay, policy.sick.medicalCertificate));
   return { approvedRecordedDays: approved, nonDeductibleDays: nonDeductible, usedDays: approved - nonDeductible, flags };
+}
+
+/**
+ * Review flag for sick leave that reaches the policy's medical-certificate threshold in ONE continuous leave:
+ * `gte` (section employees: 3 working days or more) or `gt` (section contract staff: more than 3). Continuous means
+ * consecutive working days; a weekend does not break it (no holiday calendar exists, so a holiday does and the flag
+ * may then be missed). It never approves, rejects or deducts anything: it asks a person to look at the document.
+ */
+function medicalCertificateFlags(byDay, rule) {
+  const days = [...byDay.values()]
+    .map(({ date, parts }) => {
+      const full = parts.get('FULL');
+      const total = full ? full.fraction : [...parts.values()].reduce((n, p) => n + p.fraction, 0);
+      return { date, total: Math.min(1, total) };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const continues = (a, b) => {
+    if (addDays(a, 1) === b) return true;
+    const weekday = isoWeekday(a);
+    return (weekday === 5 && addDays(a, 3) === b) || (weekday === 6 && addDays(a, 2) === b); // Fri -> Mon, Sat -> Mon
+  };
+  const flags = [];
+  let run = [];
+  const close = () => {
+    if (!run.length) return;
+    const total = run.reduce((n, d) => n + d.total, 0);
+    if (rule.comparison === 'gte' ? total >= rule.fromWorkingDays : total > rule.fromWorkingDays) {
+      flags.push({ code: 'medical_certificate_review', date: run[0].date, detail: `${total} working days in one continuous sick leave; threshold ${rule.comparison === 'gte' ? 'at least' : 'more than'} ${rule.fromWorkingDays}` });
+    }
+    run = [];
+  };
+  for (const day of days) {
+    if (run.length && !continues(run[run.length - 1].date, day.date)) close();
+    run.push(day);
+  }
+  close();
+  return flags;
 }
 
 // ---------------------------------------------------------------- per-type entitlement
@@ -376,6 +443,70 @@ function vacationEntitlement(ctx) {
   return out;
 }
 
+// ---------------------------------------------------------------- section policies
+
+/** Personal / vacation right that depends on months of service (section employees only). */
+function serviceGatedEntitlement(ctx, leaveType) {
+  const { policy, employee, fy } = ctx;
+  const rule = policy[leaveType];
+  const days = leaveType === 'personal' ? rule.paidDaysPerFiscalYear : rule.daysPerFiscalYear;
+  const out = base(leaveType, rule.kind);
+  if (!isDate(employee.hireDate)) { out.status = STATUS.UNKNOWN; out.missing.push('hireDate'); return out; }
+  if (employee.hireDate > fy.end) return notStarted(out, employee.hireDate, fy);
+  const qualifiesOn = addMonths(employee.hireDate, rule.minServiceMonths);
+  if (qualifiesOn <= fy.start) { out.entitlementDays = days; out.availableDays = days; return out; }
+  if (qualifiesOn > fy.end) {
+    // Service stays under the minimum for the whole year: a determined "no right", not a missing value.
+    out.entitlementDays = 0; out.availableDays = 0;
+    out.reasons.push(`service_under_${rule.minServiceMonths}_months`);
+    return out;
+  }
+  // The minimum is reached inside the year. The announcement does not say how to allocate it: no prorating here.
+  out.status = STATUS.PENDING_HR_DECISION;
+  out.reasons.push('qualification_mid_year_pending_owner_decision');
+  out.candidates = [{ reading: 'full_annual_right', entitlementDays: days }, { reading: 'right_from_the_qualification_date', entitlementDays: null }];
+  out.detail = { qualifiesOn };
+  return out;
+}
+
+const sectionBuilders = {
+  section_employee: {
+    sick: (ctx) => {
+      const out = base('sick', ctx.policy.sick.kind);
+      if (isDate(ctx.employee.hireDate) && ctx.employee.hireDate > ctx.fy.end) return notStarted(out, ctx.employee.hireDate, ctx.fy);
+      out.entitlementDays = ctx.policy.sick.paidDaysPerFiscalYear; // no hire date needed for the ceiling
+      out.availableDays = out.entitlementDays;
+      return out;
+    },
+    personal: (ctx) => serviceGatedEntitlement(ctx, 'personal'),
+    vacation: (ctx) => withNoCarryover(serviceGatedEntitlement(ctx, 'vacation'), ctx),
+  },
+  section_contract: {
+    sick: (ctx) => fixedEntitlement(ctx, 'sick', ctx.policy.sick.paidDaysPerFiscalYear),
+    personal: (ctx) => fixedEntitlement(ctx, 'personal', ctx.policy.personal.paidDaysPerFiscalYear),
+    vacation: (ctx) => withNoCarryover(fixedEntitlement(ctx, 'vacation', ctx.policy.vacation.daysPerFiscalYear), ctx),
+  },
+};
+
+/** The figure of the policy as is: no tenure condition and no hire date needed (a known one after the year's end still means not started). */
+function fixedEntitlement(ctx, leaveType, days) {
+  const out = base(leaveType, ctx.policy[leaveType].kind);
+  if (isDate(ctx.employee.hireDate) && ctx.employee.hireDate > ctx.fy.end) return notStarted(out, ctx.employee.hireDate, ctx.fy);
+  out.entitlementDays = days;
+  out.availableDays = days;
+  return out;
+}
+
+/** These policies have no vacation carry-over: it is 0 by rule (never asked for). A positive figure supplied is refused, not added. */
+function withNoCarryover(out, ctx) {
+  if (out.status === STATUS.NOT_STARTED || out.status === STATUS.UNKNOWN) return out;
+  out.carryoverDays = 0;
+  if (typeof ctx.carryover === 'number' && ctx.carryover > 0) {
+    out.flags.push({ code: 'carryover_not_allowed', detail: `this policy has no vacation carry-over; the ${ctx.carryover} day(s) on file are not added` });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- compose
 
 function applyUsage(out, records, fy, policy) {
@@ -415,14 +546,14 @@ function applyUsage(out, records, fy, policy) {
  * @param {object} [input.grants]    { sickExtensionDays } rector-approved extra paid sick days (0..60).
  * @param {Array}  [input.policies]  override the registry (tests).
  */
-function computeEntitlements({ fiscalYear, employee, records = [], carryover = {}, grants = {}, policies = POLICIES }) {
+function computeEntitlements({ fiscalYear, employee, records = [], carryover = {}, grants = {}, policies = ALL_POLICIES }) {
   const fy = fiscalYearByBE(fiscalYear);
   const emp = employee || {};
   for (const key of ['hireDate', 'continuousServiceStart']) {
     if (emp[key] !== null && emp[key] !== undefined) parseDate(emp[key], key);
   }
-  const resolved = policyForFiscalYear(fy, policies);
-  const result = { fiscalYear: fy, policyVersion: resolved.policy ? resolved.policy.id : null, eligibility: null, results: {} };
+  const resolved = policyContextFor(emp.employeeType, fy, policies);
+  const result = { fiscalYear: fy, policyVersion: resolved.policy ? resolved.policy.id : null, policyFamily: resolved.family, eligibility: null, results: {} };
 
   if (!resolved.policy) {
     for (const type of TYPES) {
@@ -436,7 +567,7 @@ function computeEntitlements({ fiscalYear, employee, records = [], carryover = {
   }
 
   const policy = resolved.policy;
-  result.eligibility = classifyEligibility(emp, policy);
+  result.eligibility = classifyEligibility(emp, policy, { unmapped: resolved.unmapped });
   if (result.eligibility.status !== 'eligible') {
     const status = result.eligibility.status === 'needs_hr' ? STATUS.NEEDS_HR : STATUS.OUT_OF_SCOPE;
     for (const type of TYPES) {
@@ -452,10 +583,11 @@ function computeEntitlements({ fiscalYear, employee, records = [], carryover = {
   }
 
   const ctx = { policy, employee: emp, fy, grants, carryover: carryover.vacationDays };
-  const builders = { sick: sickEntitlement, personal: personalEntitlement, vacation: vacationEntitlement };
+  const builders = sectionBuilders[policy.family] || { sick: sickEntitlement, personal: personalEntitlement, vacation: vacationEntitlement };
   for (const type of TYPES) {
     const out = builders[type](ctx);
     out.flags.push(...result.eligibility.flags);
+    if (resolved.effectiveDateUnspecified && out.status === STATUS.OK) out.flags.push({ code: 'policy_effective_date_unspecified' });
     result.results[type] = out.status === STATUS.NOT_STARTED ? out : applyUsage(out, records, fy, policy);
   }
   return result;
@@ -519,6 +651,7 @@ module.exports = {
   fiscalYearOf,
   policyForDate,
   policyForFiscalYear,
+  policyContextFor,
   classifyEligibility,
   summarizeUsage,
   tenYearStatus,

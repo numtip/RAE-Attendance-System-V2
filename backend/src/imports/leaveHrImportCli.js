@@ -3,8 +3,8 @@ const { createHash } = require('node:crypto');
 const { operatorAuth, EXIT } = require('./facescanImportCli');
 const { TYPE_MAP, splitTitle } = require('./employeeProfileCli');
 const csv = require('../domain/hrLeaveCsv');
-const { computeEntitlements, fiscalYearOf, tenYearStatus, fiscalYearByBE, policyForDate } = require('../domain/leavePolicyEngine');
-const { POLICIES } = require('../domain/leavePolicy2569');
+const { computeEntitlements, fiscalYearOf, tenYearStatus, fiscalYearByBE, policyContextFor } = require('../domain/leavePolicyEngine');
+const { familyForType } = require('../domain/leavePolicySection');
 const { bangkokDate } = require('../services/leaveEntitlementService');
 
 /**
@@ -152,9 +152,13 @@ async function runLeaveHrImport(argv, { container, readFile = (file) => fs.readF
       // Merge the cells that carry a value over what is stored (blank = leave alone, null = clear).
       const merged = { ...(person.profileAfter || { employeeUid: employee.employeeUid, continuousServiceStart: null, appointmentKind: null, eligibilityConfirmed: null, eligibilityReference: null, sourceReference: null }) };
       for (const field of PROFILE_FIELDS) if (field in row.data) merged[field] = row.data[field];
-      // Contract staff (พนักงานส่วนงานจ้างเหมา) are outside the policy: no confirmation can bring them in.
-      if (employee.employeeType === 'contract') add(kind, row, 'error', 'type_out_of_scope');
-      if (['department', 'procurement_academic'].includes(employee.employeeType) && merged.eligibilityConfirmed === null) add(kind, row, 'warning', 'eligibility_unconfirmed');
+      const family = familyForType(employee.employeeType);
+      // The appointment kind is a university-policy fact (clause 23); section policies never ask for it.
+      if (row.appointmentKindRequiredForUniversity && family === 'university') add(kind, row, 'error', 'appointment_kind_missing');
+      // A confirmed type with no mapped policy keeps the university rules (as before): worth saying, not blocking.
+      if (family === null && merged.eligibilityConfirmed === true) add(kind, row, 'warning', 'policy_unmapped');
+      // Section contract staff and the unmapped type wait for the owner's confirmation.
+      if (['contract', 'procurement_academic'].includes(employee.employeeType) && merged.eligibilityConfirmed === null) add(kind, row, 'warning', 'eligibility_unconfirmed');
       if (row.blocked) continue;
       s.matched += 1;
 
@@ -189,11 +193,13 @@ async function runLeaveHrImport(argv, { container, readFile = (file) => fs.readF
       if (!person) { add(kind, row, 'error', 'id_not_found'); continue; }
       const { employee } = person;
       if (employee.status !== 'active') add(kind, row, 'error', 'not_active');
-      if (employee.employeeType === 'contract') add(kind, row, 'error', 'type_out_of_scope');
       if (row.blocked) continue;
       s.matched += 1;
 
       const { fiscalYearBe, leaveType } = row.data;
+      const family = familyForType(employee.employeeType);
+      // Section policies have no vacation carry-over: a positive figure is refused with the reason, never added or dropped silently.
+      if (family && family !== 'university' && row.data.carryoverDays > 0) { add(kind, row, 'error', 'carryover_not_allowed'); continue; }
       const key = `${fiscalYearBe}|${leaveType}`;
       const now = person.hrAfter.has(key) ? person.hrAfter.get(key) : await repositories.leaveHr.getEntitlement(employee.employeeUid, fiscalYearBe, leaveType);
       const merged = { employeeUid: employee.employeeUid, fiscalYearBe, leaveType, carryoverDays: null, usageBaselineDays: null, usageBaselineThrough: null, ...(now || {}) };
@@ -206,8 +212,9 @@ async function runLeaveHrImport(argv, { container, readFile = (file) => fs.readF
         appointmentKind: person.profileAfter?.appointmentKind || null,
         eligibilityConfirmation: { confirmed: true, reference: 'hr-import-preview' },
       };
-      const policy = policyForDate(fiscalYearByBE(fiscalYearBe).end) || POLICIES[0];
-      if (leaveType === 'vacation' && merged.carryoverDays !== null) {
+      const policyCtx = policyContextFor(employee.employeeType, fiscalYearByBE(fiscalYearBe));
+      const policy = policyCtx.policy || policyCtx.anyPolicy;
+      if (leaveType === 'vacation' && merged.carryoverDays !== null && (!family || family === 'university')) {
         const cap = tenYearStatus(policy, asEmployee, fiscalYearByBE(fiscalYearBe)) === 'yes' ? policy.vacation.combinedCapDaysAfter10YearsContinuous : policy.vacation.combinedCapDays;
         if (merged.entitlementDays + merged.carryoverDays > cap) add(kind, row, 'warning', 'vacation_cap_exceeded');
       }

@@ -71,7 +71,7 @@ test('owner entry + bulk overview on MariaDB', { skip: !shouldRunMariaDb() }, as
     const uids = [owner, person, other];
     const bulk = await createLeaveEntitlementService({ repositories, now: NOW }).balances(uids, FY);
     for (const uid of uids) assert.deepEqual(bulk.get(uid), await single.balance(uid, FY), uid);
-    assert.deepEqual(bulk.get(other).map((r) => r.status), ['out_of_scope', 'out_of_scope', 'out_of_scope']);
+    assert.deepEqual(bulk.get(other).map((r) => r.status), ['needs_hr', 'needs_hr', 'needs_hr']); // contract staff wait for the owner
   });
 
   await t.test('overview reports the people; removal deletes the override; a failure rolls back', async () => {
@@ -80,7 +80,7 @@ test('owner entry + bulk overview on MariaDB', { skip: !shouldRunMariaDb() }, as
     const mine = data.rows.find((r) => r.employeeUid === person);
     assert.equal(mine.profile.hireDate, '2016-03-01');
     assert.equal(mine.types.vacation.source, 'hr_verified');
-    assert.equal(data.rows.find((r) => r.employeeUid === other).scope, 'excluded');
+    assert.equal(data.rows.find((r) => r.employeeUid === other).scope, 'unconfirmed');
 
     await ownerEntry.apply(auth, person, { entitlements: [{ fiscalYearBe: FY, leaveType: 'vacation', remove: true }] });
     assert.equal(await repositories.leaveHr.getEntitlement(person, FY, 'vacation'), null);
@@ -131,7 +131,14 @@ test('owner entry + bulk overview on MariaDB', { skip: !shouldRunMariaDb() }, as
     const [audit] = await pool.query("SELECT field_name, after_value, actor_uid FROM leave_hr_audit WHERE employee_uid = ? AND field_name IN ('eligibility_confirmed','eligibility_reference','hire_date') ORDER BY id", [dept]);
     assert.deepEqual(audit.map((a) => a.field_name).sort(), ['eligibility_confirmed', 'eligibility_reference', 'hire_date']);
     assert.ok(audit.every((a) => a.actor_uid === owner));
-    // the contract worker created above stays out of every bulk path
-    await assert.rejects(() => bulk.bulkEligibility(auth, { employeeUids: [other], confirmed: true }), (e) => e.status === 400);
+    // the section-contract worker created above is confirmed in bulk and gets the contract policy (10 / 5 / 10, no carry-over)
+    const confirmed = await bulk.bulkEligibility(auth, { employeeUids: [other], confirmed: true, reference: 'คำสั่ง 1/2569' });
+    assert.equal(confirmed.changed, 1);
+    const rows = await single.balance(other, FY);
+    assert.deepEqual(rows.map((r) => [r.status, r.totalDays]), [['ok', 10], ['ok', 5], ['ok', 10]]);
+    assert.equal(rows.find((r) => r.leaveType === 'vacation').carryoverDays, 0);
+    assert.equal(rows[0].policyVersion, 'RAE-SECTION-CONTRACT-2569-V2');
+    // carry-over is refused for a section policy, with the reason
+    await assert.rejects(() => ownerEntry.apply(auth, other, { entitlements: [{ fiscalYearBe: FY, leaveType: 'vacation', entitlementDays: 10, carryoverDays: 2 }] }), (e) => e.status === 400 && /carry-over/.test(e.message));
   });
 });

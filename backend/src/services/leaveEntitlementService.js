@@ -1,8 +1,7 @@
 const { HttpError } = require('../utils/httpError');
 const {
-  STATUS, TYPES, computeEntitlements, summarizeUsage, fiscalYearByBE, policyForDate, tenYearStatus, classifyEligibility,
+  STATUS, TYPES, computeEntitlements, summarizeUsage, fiscalYearByBE, policyContextFor, tenYearStatus, classifyEligibility,
 } = require('../domain/leavePolicyEngine');
-const { POLICIES } = require('../domain/leavePolicy2569');
 const { TYPE_LABEL, recordStatus } = require('./leaveLabels');
 
 /**
@@ -108,8 +107,10 @@ function createLeaveEntitlementService({ repositories, now = () => new Date() })
   }
 
   /** Result row built from an HR-verified entitlement. */
-  function fromHr({ type, hr, engineOut, fy, profile, records, covered, today, eligibility }) {
-    const policy = policyForDate(fy.end) || POLICIES[0];
+  function fromHr({ type, hr, engineOut, fy, profile, records, covered, today, eligibility, policyCtx }) {
+    // The person's own policy (family); an unmapped type keeps the university table, as it is only ever shown for review.
+    const policy = policyCtx.policy || policyCtx.anyPolicy;
+    const family = policyCtx.family || 'university';
     const flags = [];
     const reasons = [];
     const missing = [];
@@ -130,7 +131,11 @@ function createLeaveEntitlementService({ repositories, now = () => new Date() })
 
     let available = hr.entitlementDays;
     let carryover = null;
-    if (type === 'vacation') {
+    if (type === 'vacation' && family !== 'university') {
+      // Section policies have no carry-over: it is 0 by rule, never asked for. A positive figure on file is not added.
+      carryover = 0;
+      if (hr.carryoverDays > 0) flags.push({ code: 'carryover_not_allowed', detail: `this policy has no vacation carry-over; the ${hr.carryoverDays} day(s) on file are not added` });
+    } else if (type === 'vacation') {
       if (hr.carryoverDays === null || hr.carryoverDays === undefined) {
         status = STATUS.UNKNOWN;
         missing.push('vacationCarryoverDays');
@@ -149,6 +154,7 @@ function createLeaveEntitlementService({ repositories, now = () => new Date() })
     }
     if (eligibility.status === 'needs_hr') flags.push({ code: 'eligibility_from_hr_row' });
     if (engineOut.status === STATUS.PENDING_POLICY) flags.push({ code: 'policy_pending_hr_verified' });
+    if (policyCtx.effectiveDateUnspecified) flags.push({ code: 'policy_effective_date_unspecified' });
 
     const uncovered = uncoveredMonths(fy, covered, today, hr.usageBaselineThrough);
     const usageComplete = uncovered.length === 0;
@@ -244,7 +250,8 @@ function createLeaveEntitlementService({ repositories, now = () => new Date() })
     // An HR row for a type is HR's confirmation for the year, so it settles a `needs_hr` type; an explicit
     // denial (or outsourced staff) is never overridden by a stored number.
     const employee = engineEmployee(facts, profile);
-    const eligibility = classifyEligibility(employee, policyForDate(fy.end) || POLICIES[0]);
+    const policyCtx = policyContextFor(employee.employeeType, fy);
+    const eligibility = classifyEligibility(employee, policyCtx.anyPolicy, { unmapped: policyCtx.unmapped });
     const carryover = { vacationDays: vacationHr ? (vacationHr.carryoverDays ?? null) : null };
     // `actual` is what the facts say. `assumed` is the same person treated as confirmed by HR; it is used only
     // to compare against a type that HR has a verified row for, never to produce a number for a type without one.
@@ -260,7 +267,7 @@ function createLeaveEntitlementService({ repositories, now = () => new Date() })
       const out = actual.results[type];
       let row;
       if (hr && eligibility.status !== 'out_of_scope' && out.status !== STATUS.NOT_STARTED) {
-        row = fromHr({ type, hr, engineOut: assumed.results[type], fy, profile, records, covered, today, eligibility });
+        row = fromHr({ type, hr, engineOut: assumed.results[type], fy, profile, records, covered, today, eligibility, policyCtx });
       } else {
         row = fromEngine({ out, fy, covered, today });
         if (hr) row.flags = [...row.flags, { code: 'hr_row_ignored_out_of_scope' }];
@@ -272,6 +279,7 @@ function createLeaveEntitlementService({ repositories, now = () => new Date() })
         basis: 'fiscal',
         fiscalYear: { be: fy.be, start: fy.start, end: fy.end },
         policyVersion: engine.policyVersion,
+        policyFamily: engine.policyFamily,
         leaveType: type,
         typeLabel: TYPE_LABEL[type],
         // Existing balance-row fields keep their meaning; they are null whenever the value is not determined.

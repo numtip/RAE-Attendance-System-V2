@@ -14,7 +14,7 @@ export type BalanceBasis = 'calendar' | 'fiscal';
 const STATUS_LABEL_TH: Record<string, string> = {
   ok: 'คำนวณสิทธิ์แล้ว',
   needs_hr: 'รอยืนยันข้อมูลบุคลากร',
-  pending_hr_decision: 'รอตีความนโยบาย',
+  pending_hr_decision: 'รอ Owner พิจารณา',
   pending_policy: 'รอการตีความนโยบาย',
   unknown: 'ข้อมูลไม่เพียงพอ',
   out_of_scope: 'อยู่นอกขอบเขตประกาศ',
@@ -69,6 +69,12 @@ export function formatDays(value: number | null | undefined): string {
 
 const REASON_TH: Record<string, string> = {
   usage_coverage_incomplete: 'ข้อมูลการลาบางเดือนยังไม่ครบ จึงยังไม่คำนวณวันคงเหลือ',
+  service_under_3_months: 'ทำงานยังไม่ครบ 3 เดือนตลอดปีงบประมาณนี้ จึงยังไม่มีสิทธิ์ลากิจ',
+  service_under_6_months: 'ทำงานยังไม่ครบ 6 เดือนตลอดปีงบประมาณนี้ จึงยังไม่มีสิทธิ์ลาพักผ่อน',
+  qualification_mid_year_pending_owner_decision: 'ครบเกณฑ์อายุงานกลางปีงบประมาณ — รอ Owner พิจารณาวิธีจัดสรรสิทธิ์ (ระบบไม่คำนวณตามสัดส่วนเอง)',
+  policy_period_not_confirmed: 'ยังไม่ได้ระบุช่วงบังคับใช้ของหลักเกณฑ์สำหรับปีงบประมาณนี้ จึงยังไม่คำนวณ',
+  policy_effective_mid_year: 'หลักเกณฑ์เริ่มมีผลกลางปีงบประมาณนี้ จึงยังไม่คำนวณทั้งปี',
+  policy_unmapped: 'ประเภทบุคลากรนี้ยังไม่ได้กำหนดว่าใช้หลักเกณฑ์ใด',
   needs_hr: 'ต้องรอการยืนยันข้อมูลบุคลากร',
 };
 
@@ -95,9 +101,9 @@ export function usedDaysDisplay(row: LeaveBalanceRow): number | null {
 export const LEAVE_KINDS: LeaveKind[] = ['sick', 'personal', 'vacation'];
 
 const SCOPE_LABEL_TH: Record<EntitlementScope, string> = {
-  in_policy: 'อยู่ในประกาศ',
+  in_policy: 'อยู่ในหลักเกณฑ์',
   unconfirmed: 'รอยืนยันสิทธิ์',
-  excluded: 'อยู่นอกประกาศ',
+  excluded: 'อยู่นอกหลักเกณฑ์',
 };
 export function scopeLabelTh(scope: EntitlementScope): string {
   return SCOPE_LABEL_TH[scope] ?? 'ไม่มีข้อมูล';
@@ -113,6 +119,18 @@ const MISSING_LABEL_TH: Record<string, string> = {
 };
 export function missingLabelTh(code: string): string {
   return MISSING_LABEL_TH[code] ?? 'ข้อมูลที่ยังไม่ครบ';
+}
+
+/** Review notes for flags the engine raises; they never change a number. Unknown flags show nothing. */
+const FLAG_NOTE_TH: Record<string, string> = {
+  medical_certificate_review: 'ตรวจใบรับรองแพทย์',
+  carryover_not_allowed: 'หลักเกณฑ์นี้ไม่มียอดสะสม (ไม่นำยอดที่บันทึกไว้มาบวก)',
+  vacation_half_day_review: 'ลาพักผ่อนครึ่งวัน รอตรวจสอบ',
+  hr_differs_from_policy: 'สิทธิ์ที่กรอกต่างจากที่หลักเกณฑ์กำหนด',
+  policy_assumed_university: 'ยังไม่ได้กำหนดหลักเกณฑ์ของประเภทนี้ — ใช้เกณฑ์พนักงานมหาวิทยาลัยตามที่ยืนยันไว้',
+};
+export function flagNotesTh(cell: { flags?: string[] } | undefined): string[] {
+  return [...new Set((cell?.flags ?? []).map((f) => FLAG_NOTE_TH[f]).filter((t): t is string => Boolean(t)))];
 }
 
 export const APPOINTMENT_KIND_TH: Record<string, string> = {
@@ -196,3 +214,15 @@ export function canConfirmImport(result: { mode: string; ok: boolean; blockingEr
   const files = Object.values(result.files).filter(Boolean) as { toApply: number; alreadyApplied: boolean }[];
   return files.some((f) => f.toApply > 0 && !f.alreadyApplied);
 }
+
+/** The label of a person's policy, or the plain note that none is mapped (the owner has to choose one). */
+export function policyLabelTh(policy: { family: string | null; labelTh: string | null } | undefined): string {
+  return policy?.labelTh ?? 'ยังไม่กำหนดหลักเกณฑ์การลา';
+}
+
+export const POLICY_FAMILIES: { key: 'university' | 'section_employee' | 'section_contract' | 'unmapped'; labelTh: string }[] = [
+  { key: 'university', labelTh: 'พนักงานมหาวิทยาลัย' },
+  { key: 'section_employee', labelTh: 'พนักงานส่วนงาน' },
+  { key: 'section_contract', labelTh: 'พนักงานส่วนงานจ้างเหมา' },
+  { key: 'unmapped', labelTh: 'ยังไม่กำหนดหลักเกณฑ์' },
+];

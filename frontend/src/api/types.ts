@@ -437,6 +437,7 @@ export interface EntitlementRow {
   division: { code: string; nameTh: string };
   scope: EntitlementScope;
   missing: string[];
+  policy: EntitlementPolicy;
   types: Partial<Record<LeaveKind, EntitlementCell>>;
   /** Only for the executive with an organization grant. */
   profile?: EntitlementProfile;
@@ -459,6 +460,15 @@ export interface EntitlementStored {
   usageBaselineDays: number | null;
   usageBaselineThrough: string | null;
 }
+export type PolicyFamily = 'university' | 'section_employee' | 'section_contract';
+/** The policy of one person and the facts it needs (the screens ask for these and nothing else). */
+export interface EntitlementPolicy {
+  family: PolicyFamily | null;
+  id: string | null;
+  labelTh: string | null;
+  requires: { hireDateFor: LeaveKind[]; continuousService: boolean; appointmentKind: boolean; carryover: boolean } | null;
+}
+export interface PolicyReadiness { people: number; unconfirmed: number; fullyDetermined: number }
 export interface EntitlementOverview {
   fiscalYear: { be: number; start: string; end: string };
   flag: 'shadow' | 'on';
@@ -469,6 +479,7 @@ export interface EntitlementOverview {
     headcount: number; inPolicy: number; excluded: number; unconfirmed: number; fullyDetermined: number;
     byType: Record<LeaveKind, EntitlementTypeSummary>;
     missing: Record<string, number>;
+    byPolicy: Record<PolicyFamily | 'unmapped', PolicyReadiness>;
   };
   rows: EntitlementRow[];
 }

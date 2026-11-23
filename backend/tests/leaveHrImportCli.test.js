@@ -74,7 +74,7 @@ test('dry run writes nothing, prints counts and rule codes only, and previews th
   assert.equal(out.blockingErrors, 0);
   assert.deepEqual([out.files.profile.rows, out.files.profile.matched, out.files.profile.toApply, out.files.profile.unchanged], [2, 2, 2, 0]);
   assert.deepEqual(out.files.profile.changed, { hire_date: 2, continuous_service_start: 2, source_reference: 2 });
-  assert.deepEqual(out.files.profile.warnings, { eligibility_unconfirmed: 1 }); // the department person stays needs_hr
+  assert.deepEqual(out.files.profile.warnings, {}); // the section employee needs no confirmation: their own policy covers them
 
   // nothing was written anywhere
   assert.equal((await ctx.employees.getLeaveFacts('u-uni')).hireDate, null);
@@ -83,14 +83,13 @@ test('dry run writes nothing, prints counts and rule codes only, and previews th
 
   // the preview shows the gap closing: personal leave was unknown (no hire date), now ok for the university person
   assert.equal(out.preview.people, 2);
-  assert.equal(out.preview.before.personal.unknown, 1);
-  assert.equal(out.preview.after.personal.ok, 1);
-  assert.equal(out.preview.after.personal.needs_hr, 1);
+  assert.equal(out.preview.before.personal.unknown, 2);
+  assert.equal(out.preview.after.personal.ok, 2);
 
   // no employee id, name, uid or HR value is printed
   const text = JSON.stringify(out) + fs.readFileSync(report, 'utf8');
   for (const secret of ['1001', '1002', ...NAMES, 'u-uni', 'ทะเบียนประวัติ', '2015-04-01']) assert.equal(text.includes(secret), false, secret);
-  assert.match(fs.readFileSync(report, 'utf8'), /^kind,line,level,code\nprofile,3,warning,eligibility_unconfirmed\n/);
+  assert.match(fs.readFileSync(report, 'utf8'), /^kind,line,level,code\n\n?$/); // no findings for these two people
 });
 
 test('blocking findings are reported with exit 3 and block the apply', async () => {
@@ -99,13 +98,12 @@ test('blocking findings are reported with exit 3 and block the apply', async () 
     pRow({ employeeId: '7777' }), // not in the registry
     pRow({ employeeId: '1004', name: 'นายนภา สดใส' }), // inactive
     pRow({ employeeId: '1002', name: 'นายสมหญิง รักงาน', type: 'พนักงานมหาวิทยาลัย' }), // registered as department
-    pRow({ employeeId: '1003', name: 'นายวิชัย มั่นคง', type: 'พนักงานส่วนงานจ้างเหมา' }), // outsourced, no confirmation
     pRow({ employeeId: '12' }), // malformed id
   ]);
   const dry = await run(['--profile', f], ctx);
   assert.equal(dry.exitCode, 3);
-  assert.deepEqual(dry.report.files.profile.errors, { id_format: 1, id_not_found: 1, not_active: 1, type_mismatch: 1, type_out_of_scope: 1 });
-  assert.equal(dry.report.blockingErrors, 5);
+  assert.deepEqual(dry.report.files.profile.errors, { id_format: 1, id_not_found: 1, not_active: 1, type_mismatch: 1 });
+  assert.equal(dry.report.blockingErrors, 4);
 
   const apply = await run([...['--profile', f], ...OPERATOR], ctx);
   assert.equal(apply.exitCode, 3);
@@ -210,13 +208,13 @@ test('entitlements: stored per fiscal year with the batch and operator; warnings
   const f = file(E, [
     eRow({ carryoverDays: '4', usageBaselineDays: '2', usageBaselineThrough: '2026-11-15' }),
     eRow({ leaveType: 'ลาป่วย', entitlementDays: '90', carryoverDays: '' }), // differs from the policy's 60
-    eRow({ employeeId: '1002', carryoverDays: '25' }), // 10 + 25 is over the cap
+    eRow({ employeeId: '9000', carryoverDays: '25' }), // a university person: 10 + 25 is over the cap
   ]);
   const dry = await run(['--entitlement', f], ctx);
   assert.equal(dry.exitCode, 0);
   assert.deepEqual(dry.report.files.entitlement.warnings, { differs_from_policy: 1, vacation_cap_exceeded: 1 });
   assert.equal(dry.report.files.entitlement.toApply, 3);
-  // a department person with a row is shown as hr_verified in the preview even though the type is unconfirmed
+  // the people in the file are shown as hr_verified in the preview
   assert.equal(dry.report.preview.after.vacation.hr_verified, 2);
 
   const applied = await run([...['--entitlement', f], ...OPERATOR], ctx);
@@ -230,22 +228,63 @@ test('entitlements: stored per fiscal year with the batch and operator; warnings
   assert.ok(ctx.leaveHr.audit.some((a) => a.fieldName === 'entitlement_days' && a.entityKey === '2570|sick' && a.afterValue === '90'));
 });
 
-test('outsourced staff are outside the policy: no entitlement or profile row, and no confirmation can bring them in', async () => {
-  const blocked = setup();
-  const rows = [eRow({ employeeId: '1003', leaveType: 'ลาป่วย', entitlementDays: '60', carryoverDays: '' })];
-  const a = await run(['--entitlement', file(E, rows)], blocked);
-  assert.deepEqual(a.report.files.entitlement.errors, { type_out_of_scope: 1 });
-  assert.equal(a.exitCode, 3);
+test('section contract staff are accepted: unconfirmed ones are a warning, a confirmation brings them in, and they need no hire date, carry-over or appointment kind', async () => {
+  const ctx = setup();
+  const unconfirmed = file(P, [pRow({ employeeId: '1003', name: 'นายวิชัย มั่นคง', type: 'พนักงานส่วนงานจ้างเหมา', hireDate: '', continuousServiceStart: '', eligibilityConfirmed: '', eligibilityReference: '', sourceReference: 'หนังสือ 7' })]);
+  const a = await run(['--profile', unconfirmed], ctx);
+  assert.equal(a.exitCode, 0);
+  assert.deepEqual(a.report.files.profile.errors, {});
+  assert.deepEqual(a.report.files.profile.warnings.eligibility_unconfirmed, 1);
 
-  // Even with a confirmation and a reference in the same run, the contract worker stays out.
-  const confirmed = setup();
-  const profile = file(P, [pRow({ employeeId: '1003', name: 'นายวิชัย มั่นคง', type: 'พนักงานส่วนงานจ้างเหมา', eligibilityConfirmed: 'ใช่', eligibilityReference: 'บันทึก 5/2569' })]);
-  const b = await run([...['--profile', profile, '--entitlement', file(E, rows)], ...OPERATOR], confirmed);
-  assert.equal(b.exitCode, 3);
-  assert.equal(b.report.written, false);
-  assert.equal(b.report.files.profile.errors.type_out_of_scope, 1);
-  assert.equal(await confirmed.leaveHr.getEntitlement('u-con', 2570, 'sick'), null);
-  assert.equal(confirmed.leaveHr.batches.length, 0);
+  const confirm = file(P, [pRow({ employeeId: '1003', name: 'นายวิชัย มั่นคง', type: 'พนักงานส่วนงานจ้างเหมา', hireDate: '', continuousServiceStart: '', eligibilityConfirmed: 'ใช่', eligibilityReference: 'บันทึก 5/2569' })]);
+  const rows = [eRow({ employeeId: '1003', leaveType: 'ลาป่วย', entitlementDays: '10', carryoverDays: '' }), eRow({ employeeId: '1003', leaveType: 'ลากิจส่วนตัว', entitlementDays: '5', carryoverDays: '' })];
+  const b = await run([...['--profile', confirm, '--entitlement', file(E, rows)], ...OPERATOR], ctx);
+  assert.equal(b.exitCode, 0);
+  assert.equal(b.report.written, true);
+  assert.equal((await ctx.leaveHr.getProfile('u-con')).eligibilityConfirmed, true);
+  assert.equal((await ctx.leaveHr.getEntitlement('u-con', 2570, 'personal')).entitlementDays, 5);
+  // the policy figures are the engine's own, so the owner's rows raise no "differs from policy" warning
+  assert.deepEqual(b.report.files.entitlement.warnings, {});
+});
+
+test('the appointment kind is required for university staff only; section policies never ask for it', async () => {
+  const ctx = setup();
+  const f = file(P, [
+    pRow({ employeeId: '1001', hireDate: '2026-02-01', continuousServiceStart: '2026-02-01', appointmentKind: '' }),
+    pRow({ employeeId: '1002', name: 'นางสาวสมหญิง รักงาน', type: 'พนักงานส่วนงาน', hireDate: '2026-02-01', continuousServiceStart: '', appointmentKind: '' }),
+  ]);
+  const r = await run(['--profile', f], ctx);
+  assert.deepEqual(r.report.files.profile.errors, { appointment_kind_missing: 1 });
+  assert.equal(r.report.blockingErrors, 1);
+});
+
+test('vacation carry-over is refused for section policies with a reason, and kept for university staff', async () => {
+  const ctx = setup();
+  const f = file(E, [
+    eRow({ employeeId: '1002', carryoverDays: '3' }), // section employee: no carry-over
+    eRow({ employeeId: '1003', carryoverDays: '1' }), // section contract: no carry-over
+    eRow({ employeeId: '1001', carryoverDays: '3' }), // university: fine
+  ]);
+  const r = await run(['--entitlement', f], ctx);
+  assert.deepEqual(r.report.files.entitlement.errors, { carryover_not_allowed: 2 });
+  assert.equal(r.exitCode, 3);
+  const apply = await run([...['--entitlement', f], ...OPERATOR], ctx);
+  assert.equal(apply.report.written, false);
+  assert.deepEqual(ctx.leaveHr.batches, []);
+  // zero or empty is fine for them
+  const ok = await run(['--entitlement', file(E, [eRow({ employeeId: '1002', carryoverDays: '0' }), eRow({ employeeId: '1003', carryoverDays: '' })])], ctx);
+  assert.deepEqual(ok.report.files.entitlement.errors, {});
+});
+
+test('a confirmed type with no mapped policy is accepted with a warning (the university rules apply, as before)', async () => {
+  const ctx = setup();
+  ctx.employees.rows.push({ employeeUid: 'u-pro', employeeId: '1005', employeeType: 'procurement_academic', status: 'active', hireDate: null, firstNameTh: 'พัสดุ', lastNameTh: 'ทดสอบ' });
+  const f = file(P, [pRow({ employeeId: '1005', name: 'นายพัสดุ ทดสอบ', type: 'นักวิชาการพัสดุ', eligibilityConfirmed: 'ใช่', eligibilityReference: 'memo 1' })]);
+  const r = await run(['--profile', f], ctx);
+  assert.deepEqual(r.report.files.profile.errors, {});
+  assert.deepEqual(r.report.files.profile.warnings.policy_unmapped, 1);
+  const declined = await run(['--profile', file(P, [pRow({ employeeId: '1005', name: 'นายพัสดุ ทดสอบ', type: 'นักวิชาการพัสดุ', eligibilityConfirmed: 'ไม่ใช่', eligibilityReference: 'memo 2' })])], ctx);
+  assert.deepEqual(declined.report.files.profile.errors, {});
 });
 
 test('an entitlement row nobody filled in is skipped as no_data, not rejected', async () => {

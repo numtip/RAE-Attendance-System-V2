@@ -890,3 +890,4 @@
 .ent-group .ent-line:first-of-type { border-top: 0; }
 .ent-line .field, .ent-line .field input { min-width: 0; width: 100%; box-sizing: border-box; }
 .ent-line .field--inline { width: auto; }
+.ent-note { color: var(--gold-deep, #8a6a1f); }

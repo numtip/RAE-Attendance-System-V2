@@ -207,7 +207,9 @@ function validateProfile(parsed, { today }) {
       if (APPOINTMENT_KINDS[kind]) out.data.appointmentKind = APPOINTMENT_KINDS[kind];
       else out.errors.push('appointment_kind_unknown');
     }
-    if (kind === '' && typeof hire === 'string' && hire >= APPOINTMENT_KIND_REQUIRED_FROM) out.errors.push('appointment_kind_missing');
+    // Only the university policy (clause 23) needs the appointment kind. The file cannot know the person's policy, so the
+    // importer, which does, turns this marker into an error for university staff only.
+    if (kind === '' && typeof hire === 'string' && hire >= APPOINTMENT_KIND_REQUIRED_FROM) out.appointmentKindRequiredForUniversity = true;
 
     const confirmation = get('eligibilityConfirmed');
     const reference = get('eligibilityReference');

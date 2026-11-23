@@ -105,14 +105,15 @@ test('profile dates: format, future hire, continuity after hire; a missing hire 
   assert.equal(rows[4].data.hireDate, '2015-04-01');
 });
 
-test('appointment kind: a known value, and required when the hire date is 2025-10-01 or later', () => {
+test('appointment kind: a known value; a hire date from 2025-10-01 marks it as required for university staff (the importer decides by policy)', () => {
   const { rows } = profile([
     profileRow({ appointmentKind: 'บรรจุครั้งแรก', hireDate: '2026-02-01' }),
     profileRow({ employeeId: '1002', appointmentKind: 'อะไรสักอย่าง' }),
     profileRow({ employeeId: '1003', hireDate: '2026-02-01' }),
     profileRow({ employeeId: '1004', hireDate: '2025-09-30' }),
   ]);
-  assert.deepEqual(rows.map(codes), [[], ['appointment_kind_unknown'], ['appointment_kind_missing'], []]);
+  assert.deepEqual(rows.map(codes), [[], ['appointment_kind_unknown'], [], []]);
+  assert.deepEqual(rows.map((r) => Boolean(r.appointmentKindRequiredForUniversity)), [false, false, true, false]);
   assert.equal(rows[0].data.appointmentKind, 'first');
 });
 

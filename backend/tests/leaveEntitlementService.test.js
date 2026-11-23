@@ -121,28 +121,30 @@ test('a missing hire date keeps personal leave unknown even though sick leave is
 
 // ------------------------------------------------------------ eligibility
 
-test('an unconfirmed type needs HR: no numbers, nothing deducted, still visible as recorded', async () => {
-  const { service } = build({ records: [rec(D, '2026-11-02', 'sick')] });
-  const rows = await service.balance(D, FY);
+test('an unconfirmed section-contract worker waits for the owner: no numbers, nothing deducted, still visible as recorded', async () => {
+  const { service } = build({ records: [rec(C, '2026-11-02', 'sick')] });
+  const rows = await service.balance(C, FY);
   for (const row of rows) {
     assert.deepEqual([row.status, row.source, row.totalDays, row.remainingDays, row.available], ['needs_hr', null, null, null, false]);
+    assert.equal(row.policyFamily, 'section_contract');
   }
   assert.equal(byType(rows).sick.usedDays, null);
 });
 
-test('an HR row settles a needs_hr type for that type only, with a flag', async () => {
+test('an owner row settles a needs_hr type for that type only, with a flag', async () => {
   const { service, repositories } = build();
-  await repositories.leaveHr.upsertEntitlement(hrRow(D, 'sick', { entitlementDays: 60 }));
-  const r = byType(await service.balance(D, FY));
-  assert.deepEqual([r.sick.source, r.sick.status, r.sick.totalDays], ['hr_verified', 'ok', 60]);
+  await repositories.leaveHr.upsertEntitlement(hrRow(C, 'sick', { entitlementDays: 10 }));
+  const r = byType(await service.balance(C, FY));
+  assert.deepEqual([r.sick.source, r.sick.status, r.sick.totalDays], ['hr_verified', 'ok', 10]);
   assert.ok(r.sick.flags.some((f) => f.code === 'eligibility_from_hr_row'));
   assert.equal(r.personal.status, 'needs_hr'); // no row for it: still unconfirmed
   assert.equal(r.personal.totalDays, null);
 });
 
-test('outsourced staff and an explicit HR denial are never overridden by a stored number', async () => {
+test('an explicit denial is never overridden by a stored number; a confirmed contract worker is covered', async () => {
   const { service, repositories } = build();
-  await repositories.leaveHr.upsertEntitlement(hrRow(C, 'sick', { entitlementDays: 60 }));
+  await repositories.leaveHr.upsertProfile(profile(C, { eligibilityConfirmed: false, eligibilityReference: 'memo 3' }));
+  await repositories.leaveHr.upsertEntitlement(hrRow(C, 'sick', { entitlementDays: 10 }));
   const contract = byType(await service.balance(C, FY)).sick;
   assert.deepEqual([contract.status, contract.totalDays, contract.source], ['out_of_scope', null, null]);
   assert.ok(contract.flags.some((f) => f.code === 'hr_row_ignored_out_of_scope'));
@@ -150,6 +152,13 @@ test('outsourced staff and an explicit HR denial are never overridden by a store
   await repositories.leaveHr.upsertProfile(profile(U, { eligibilityConfirmed: false, eligibilityReference: 'memo 9' }));
   await repositories.leaveHr.upsertEntitlement(hrRow(U, 'sick', { entitlementDays: 60 }));
   assert.equal(byType(await service.balance(U, FY)).sick.status, 'out_of_scope');
+
+  const ok = build();
+  await ok.repositories.leaveHr.upsertProfile(profile(C, { eligibilityConfirmed: true, eligibilityReference: 'memo 4' }));
+  const rows = byType(await ok.service.balance(C, FY));
+  assert.deepEqual(['sick', 'personal', 'vacation'].map((t) => [rows[t].status, rows[t].totalDays, rows[t].kind]), [['ok', 10, 'annual_limit'], ['ok', 5, 'annual_limit'], ['ok', 10, 'annual_limit']]);
+  assert.equal(rows.vacation.carryoverDays, 0);
+  assert.ok(rows.sick.flags.some((f) => f.code === 'policy_effective_date_unspecified'));
 });
 
 // ------------------------------------------------------------ deduction
