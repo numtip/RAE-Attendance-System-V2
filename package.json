@@ -14,6 +14,7 @@
     "leave:import-hip": "node backend/src/imports/hipLeaveImportCli.js",
     "employees:import-profile": "node backend/src/imports/employeeProfileCli.js",
     "org:import-divisions": "node backend/src/imports/divisionMembershipCli.js",
+    "leave:import-hr-data": "node backend/src/imports/leaveHrImportCli.js",
     "facescan:derive": "node backend/src/imports/facescanDeriveCli.js",
     "db:hash-dev-password": "node scripts/hash-dev-password.mjs",
     "contract:smoke": "node scripts/contract-smoke.mjs",
