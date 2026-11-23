@@ -10,8 +10,8 @@ export type BalanceBasis = 'calendar' | 'fiscal';
 
 const STATUS_LABEL_TH: Record<string, string> = {
   ok: 'คำนวณสิทธิ์แล้ว',
-  needs_hr: 'รอข้อมูลยืนยันจาก HR',
-  pending_hr_decision: 'รอ HR พิจารณา',
+  needs_hr: 'รอยืนยันข้อมูลบุคลากร',
+  pending_hr_decision: 'รอตีความนโยบาย',
   pending_policy: 'รอการตีความนโยบาย',
   unknown: 'ข้อมูลไม่เพียงพอ',
   out_of_scope: 'อยู่นอกขอบเขตประกาศ',
@@ -66,7 +66,7 @@ export function formatDays(value: number | null | undefined): string {
 
 const REASON_TH: Record<string, string> = {
   usage_coverage_incomplete: 'ข้อมูลการลาบางเดือนยังไม่ครบ จึงยังไม่คำนวณวันคงเหลือ',
-  needs_hr: 'ต้องรอข้อมูลที่ HR ยืนยัน',
+  needs_hr: 'ต้องรอการยืนยันข้อมูลบุคลากร',
 };
 
 export function reasonsTh(row: LeaveBalanceRow): string[] {
