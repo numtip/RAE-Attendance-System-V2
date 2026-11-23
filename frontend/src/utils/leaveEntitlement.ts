@@ -128,7 +128,6 @@ const FLAG_NOTE_TH: Record<string, string> = {
   carryover_not_allowed: 'หลักเกณฑ์นี้ไม่มียอดสะสม (ไม่นำยอดที่บันทึกไว้มาบวก)',
   vacation_half_day_review: 'ลาพักผ่อนน้อยกว่าขั้นต่ำของหลักเกณฑ์ รอตรวจสอบ',
   hr_differs_from_policy: 'สิทธิ์ที่กรอกต่างจากที่หลักเกณฑ์กำหนด',
-  policy_assumed_university: 'ยังไม่ได้กำหนดหลักเกณฑ์ของประเภทนี้ — ใช้เกณฑ์พนักงานมหาวิทยาลัยตามที่ยืนยันไว้',
 };
 export function flagNotesTh(cell: { flags?: string[] } | undefined): string[] {
   return [...new Set((cell?.flags ?? []).map((f) => FLAG_NOTE_TH[f]).filter((t): t is string => Boolean(t)))];

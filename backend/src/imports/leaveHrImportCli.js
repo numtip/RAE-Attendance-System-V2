@@ -155,10 +155,9 @@ async function runLeaveHrImport(argv, { container, readFile = (file) => fs.readF
       const family = familyForType(employee.employeeType);
       // The appointment kind is a university-policy fact (clause 23); section policies never ask for it.
       if (row.appointmentKindRequiredForUniversity && family === 'university') add(kind, row, 'error', 'appointment_kind_missing');
-      // A confirmed type with no mapped policy keeps the university rules (as before): worth saying, not blocking.
       if (family === null && merged.eligibilityConfirmed === true) add(kind, row, 'warning', 'policy_unmapped');
-      // Section contract staff and the unmapped type wait for the owner's confirmation.
-      if (['contract', 'procurement_academic'].includes(employee.employeeType) && merged.eligibilityConfirmed === null) add(kind, row, 'warning', 'eligibility_unconfirmed');
+      // Section contract staff wait for the owner's confirmation (procurement_academic is mapped to the university policy).
+      if (employee.employeeType === 'contract' && merged.eligibilityConfirmed === null) add(kind, row, 'warning', 'eligibility_unconfirmed');
       if (row.blocked) continue;
       s.matched += 1;
 

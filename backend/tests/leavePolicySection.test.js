@@ -34,9 +34,9 @@ test('policy values: university 60/45/10 untouched, section 15/5/10, section con
   assert.equal(SECTION_EMPLOYEE_2569.vacation.carryoverAllowed, false);
 });
 
-test('employment type -> policy family; procurement_academic has none', () => {
-  assert.deepEqual(['university', 'department', 'contract', 'procurement_academic', 'unknown'].map(familyForType), ['university', 'section_employee', 'section_contract', null, null]);
-  assert.equal(POLICY_FAMILY_BY_TYPE.procurement_academic, null);
+test('employment type -> policy family; procurement_academic maps to university (owner decision); only an unknown type has none', () => {
+  assert.deepEqual(['university', 'department', 'contract', 'procurement_academic', 'unknown'].map(familyForType), ['university', 'section_employee', 'section_contract', 'university', null]);
+  assert.equal(POLICY_FAMILY_BY_TYPE.procurement_academic, 'university');
   assert.deepEqual(Object.keys(FAMILIES), ['university', 'section_employee', 'section_contract']);
 });
 
@@ -216,17 +216,21 @@ test('policyContextFor: the family, the policy in force for a year and why none 
   assert.equal(policyContextFor('contract', fy(2570)).policy.id, 'RAE-SECTION-CONTRACT-2570-V3');
   assert.equal(policyContextFor('department', fy(2569)).reason, 'policy_effective_mid_year');
   assert.equal(policyContextFor('contract', fy(2569)).reason, 'no_policy_for_period');
-  const unmapped = policyContextFor('procurement_academic', fy(2570));
-  assert.deepEqual([unmapped.family, unmapped.unmapped], [null, true]);
+  const pro = policyContextFor('procurement_academic', fy(2570));
+  assert.deepEqual([pro.family, pro.unmapped, pro.policy.id], ['university', false, 'MJU-LEAVE-2569']);
+  const unknown = policyContextFor('something_new', fy(2570));
+  assert.deepEqual([unknown.family, unknown.unmapped], [null, true]);
 });
 
-test('an unmapped type (procurement_academic): waits until the owner confirms; once confirmed it keeps the university rules, flagged', () => {
-  const waiting = run({ employeeType: 'procurement_academic', hireDate: '2015-04-01' });
-  assert.deepEqual(statuses(waiting), ['needs_hr', 'needs_hr', 'needs_hr']);
-  assert.equal(waiting.policyFamily, null);
-  const confirmed = run({ employeeType: 'procurement_academic', hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', eligibilityConfirmation: CONFIRMED });
-  assert.equal(confirmed.results.sick.status, OK);
-  assert.equal(confirmed.results.sick.entitlementDays, 60);
-  assert.equal(confirmed.policyVersion, 'MJU-LEAVE-2569');
-  assert.ok(confirmed.results.sick.flags.some((f) => f.code === 'policy_assumed_university'));
+test('procurement_academic follows the university policy with all its rules, no flag and no confirmation needed', () => {
+  const res = run({ employeeType: 'procurement_academic', hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', appointmentKind: 'first' }, { carryover: { vacationDays: 0 } });
+  assert.deepEqual(statuses(res), [OK, OK, OK]);
+  assert.equal(res.policyFamily, 'university');
+  assert.equal(res.policyVersion, 'MJU-LEAVE-2569');
+  assert.equal(res.results.sick.entitlementDays, 60);
+  assert.ok(!res.results.sick.flags.some((f) => f.code === 'policy_assumed_university'));
+  // the university carry-over rule applies to this type too
+  assert.equal(run({ employeeType: 'procurement_academic', hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', appointmentKind: 'first' }, { carryover: { vacationDays: 3 } }).results.vacation.availableDays, 13);
+  // the university hire-date rule applies: no hire date -> personal/vacation unknown, never a guessed number
+  assert.equal(run({ employeeType: 'procurement_academic' }).results.personal.status, 'unknown');
 });

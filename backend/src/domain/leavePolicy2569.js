@@ -32,7 +32,9 @@ const MJU_LEAVE_2569 = Object.freeze({
   employeeTypes: Object.freeze({
     university: 'eligible',
     department: 'needs_hr', // พนักงานส่วนงาน: not a term in the announcement
-    procurement_academic: 'needs_hr',
+    // OWNER DECISION 2026-11-23: นักวิชาการพัสดุ is explicitly covered by this policy (60/45/10 and every tenure, eligibility
+    // and carry-over rule of it). No per-person confirmation is needed; an explicit `eligibilityConfirmation` still overrides.
+    procurement_academic: 'eligible',
     contract: 'out_of_scope', // พนักงานส่วนงานจ้างเหมา
   }),
 

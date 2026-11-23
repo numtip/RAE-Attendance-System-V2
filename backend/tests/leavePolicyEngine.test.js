@@ -87,8 +87,8 @@ test('university staff are eligible', () => {
   assert.equal(r.eligibility.status, 'eligible');
 });
 
-test('types waiting for the owner (section contract, procurement_academic, unknown) need confirmation; they are not ineligible and get no numbers', () => {
-  for (const employeeType of ['contract', 'procurement_academic', 'something_new', undefined]) {
+test('types waiting for the owner (section contract, unknown) need confirmation; they are not ineligible and get no numbers', () => {
+  for (const employeeType of ['contract', 'something_new', undefined]) {
     const res = entitlements({ employeeType, hireDate: '2015-04-01' }, { records: [day('2026-11-02', 'sick')] });
     for (const type of ['sick', 'personal', 'vacation']) {
       assert.equal(res[type].status, STATUS.NEEDS_HR, `${employeeType}/${type}`);
@@ -113,12 +113,14 @@ test('an HR confirmation with a reference settles eligibility; one without a ref
   assert.ok(noRef.sick.flags.some((f) => f.code === 'eligibility_confirmation_missing_reference'));
   const denied = entitlements({ employeeType: 'university', hireDate: '2015-04-01', eligibilityConfirmation: { confirmed: false, reference: 'HR memo' } });
   assert.equal(denied.sick.status, STATUS.OUT_OF_SCOPE);
-  // a type with no mapped policy that the owner confirmed keeps the university rules it always had, visibly flagged
-  const unmapped = entitlements({ employeeType: 'procurement_academic', hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', eligibilityConfirmation: { confirmed: true, reference: 'memo' } });
-  assert.equal(unmapped.sick.status, STATUS.OK);
-  assert.equal(unmapped.sick.entitlementDays, 60);
-  assert.ok(unmapped.sick.flags.some((f) => f.code === 'policy_assumed_university'));
+  // procurement_academic is explicitly mapped to the university policy (owner decision 2026-11-23): no flag, no wait
+  const pro = entitlements({ employeeType: 'procurement_academic', hireDate: '2015-04-01', continuousServiceStart: '2015-04-01', appointmentKind: 'first' });
+  assert.equal(pro.sick.status, STATUS.OK);
+  assert.equal(pro.sick.entitlementDays, 60);
+  assert.deepEqual(pro.sick.flags.map((f) => f.code), []);
   assert.equal(entitlements({ employeeType: 'procurement_academic', eligibilityConfirmation: { confirmed: false, reference: 'memo' } }).sick.status, STATUS.OUT_OF_SCOPE);
+  // an unknown type is never settled by a confirmation: it cannot choose a policy
+  assert.equal(entitlements({ employeeType: 'something_new', eligibilityConfirmation: { confirmed: true, reference: 'memo' } }).sick.status, STATUS.NEEDS_HR);
 });
 
 // ------------------------------------------------------------ sick: allowance, not a limit

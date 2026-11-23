@@ -135,12 +135,9 @@ function policyForFiscalYear(fy, policies = POLICIES) {
 function classifyEligibility(employee, policy, { unmapped = false } = {}) {
   const flags = [];
   const confirmation = employee?.eligibilityConfirmation;
-  if (confirmation && typeof confirmation.confirmed === 'boolean') {
+  // A type with no mapped policy (unknown only) is never settled by a confirmation: that cannot choose a policy.
+  if (!unmapped && confirmation && typeof confirmation.confirmed === 'boolean') {
     if (confirmation.reference && String(confirmation.reference).trim()) {
-      // A type with no mapped policy (procurement_academic) that the owner has confirmed keeps the treatment it has
-      // always had: the university rules, which were the only policy before. It is flagged, never silent, and the
-      // owner is asked which policy really applies.
-      if (confirmation.confirmed && unmapped) flags.push({ code: 'policy_assumed_university', detail: 'no leave policy is mapped to this employment type; the owner\'s confirmation applies the university rules as before' });
       return { status: confirmation.confirmed ? 'eligible' : 'out_of_scope', source: 'hr_confirmation', flags };
     }
     flags.push({ code: 'eligibility_confirmation_missing_reference' });
@@ -153,8 +150,8 @@ function classifyEligibility(employee, policy, { unmapped = false } = {}) {
 /**
  * The policy that applies to an employment type for a fiscal year: its family, the policy in force (or why none is),
  * and `anyPolicy` — the family's latest policy, used to classify a person even in a year no policy covers yet.
- * An unmapped type (procurement_academic, unknown) has no family: it is classified against the university table
- * as `needs_hr`; once the owner has confirmed it, the university rules apply as before, with a visible flag.
+ * An unmapped type (unknown only; procurement_academic is mapped to the university family) has no family: it is
+ * classified against the university table as `needs_hr` and stays there.
  */
 function policyContextFor(employeeType, fy, policies = ALL_POLICIES) {
   const family = familyForType(employeeType);
