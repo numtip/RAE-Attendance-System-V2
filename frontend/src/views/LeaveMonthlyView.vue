@@ -2,7 +2,7 @@
 import { errorMessageTh } from '../utils/i18n';
 import { computed, onMounted, ref } from 'vue';
 import { api, downloadLeaveMonthly } from '../api/client';
-import type { LeaveKind, LeaveMonthlyReport, LeaveMonthlyRow, LeaveRecordStatus, LeaveReportQuery } from '../api/types';
+import type { LeaveBalanceRow, LeaveKind, LeaveMonthlyReport, LeaveMonthlyRow, LeaveRecordStatus, LeaveReportQuery } from '../api/types';
 import AsyncState from '../components/AsyncState.vue';
 import KpiTile from '../components/KpiTile.vue';
 import PageHeader from '../components/PageHeader.vue';
@@ -39,8 +39,8 @@ type TabId = (typeof TABS)[number]['id'];
 const tab = ref<TabId>('overview');
 /** Whole-year report with the same filters, used only for the monthly trend when the view is narrower than a year. */
 const yearReport = ref<LeaveMonthlyReport | null>(null);
-/** null = no verified entitlement for anyone in view (NOT zero). */
-const entitlement = ref<{ remaining: number; people: number; of: number } | null>(null);
+const balance = ref<LeaveBalanceRow[] | null>(null);
+const balanceState = ref<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
 const kinds = computed<LeaveKind[]>(() => (report.value?.types ?? []).map((t) => t.type));
 const visibleRows = computed(() => {
@@ -56,6 +56,16 @@ const trend = computed(() => (trendSource.value ? monthlyTrend(trendSource.value
 const trendMax = computed(() => Math.max(0, ...trend.value.map((p) => p.days ?? 0)));
 const people = computed(() => (report.value ? personStats(report.value) : []));
 const peopleMax = computed(() => Math.max(0, ...people.value.map((p) => p.recordedDays ?? 0)));
+/** Average recorded days per employee who has counted leave days; null = nobody to average over. */
+const avgPerPerson = computed(() => {
+  const withDays = (report.value?.rows ?? []).filter((r) => (r.recordedTotals?.recordedDays ?? 0) > 0);
+  const total = report.value?.recordedTotals?.all.recordedDays ?? 0;
+  return withDays.length ? { avg: total / withDays.length, people: withDays.length } : null;
+});
+const balanceRows = computed(() => (report.value?.types ?? []).map((t) => {
+  const b = balance.value?.find((x) => x.leaveType === t.type);
+  return { type: t.type, label: t.labelTh, total: b?.totalDays ?? null, used: b?.usedDays ?? null, remaining: b?.remainingDays ?? null };
+}));
 const issues = computed(() => (report.value ? reviewIssues(report.value) : []));
 const divMax = computed(() => Math.max(0, ...(report.value?.byDivision ?? []).map((d) => d.recordedDays)));
 const pct = (value: number, max: number) => (max > 0 ? `${Math.max(0, Math.min(100, (value / max) * 100))}%` : '0%');
@@ -92,11 +102,13 @@ async function load() {
   report.value = null;
   open.value = null;
   yearReport.value = null;
-  entitlement.value = null;
+  balance.value = null;
+  balanceState.value = 'idle';
   try {
     const result = await api.leaveMonthlyReport(currentQuery());
     report.value = result;
-    void loadSupporting(result, loadId);
+    void loadTrend(loadId);
+    void loadBalance(loadId);
     // The employee picker lists everyone the current division/scope allows (not just the picked person).
     if (!employeeUid.value) {
       roster.value = result.rows.map((row) => ({ uid: row.employeeUid, label: `${row.employeeId} · ${row.employeeName}` }));
@@ -108,28 +120,31 @@ async function load() {
   }
 }
 
-/** Trend (needs the whole year) and entitlement KPI; each degrades to "ไม่มีข้อมูล" on failure. */
-async function loadSupporting(current: LeaveMonthlyReport, token: number) {
+/** Trend needs the whole year; degrades to "ไม่มีข้อมูล" on failure. */
+async function loadTrend(token: number) {
   yearReport.value = null;
-  entitlement.value = null;
-  if (month.value !== 0 || useRange.value) {
-    try {
-      yearReport.value = await api.leaveMonthlyReport({ ...currentQuery(), month: null, from: undefined, to: undefined });
-    } catch { yearReport.value = null; }
+  if (month.value === 0 && !useRange.value) return;
+  try {
+    const result = await api.leaveMonthlyReport({ ...currentQuery(), month: null, from: undefined, to: undefined });
+    if (token === loadId) yearReport.value = result;
+  } catch { yearReport.value = null; }
+}
+
+/** Entitlement is fetched for ONE selected employee only (never one request per employee). */
+async function loadBalance(token: number) {
+  balance.value = null;
+  balanceState.value = 'idle';
+  const uid = employeeUid.value || (report.value?.scope === 'self' ? report.value.rows[0]?.employeeUid : '');
+  if (!uid) return;
+  balanceState.value = 'loading';
+  try {
+    const rows = await api.leaveBalance(uid, year.value);
+    if (token !== loadId) return;
+    balance.value = rows;
+    balanceState.value = 'ready';
+  } catch {
+    if (token === loadId) balanceState.value = 'error';
   }
-  const uids = current.rows.map((r) => r.employeeUid);
-  let remaining = 0;
-  let withEntitlement = 0;
-  for (let i = 0; i < uids.length; i += 6) {
-    const batch = await Promise.allSettled(uids.slice(i, i + 6).map((uid) => api.leaveBalance(uid, current.year)));
-    for (const res of batch) {
-      if (res.status !== 'fulfilled') continue;
-      const known = res.value.filter((b) => b.remainingDays !== null);
-      if (known.length) { withEntitlement += 1; remaining += known.reduce((a, b) => a + (b.remainingDays ?? 0), 0); }
-    }
-    if (loadId !== token) return; // a newer load superseded this one
-  }
-  entitlement.value = withEntitlement ? { remaining, people: withEntitlement, of: uids.length } : null;
 }
 
 function onDivisionChange() {
@@ -238,9 +253,9 @@ onMounted(load);
             <KpiTile label="รออนุมัติ" :value="`${days(report.recordedTotals.all.awaitingApprovalDays)} วัน`" hint="บันทึกแล้ว ยังไม่ผ่านการอนุมัติ" tone="leave" />
             <KpiTile label="รอตรวจสอบ" :value="`${report.recordedTotals.all.needsReviewRecords} รายการ`" hint="ไม่รวมในยอดวัน" tone="late" />
             <KpiTile
-              label="สิทธิ์ลาคงเหลือ"
-              :value="entitlement ? `${days(entitlement.remaining)} วัน` : NO_DATA"
-              :hint="entitlement ? `จาก ${entitlement.people}/${entitlement.of} คนที่มีสิทธิ์ยืนยัน · หักเฉพาะวันที่อนุมัติ` : 'ยังไม่มีสิทธิ์ลาที่ยืนยัน'"
+              label="เฉลี่ยต่อคนที่มีรายการลา"
+              :value="avgPerPerson ? `${avgPerPerson.avg.toFixed(1)} วัน/คน` : NO_DATA"
+              :hint="avgPerPerson ? `${days(report.recordedTotals.all.recordedDays)} วัน ÷ ${avgPerPerson.people} คนที่มีรายการลานับยอด (ไม่รวมคนที่ไม่มีรายการลา)` : 'ไม่มีผู้ที่มีรายการลานับยอดในช่วงนี้'"
               tone="info"
             />
           </dl>
@@ -263,6 +278,18 @@ onMounted(load);
         </div>
 
         <div v-show="tab === 'overview'" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" class="panel">
+          <section v-if="balanceState !== 'idle'" class="card">
+            <h4>สิทธิ์ลาคงเหลือ <span class="muted">· ปี {{ report.buddhistYear }} · หักเฉพาะวันที่อนุมัติแล้ว</span></h4>
+            <p v-if="balanceState === 'loading'" class="muted">กำลังโหลด…</p>
+            <p v-else-if="balanceState === 'error'" class="muted">{{ NO_DATA }} — โหลดสิทธิ์ลาไม่สำเร็จ</p>
+            <ul v-else class="hbars">
+              <li v-for="b in balanceRows" :key="b.type" class="bal">
+                <span class="hbar-label">{{ b.label }}</span>
+                <span class="muted">{{ b.total === null ? NO_DATA : `สิทธิ์ ${days(b.total)} · ใช้ ${b.used === null ? NO_DATA : days(b.used)} วัน` }}</span>
+                <strong class="hbar-val">{{ b.remaining === null ? NO_DATA : `${days(b.remaining)} วัน` }}</strong>
+              </li>
+            </ul>
+          </section>
           <template v-if="report.recordedTotals">
             <div class="chart-grid">
               <section class="card">
@@ -542,6 +569,7 @@ onMounted(load);
 .seg--ok { background: var(--leave); border-radius: 0 0 3px 3px; }
 .seg--wait { background: var(--gold); border-radius: 3px 3px 0 0; }
 .trend-label { color: var(--muted); white-space: nowrap; font-size: 0.7rem; }
+@media (min-width: 40.01rem) { .hbars .bal { grid-template-columns: minmax(6rem, 10rem) 1fr auto; } }
 .issues { display: grid; gap: 0.5rem; margin: 0 0 0.75rem; padding: 0; list-style: none; }
 .issue { display: grid; gap: 0.15rem; padding: 0.65rem 0.85rem; border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius); font-size: 0.92rem; }
 .issue--late { background: var(--late-bg); border-left-color: var(--gold-deep); }
