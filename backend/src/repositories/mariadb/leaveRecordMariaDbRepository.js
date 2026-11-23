@@ -49,6 +49,22 @@ function createLeaveRecordMariaDbRepository(pool) {
       }
     },
 
+    /** Every record of one employee (any period). Missing table = no rows. */
+    async listForEmployee(employeeUid) {
+      try {
+        const [rows] = await pool.query(
+          `SELECT record_uid, employee_uid, DATE_FORMAT(leave_date, '%Y-%m-%d') AS leave_date, leave_type, day_part, day_fraction,
+                  review_status, review_reason, approval_status, source_system
+             FROM employee_leave_record WHERE employee_uid = ? ORDER BY leave_date DESC, day_part`,
+          [employeeUid],
+        );
+        return mapRows(rows).map((row) => ({ ...row, dayFraction: row.dayFraction === null ? null : Number(row.dayFraction) }));
+      } catch (error) {
+        if (isMissingTable(error)) return [];
+        throw error;
+      }
+    },
+
     async findByUid(recordUid) {
       const [rows] = await pool.query(
         `SELECT record_uid, employee_uid, DATE_FORMAT(leave_date, '%Y-%m-%d') AS leave_date, leave_type, day_part, day_fraction,

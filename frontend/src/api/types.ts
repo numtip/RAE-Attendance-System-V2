@@ -76,6 +76,14 @@ export interface LeaveRow {
   endDate: string;
   status: string;
   matchStatus?: string;
+  /** Set by the API: label, source and day detail of the row. HIP/manual rows keep their real approval status. */
+  typeLabel?: string;
+  statusLabel?: string;
+  source?: 'hip' | 'manual' | 'legacy';
+  sourceLabel?: string | null;
+  partLabel?: string | null;
+  dayFraction?: number | null;
+  reasonLabels?: string[];
 }
 
 export interface PersonalScan {
@@ -367,7 +375,14 @@ export interface LeaveBalanceRow {
   employeeUid: string;
   year: number;
   leaveType: string;
-  totalDays: number;
-  usedDays: number;
-  remainingDays: number;
+  typeLabel?: string;
+  /** null = no verified entitlement on record (NOT zero). */
+  totalDays: number | null;
+  /** Approved days only; null = deductions are not tracked for this type. */
+  usedDays: number | null;
+  pendingDays?: number | null;
+  /** null = unavailable (no verified entitlement or untracked deductions). */
+  remainingDays: number | null;
+  available?: boolean;
+  unavailableReason?: 'no_entitlement' | 'deductions_not_tracked' | null;
 }

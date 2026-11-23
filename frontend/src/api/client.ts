@@ -168,9 +168,12 @@ export const api = {
     ),
   employeeAttendance: (employeeUid: string) =>
     apiRequest<import('./types').AttendanceRecord[]>(`/employees/${encodeURIComponent(employeeUid)}/attendance`),
-  leaveList: (employeeUid?: string) => {
-    const query = employeeUid ? `?employeeUid=${encodeURIComponent(employeeUid)}` : '';
-    return apiRequest<import('./types').LeaveRow[]>(`/leave${query}`);
+  leaveList: (employeeUid?: string, year?: number) => {
+    const params = new URLSearchParams();
+    if (employeeUid) params.set('employeeUid', employeeUid);
+    if (year) params.set('year', String(year));
+    const query = params.toString();
+    return apiRequest<import('./types').LeaveRow[]>(`/leave${query ? `?${query}` : ''}`);
   },
   leaveBalance: (employeeUid: string, year: number) =>
     apiRequest<import('./types').LeaveBalanceRow[]>(

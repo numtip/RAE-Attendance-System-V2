@@ -13,4 +13,23 @@ const REASON_LABEL = {
 const TYPE_LABEL = { personal: 'ลากิจ', sick: 'ลาป่วย', vacation: 'ลาพักผ่อน' };
 const APPROVAL_LABEL = { unverified: 'ยังไม่ยืนยันอนุมัติ', approved: 'อนุมัติแล้ว', rejected: 'ไม่อนุมัติ' };
 
-module.exports = { PART_LABEL, REASON_LABEL, TYPE_LABEL, APPROVAL_LABEL };
+/**
+ * Explicit status of one employee_leave_record row, derived only from stored columns:
+ * rejected (decision) / needs_review (conflicting, never counted) / approved (executive decided) /
+ * unverified (recorded from HIP or by hand, not yet decided).
+ */
+const RECORD_STATUS_LABEL = {
+  approved: 'อนุมัติแล้ว',
+  unverified: 'บันทึกแล้ว · รออนุมัติ',
+  needs_review: 'รอตรวจสอบ',
+  rejected: 'ไม่อนุมัติ',
+};
+const SOURCE_LABEL = { hip_daily_report_remark: 'รายงาน HIP (หมายเหตุ)', owner_manual_entry: 'บันทึกด้วยมือ', legacy: 'ระบบเดิม' };
+
+function recordStatus(record) {
+  if (record.approvalStatus === 'rejected') return 'rejected';
+  if (record.reviewStatus !== 'candidate') return 'needs_review';
+  return record.approvalStatus === 'approved' ? 'approved' : 'unverified';
+}
+
+module.exports = { PART_LABEL, REASON_LABEL, TYPE_LABEL, APPROVAL_LABEL, RECORD_STATUS_LABEL, SOURCE_LABEL, recordStatus };

@@ -28,6 +28,10 @@ class LeaveRecordRepository {
     return this.records.filter((row) => row.leaveDate >= start && row.leaveDate <= end);
   }
 
+  async listForEmployee(employeeUid) {
+    return this.records.filter((row) => row.employeeUid === employeeUid);
+  }
+
   async findByUid(recordUid) {
     return this.records.find((row) => row.recordUid === recordUid) || null;
   }
