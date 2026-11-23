@@ -189,3 +189,5 @@ Read this reference and inspect the actual repository before implementation. Tre
 - ไม่มี ABSENT: ใช้เกินสิทธิ์หรือข้อมูลไม่ครบไม่ถูกตีความว่าขาดงาน
 
 **API (pure):** `computeEntitlements({ fiscalYear, employee, records, carryover, grants })`, `vacationCarryoverForNextYear`, `summarizeUsage`, `fiscalYearOf/ByBE`, `policyForDate`, `workingDaysBetween` (ไม่มีปฏิทินวันหยุด → `unknown`, ไม่เดาจาก จันทร์–ศุกร์), `splitLeaveByFiscalYear` (ลาต่อเนื่องข้ามปี = คำขอเดียว แยกวันทำการต่อปี). Tests: `backend/tests/leavePolicyEngine.test.js`
+
+**Next:** ข้อมูลที่ HR ต้องส่งและกติกาตรวจสอบ → `HR_LEAVE_DATA_ONBOARDING.md` (เทมเพลต `docs/hr-templates/`); แผนเชื่อม engine กับ `leaveService`, ลำดับความสำคัญของ HR vs คำนวณ และข้อเสนอ migration → `LEAVE_ENGINE_PHASE2_PLAN.md`.
