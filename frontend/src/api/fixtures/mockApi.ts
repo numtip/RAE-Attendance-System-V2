@@ -268,6 +268,7 @@ function handleEntitlements(role: string, year: number, division: string): impor
     for (const c of cells) byStatus[c.status] = (byStatus[c.status] || 0) + 1;
     return [t, {
       label: t, byStatus, determined: ok.length,
+      missing: Object.fromEntries(Object.entries(rows.filter((r) => r.scope !== 'excluded').flatMap((r) => r.types[t]?.missing ?? []).reduce((m: Record<string, number>, c) => { m[c] = (m[c] || 0) + 1; return m; }, {}))),
       entitlementDays: ok.reduce((n, c) => n + (c.totalDays ?? 0), 0), usedDays: ok.reduce((n, c) => n + (c.usedDays ?? 0), 0), remainingDays: ok.reduce((n, c) => n + (c.remainingDays ?? 0), 0),
     }];
   })) as import('../types').EntitlementOverview['summary']['byType'];
@@ -284,6 +285,42 @@ function handleEntitlements(role: string, year: number, division: string): impor
     },
     rows,
   };
+}
+
+function handleEntitlementImport(role: string, body: { profile?: string; entitlement?: string; confirm: boolean }): import('../types').ImportResult {
+  if (role !== 'executive') throw new ApiError(403, 'FORBIDDEN', 'Only an executive with an organization grant can manage leave data');
+  const bad = (body.profile ?? '').includes('BAD');
+  const files: import('../types').ImportResult['files'] = {};
+  for (const kind of ['profile', 'entitlement'] as const) {
+    if (body[kind]) files[kind] = { rows: 6, fileErrors: [], errors: bad && kind === 'profile' ? { date_format: 1, type_out_of_scope: 1 } : {}, warnings: { hire_missing: 4 }, matched: 5, unchanged: 3, toApply: bad ? 0 : 2, alreadyApplied: false };
+  }
+  const findings: import('../types').ImportResult['findings'] = bad
+    ? [{ kind: 'profile', line: 3, level: 'error', code: 'date_format' }, { kind: 'profile', line: 7, level: 'error', code: 'type_out_of_scope' }, { kind: 'profile', line: 2, level: 'warning', code: 'hire_missing' }]
+    : [{ kind: 'profile', line: 2, level: 'warning', code: 'hire_missing' }, { kind: 'profile', line: 4, level: 'warning', code: 'hire_missing' }];
+  return {
+    mode: body.confirm ? 'apply' : 'dry-run', ok: !bad, written: body.confirm && !bad, alreadyApplied: false, blockingErrors: bad ? 2 : 0, refused: bad ? 'the files have errors that block the import; fix them first' : null,
+    files, findings, findingsTruncated: false,
+    preview: { fiscalYearBe: 2570, people: 5, before: { sick: { ok: 4, unknown: 1 }, personal: { unknown: 5 }, vacation: { unknown: 5 } }, after: { sick: { ok: 5 }, personal: { ok: 3, unknown: 2 }, vacation: { unknown: 5 } } },
+    applied: body.confirm && !bad ? { profile: { rowsApplied: 2, rowsUnchanged: 3, auditRows: 5 } } : null,
+  };
+}
+
+function handleBulkEligibility(role: string, body: { employeeUids: string[]; confirmed: boolean | null; reference?: string }): import('../types').BulkEligibilityResult {
+  if (role !== 'executive') throw new ApiError(403, 'FORBIDDEN', 'Only an executive with an organization grant can manage leave data');
+  let changed = 0;
+  for (const uid of body.employeeUids) {
+    const row = entRows.find((r) => r.employeeUid === uid);
+    if (!row) throw new ApiError(400, 'VALIDATION_ERROR', 'an employee in the list was not found');
+    if (row.employeeType === 'contract') throw new ApiError(400, 'VALIDATION_ERROR', 'contract staff are outside the leave policy and cannot be onboarded');
+  }
+  for (const uid of body.employeeUids) {
+    const row = entRows.find((r) => r.employeeUid === uid)!;
+    row.profile = { ...(row.profile as import('../types').EntitlementProfile), eligibilityConfirmed: body.confirmed, eligibilityReference: body.confirmed === null ? null : (body.reference || 'owner-bulk-confirm') };
+    if (body.confirmed === true && row.scope === 'unconfirmed') row.scope = 'in_policy';
+    if (body.confirmed === false) row.scope = 'excluded';
+    changed += 1;
+  }
+  return { requested: body.employeeUids.length, changed, unchanged: 0, failed: [], reference: body.confirmed === null ? null : (body.reference || 'owner-bulk-confirm') };
 }
 
 function handleSaveEntitlementFacts(role: string, uid: string, body: import('../types').EntitlementFactsInput): { changed: number; rows: LeaveBalanceRow[] } {
@@ -648,6 +685,12 @@ export async function fixtureApiRequest<T>(
   const entMatch = path.match(/^\/leave\/entitlements\?year=(\d+)(?:&division=([\w%]+))?$/);
   if (auth && method === 'GET' && entMatch) {
     return handleEntitlements(authFromSession().role, Number(entMatch[1]), decodeURIComponent(entMatch[2] ?? '')) as T;
+  }
+  if (auth && method === 'POST' && path === '/leave/entitlements/import') {
+    return handleEntitlementImport(authFromSession().role, options.body as { profile?: string; entitlement?: string; confirm: boolean }) as T;
+  }
+  if (auth && method === 'POST' && path === '/leave/entitlements/eligibility') {
+    return handleBulkEligibility(authFromSession().role, options.body as { employeeUids: string[]; confirmed: boolean | null; reference?: string }) as T;
   }
   const entSaveMatch = path.match(/^\/leave\/entitlements\/([^/?]+)\?year=(\d+)$/);
   if (auth && method === 'PUT' && entSaveMatch) {
