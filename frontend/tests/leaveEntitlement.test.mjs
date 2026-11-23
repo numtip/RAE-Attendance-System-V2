@@ -122,3 +122,35 @@ test('day input: blank is "not entered", halves are fine, everything else is inv
   assert.equal(parseDaysInput('0', 30), 0);
   for (const bad of ['7.3', '-1', '31', 'abc', '1,5', '1e1']) assert.equal(parseDaysInput(bad, 30), 'invalid', bad);
 });
+
+// ------------------------------------------------------------ bulk management helpers
+
+import { canConfirmImport, findingLabelTh, groupFindings } from '../src/utils/leaveEntitlement.ts';
+
+test('a cell names exactly what is missing for that leave type', () => {
+  const v = cellView(cell({ status: 'unknown', available: false, remainingDays: null, missing: ['hireDate'] }));
+  assert.deepEqual([v.text, v.sub, v.meter], ['ไม่มีข้อมูล', 'ขาด: วันที่เริ่มจ้าง', null]);
+  const two = cellView(cell({ status: 'unknown', available: false, remainingDays: null, missing: ['continuousServiceStart', 'appointmentKind'] }));
+  assert.equal(two.sub, 'ขาด: วันที่เริ่มนับอายุงานต่อเนื่อง, ลักษณะการบรรจุ');
+});
+
+test('import findings: Thai labels for every code used, grouped by code with line numbers only', () => {
+  for (const code of ['type_out_of_scope', 'source_missing', 'id_not_found', 'baseline_pair', 'no_data', 'unknown_column']) assert.match(findingLabelTh(code), /[฀-๿]/);
+  assert.equal(findingLabelTh('brand_new_code'), 'ข้อมูลไม่ถูกต้อง');
+  const groups = groupFindings([
+    { kind: 'profile', line: 3, level: 'warning', code: 'hire_missing' }, { kind: 'profile', line: 5, level: 'error', code: 'date_format' },
+    { kind: 'profile', line: 7, level: 'error', code: 'date_format' }, { kind: 'profile', line: 0, level: 'error', code: 'missing_column' },
+  ]);
+  assert.deepEqual(groups.map((g) => [g.level, g.code, g.lines]), [['error', 'date_format', [5, 7]], ['error', 'missing_column', []], ['warning', 'hire_missing', [3]]]);
+});
+
+test('confirm is offered only after a clean dry run that would change something', () => {
+  const clean = { mode: 'dry-run', ok: true, blockingErrors: 0, alreadyApplied: false, files: { profile: { toApply: 2, alreadyApplied: false } } };
+  assert.equal(canConfirmImport(clean), true);
+  assert.equal(canConfirmImport({ ...clean, blockingErrors: 1 }), false);
+  assert.equal(canConfirmImport({ ...clean, ok: false }), false);
+  assert.equal(canConfirmImport({ ...clean, alreadyApplied: true }), false);
+  assert.equal(canConfirmImport({ ...clean, files: { profile: { toApply: 0, alreadyApplied: false } } }), false);
+  assert.equal(canConfirmImport({ ...clean, mode: 'apply' }), false);
+  assert.equal(canConfirmImport(null), false);
+});

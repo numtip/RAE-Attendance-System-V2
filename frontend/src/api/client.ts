@@ -188,6 +188,11 @@ export const api = {
     apiRequest<{ changed: number; rows: import('./types').LeaveBalanceRow[] }>(
       `/leave/entitlements/${encodeURIComponent(employeeUid)}?year=${year}`, { method: 'PUT', body },
     ),
+  // Owner-only: upload -> dry run (confirm=false) -> confirmed import, through the HR import service.
+  importLeaveEntitlementFiles: (body: { profile?: string; entitlement?: string; confirm: boolean }) =>
+    apiRequest<import('./types').ImportResult>('/leave/entitlements/import', { method: 'POST', body }),
+  bulkLeaveEligibility: (body: { employeeUids: string[]; confirmed: boolean | null; reference?: string }) =>
+    apiRequest<import('./types').BulkEligibilityResult>('/leave/entitlements/eligibility', { method: 'POST', body }),
   leaveHistory: (employeeUid: string) =>
     apiRequest<import('./types').LeaveRow[]>(`/leave/history/${employeeUid}`),
   organizationReport: (year: number, month: number) =>
@@ -237,6 +242,25 @@ export async function downloadLeaveMonthly(query: import('./types').LeaveReportQ
   const link = document.createElement('a');
   link.href = url;
   link.download = `leave-${query.year + 543}-${query.month ? String(query.month).padStart(2, '0') : 'all'}.${format}`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Owner-only template download (profile or entitlement), CSV or Excel. */
+export async function downloadEntitlementTemplate(kind: 'profile' | 'entitlement', format: 'csv' | 'xlsx', year: number): Promise<void> {
+  const token = getAccessToken();
+  const response = await fetch(
+    `${API_BASE}/leave/entitlements/template?kind=${kind}&format=${format}&year=${year}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!response.ok) {
+    throw new ApiError(response.status, 'EXPORT_FAILED', response.status === 403 ? 'ไม่มีสิทธิ์ดาวน์โหลดแบบฟอร์มนี้' : 'Export failed');
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = kind === 'profile' ? `leave-profile-template.${format}` : `leave-entitlement-template-${year}.${format}`;
   link.click();
   URL.revokeObjectURL(url);
 }

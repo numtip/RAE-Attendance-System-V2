@@ -230,20 +230,32 @@ test('entitlements: stored per fiscal year with the batch and operator; warnings
   assert.ok(ctx.leaveHr.audit.some((a) => a.fieldName === 'entitlement_days' && a.entityKey === '2570|sick' && a.afterValue === '90'));
 });
 
-test('outsourced staff cannot get an entitlement row unless the same run confirms them with a reference', async () => {
+test('outsourced staff are outside the policy: no entitlement or profile row, and no confirmation can bring them in', async () => {
   const blocked = setup();
   const rows = [eRow({ employeeId: '1003', leaveType: 'ลาป่วย', entitlementDays: '60', carryoverDays: '' })];
   const a = await run(['--entitlement', file(E, rows)], blocked);
   assert.deepEqual(a.report.files.entitlement.errors, { type_out_of_scope: 1 });
   assert.equal(a.exitCode, 3);
 
+  // Even with a confirmation and a reference in the same run, the contract worker stays out.
   const confirmed = setup();
   const profile = file(P, [pRow({ employeeId: '1003', name: 'นายวิชัย มั่นคง', type: 'พนักงานส่วนงานจ้างเหมา', eligibilityConfirmed: 'ใช่', eligibilityReference: 'บันทึก 5/2569' })]);
   const b = await run([...['--profile', profile, '--entitlement', file(E, rows)], ...OPERATOR], confirmed);
-  assert.equal(b.exitCode, 0);
-  assert.equal(b.report.written, true);
-  assert.equal((await confirmed.leaveHr.getEntitlement('u-con', 2570, 'sick')).entitlementDays, 60);
-  assert.equal(confirmed.leaveHr.batches.length, 2); // one batch per file, one transaction
+  assert.equal(b.exitCode, 3);
+  assert.equal(b.report.written, false);
+  assert.equal(b.report.files.profile.errors.type_out_of_scope, 1);
+  assert.equal(await confirmed.leaveHr.getEntitlement('u-con', 2570, 'sick'), null);
+  assert.equal(confirmed.leaveHr.batches.length, 0);
+});
+
+test('an entitlement row nobody filled in is skipped as no_data, not rejected', async () => {
+  const ctx = setup();
+  const blank = eRow({ entitlementDays: '', carryoverDays: '', usageBaselineDays: '', usageBaselineThrough: '', sourceReference: '' });
+  const r = await run(['--entitlement', file(E, [blank])], ctx);
+  assert.equal(r.exitCode, 0);
+  assert.deepEqual(r.report.files.entitlement.errors, {});
+  assert.deepEqual(r.report.files.entitlement.warnings, { no_data: 1 });
+  assert.equal(r.report.files.entitlement.toApply, 0);
 });
 
 test('re-importing an entitlement file: identical content is a no-op; blank carry-over keeps the stored one', async () => {

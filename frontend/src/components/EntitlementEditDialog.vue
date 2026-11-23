@@ -22,6 +22,10 @@ const eligibility = ref<'' | 'yes' | 'no'>('');
 const reference = ref('');
 const days = ref<Record<LeaveKind, string>>({ sick: '', personal: '', vacation: '' });
 const carryover = ref('');
+// Days already used BEFORE the system began counting (outside the leave records), and the date they cover up to.
+const baseDays = ref<Record<LeaveKind, string>>({ sick: '', personal: '', vacation: '' });
+const hasBaseDate = ref<Record<LeaveKind, boolean>>({ sick: false, personal: false, vacation: false });
+const baseDate = ref<Record<LeaveKind, string>>({ sick: todayIso, personal: todayIso, vacation: todayIso });
 const remove = ref<Record<LeaveKind, boolean>>({ sick: false, personal: false, vacation: false });
 const localError = ref<string | null>(null);
 
@@ -45,12 +49,24 @@ watch(() => props.row, async (row) => {
     days.value[t] = cell?.source === 'hr_verified' && cell.entitlementDays !== null ? String(cell.entitlementDays) : '';
     remove.value[t] = false;
   }
+  for (const t of LEAVE_KINDS) {
+    const st = row.stored?.[t];
+    baseDays.value[t] = st?.usageBaselineDays != null ? String(st.usageBaselineDays) : '';
+    hasBaseDate.value[t] = Boolean(st?.usageBaselineThrough);
+    baseDate.value[t] = st?.usageBaselineThrough ?? clampToYear(todayIso);
+  }
   const vac = row.types.vacation;
   carryover.value = vac?.source === 'hr_verified' && vac.carryoverDays !== null ? String(vac.carryoverDays) : '';
   localError.value = null;
   if (!el.open) { el.showModal(); await nextTick(); }
 });
 
+// A baseline date must lie inside the fiscal year: start the picker on a date that does.
+function clampToYear(iso: string): string {
+  const start = `${props.fiscalYearBe - 544}-10-01`;
+  const end = `${props.fiscalYearBe - 543}-09-30`;
+  return iso < start ? start : (iso > end ? end : iso);
+}
 function policyHint(t: LeaveKind): string | null {
   const cell = props.row?.types[t];
   return cell && cell.source === 'computed' && cell.entitlementDays !== null ? `ตามประกาศ ${cell.entitlementDays} วัน` : null;
@@ -79,13 +95,29 @@ function submit() {
     if (d === 'invalid') { localError.value = `จำนวนวันของ${leaveTypeLabel(t)}ต้องเป็นตัวเลขหลายเท่าของ 0.5`; return; }
     const c = t === 'vacation' ? parseDaysInput(carryover.value, 30) : null;
     if (c === 'invalid') { localError.value = 'วันลาพักผ่อนสะสมต้องเป็นตัวเลขหลายเท่าของ 0.5 ไม่เกิน 30'; return; }
+    const cell = props.row?.types[t];
+    const st = props.row?.stored?.[t];
+    const bDays = parseDaysInput(baseDays.value[t], 120);
+    if (bDays === 'invalid') { localError.value = `จำนวนวันที่ใช้ไปก่อนเริ่มนับของ${leaveTypeLabel(t)}ต้องเป็นตัวเลขหลายเท่าของ 0.5`; return; }
+    if ((bDays !== null) !== hasBaseDate.value[t]) { localError.value = `${leaveTypeLabel(t)}: จำนวนวันที่ใช้ไปก่อนเริ่มนับต้องกรอกคู่กับ “นับถึงวันที่”`; return; }
+    const bThrough = hasBaseDate.value[t] ? baseDate.value[t] : null;
     if (d === null) {
-      if (t === 'vacation' && c !== null) { localError.value = 'กรอกสิทธิ์ลาพักผ่อนของปีนี้ด้วย จึงจะบันทึกวันสะสมได้'; return; }
+      if (bDays !== null || (t === 'vacation' && c !== null)) {
+        const hint = policyHint(t);
+        localError.value = `${leaveTypeLabel(t)}: ต้องกรอกสิทธิ์ของปีนี้ด้วย${hint ? ` (${hint})` : ''} จึงจะบันทึกวันสะสมหรือวันที่ใช้ไปก่อนเริ่มนับได้`;
+        return;
+      }
       continue;
     }
-    const cell = props.row?.types[t];
-    const unchanged = storedOverride(t) && cell?.entitlementDays === d && (t !== 'vacation' || (cell?.carryoverDays ?? null) === c);
-    if (!unchanged) rows.push({ fiscalYearBe: props.fiscalYearBe, leaveType: t, entitlementDays: d, ...(t === 'vacation' ? { carryoverDays: c } : {}) });
+    const unchanged = storedOverride(t) && cell?.entitlementDays === d
+      && (t !== 'vacation' || (cell?.carryoverDays ?? null) === c)
+      && (st?.usageBaselineDays ?? null) === bDays && (st?.usageBaselineThrough ?? null) === bThrough;
+    if (!unchanged) {
+      rows.push({
+        fiscalYearBe: props.fiscalYearBe, leaveType: t, entitlementDays: d,
+        ...(t === 'vacation' ? { carryoverDays: c } : {}), usageBaselineDays: bDays, usageBaselineThrough: bThrough,
+      });
+    }
   }
   if (rows.length) body.entitlements = rows;
   if (Object.keys(body).length === 0) { localError.value = 'ยังไม่มีการเปลี่ยนแปลง'; return; }
@@ -136,6 +168,7 @@ function onBackdrop(e: MouseEvent) { if (e.target === dialog.value && !props.bus
 
       <fieldset class="ent-group">
         <legend>สิทธิ์วันลาของปีงบประมาณ {{ fiscalYearBe }} (กรอกเมื่อต้องการกำหนดเอง)</legend>
+        <p class="muted">“ใช้ไปแล้วก่อนเริ่มนับ” คือวันลาที่ใช้ไปแล้วแต่ยังไม่อยู่ในรายการลาของระบบ นับถึงวันที่ระบุ — ถ้าไม่ทราบให้เว้นว่าง ระบบจะไม่เดาให้</p>
         <div v-for="t in LEAVE_KINDS" :key="t" class="ent-line">
           <label class="field">
             <span>{{ leaveTypeLabel(t) }} (วัน)</span>
@@ -145,6 +178,15 @@ function onBackdrop(e: MouseEvent) { if (e.target === dialog.value && !props.bus
             <span>วันสะสมยกมา (วัน)</span>
             <input v-model="carryover" type="text" inputmode="decimal" placeholder="0 = ไม่มี, เว้นว่าง = ไม่ทราบ" />
           </label>
+          <p v-if="row.types[t]?.missing.length" class="muted ent-line-note">ขาด: {{ row.types[t]!.missing.map(missingLabelTh).join(', ') }}</p>
+          <label class="field">
+            <span>ใช้ไปแล้วก่อนเริ่มนับในระบบ (วัน)</span>
+            <input v-model="baseDays[t]" type="text" inputmode="decimal" placeholder="เว้นว่าง = ไม่ทราบ" />
+          </label>
+          <div class="ent-baseline-date">
+            <label class="field field--inline"><input v-model="hasBaseDate[t]" type="checkbox" /> <span>นับถึงวันที่</span></label>
+            <ThaiDateInput v-if="hasBaseDate[t]" v-model="baseDate[t]" label="นับถึงวันที่" :span="2" />
+          </div>
           <label v-if="storedOverride(t)" class="field field--inline"><input v-model="remove[t]" type="checkbox" /> <span>ลบค่าที่กำหนดเอง</span></label>
         </div>
       </fieldset>

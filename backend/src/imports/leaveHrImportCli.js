@@ -138,7 +138,7 @@ async function runLeaveHrImport(argv, { container, readFile = (file) => fs.readF
     const kind = 'profile';
     const s = summary[kind];
     for (const row of inputs.profile.validation.rows) {
-      if (row.blocked || !row.data.employeeId) continue;
+      if (row.blocked || row.skip || !row.data.employeeId) continue;
       const person = await personOf(row.data.employeeId);
       if (!person) { add(kind, row, 'error', 'id_not_found'); continue; }
       const { employee } = person;
@@ -152,8 +152,8 @@ async function runLeaveHrImport(argv, { container, readFile = (file) => fs.readF
       // Merge the cells that carry a value over what is stored (blank = leave alone, null = clear).
       const merged = { ...(person.profileAfter || { employeeUid: employee.employeeUid, continuousServiceStart: null, appointmentKind: null, eligibilityConfirmed: null, eligibilityReference: null, sourceReference: null }) };
       for (const field of PROFILE_FIELDS) if (field in row.data) merged[field] = row.data[field];
-      const effectiveConfirmed = merged.eligibilityConfirmed === true && merged.eligibilityReference;
-      if (employee.employeeType === 'contract' && !effectiveConfirmed) add(kind, row, 'error', 'type_out_of_scope');
+      // Contract staff (พนักงานส่วนงานจ้างเหมา) are outside the policy: no confirmation can bring them in.
+      if (employee.employeeType === 'contract') add(kind, row, 'error', 'type_out_of_scope');
       if (['department', 'procurement_academic'].includes(employee.employeeType) && merged.eligibilityConfirmed === null) add(kind, row, 'warning', 'eligibility_unconfirmed');
       if (row.blocked) continue;
       s.matched += 1;
@@ -166,6 +166,9 @@ async function runLeaveHrImport(argv, { container, readFile = (file) => fs.readF
           changes.push({ table: 'employee_leave_profile', field, before: before ? before[field] : null, after: row.data[field] });
         }
       }
+      // A different source note on its own is not a change worth a batch or an audit row (it keeps an unchanged
+      // export re-uploadable as a no-op).
+      if (changes.every((c) => c.field === 'sourceReference')) changes.length = 0;
       if (!changes.length) { s.unchanged += 1; continue; }
       // Replacing a stored value is worth a warning; filling in a missing one is not.
       if (changes.some((c) => c.before !== null && c.before !== undefined)) add(kind, row, 'warning', 'conflicts_with_existing');
@@ -181,13 +184,12 @@ async function runLeaveHrImport(argv, { container, readFile = (file) => fs.readF
     const kind = 'entitlement';
     const s = summary[kind];
     for (const row of inputs.entitlement.validation.rows) {
-      if (row.blocked || !row.data.employeeId) continue;
+      if (row.blocked || row.skip || !row.data.employeeId) continue;
       const person = await personOf(row.data.employeeId);
       if (!person) { add(kind, row, 'error', 'id_not_found'); continue; }
       const { employee } = person;
       if (employee.status !== 'active') add(kind, row, 'error', 'not_active');
-      const confirmed = person.profileAfter && person.profileAfter.eligibilityConfirmed === true && person.profileAfter.eligibilityReference;
-      if (employee.employeeType === 'contract' && !confirmed) add(kind, row, 'error', 'type_out_of_scope');
+      if (employee.employeeType === 'contract') add(kind, row, 'error', 'type_out_of_scope');
       if (row.blocked) continue;
       s.matched += 1;
 

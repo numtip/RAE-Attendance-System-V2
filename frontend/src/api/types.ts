@@ -440,6 +440,8 @@ export interface EntitlementRow {
   types: Partial<Record<LeaveKind, EntitlementCell>>;
   /** Only for the executive with an organization grant. */
   profile?: EntitlementProfile;
+  /** Entitlement rows the owner entered / imported for this year (executive only). */
+  stored?: Partial<Record<LeaveKind, EntitlementStored>>;
 }
 export interface EntitlementTypeSummary {
   label: string;
@@ -448,6 +450,14 @@ export interface EntitlementTypeSummary {
   entitlementDays: number;
   usedDays: number;
   remainingDays: number;
+  /** What the engine still needs, counted over the people in or awaiting the policy (never contract staff). */
+  missing: Record<string, number>;
+}
+export interface EntitlementStored {
+  entitlementDays: number | null;
+  carryoverDays: number | null;
+  usageBaselineDays: number | null;
+  usageBaselineThrough: string | null;
 }
 export interface EntitlementOverview {
   fiscalYear: { be: number; start: string; end: string };
@@ -472,3 +482,30 @@ export interface EntitlementFactsInput {
     | { fiscalYearBe: number; leaveType: LeaveKind; entitlementDays: number; carryoverDays?: number | null; usageBaselineDays?: number | null; usageBaselineThrough?: string | null }
   >;
 }
+
+// ---------- Owner bulk data management ----------
+export interface ImportFileSummary {
+  rows: number;
+  fileErrors: string[];
+  errors: Record<string, number>;
+  warnings: Record<string, number>;
+  matched: number;
+  unchanged: number;
+  toApply: number;
+  alreadyApplied: boolean;
+}
+export interface ImportFinding { kind: 'profile' | 'entitlement'; line: number; level: 'error' | 'warning'; code: string }
+export interface ImportResult {
+  mode: 'dry-run' | 'apply';
+  ok: boolean;
+  written: boolean;
+  alreadyApplied: boolean;
+  blockingErrors: number;
+  refused: string | null;
+  files: Partial<Record<'profile' | 'entitlement', ImportFileSummary>>;
+  preview: { fiscalYearBe: number; people: number; before: Record<string, Record<string, number>>; after: Record<string, Record<string, number>> } | null;
+  applied: Record<string, { rowsApplied: number; rowsUnchanged: number; auditRows: number }> | null;
+  findings: ImportFinding[];
+  findingsTruncated: boolean;
+}
+export interface BulkEligibilityResult { requested: number; changed: number; unchanged: number; failed: { employeeUid: string; code: string }[]; reference: string | null }

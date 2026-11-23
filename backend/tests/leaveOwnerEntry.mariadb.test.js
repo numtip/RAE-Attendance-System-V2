@@ -12,6 +12,8 @@ const { getPool, closePool } = require('../src/db/pool');
 const { createLeaveEntitlementService } = require('../src/services/leaveEntitlementService');
 const { createLeaveOwnerEntryService } = require('../src/services/leaveOwnerEntryService');
 const { createLeaveEntitlementOverviewService } = require('../src/services/leaveEntitlementOverviewService');
+const { createLeaveBulkManagementService } = require('../src/services/leaveBulkManagementService');
+const csv = require('../src/domain/hrLeaveCsv');
 
 function shouldRunMariaDb() {
   if (process.env.RUN_MARIADB_TESTS === '1') return true;
@@ -87,5 +89,49 @@ test('owner entry + bulk overview on MariaDB', { skip: !shouldRunMariaDb() }, as
     await assert.rejects(() => ownerEntry.apply(auth, person, { hireDate: '2017-01-01', eligibility: { confirmed: true, reference: 'x'.repeat(130) } }), (e) => e.status === 400);
     assert.equal((await repositories.employees.getLeaveFacts(person)).hireDate, '2016-03-01');
     assert.equal((await pool.query('SELECT COUNT(*) AS n FROM leave_hr_import_batch WHERE operator_uid = ?', [owner]))[0][0].n, before);
+  });
+  await t.test('upload, dry run, confirm, repeat and bulk eligibility through the real schema', async () => {
+    // a real 4-digit employee id that no one else uses (the import matches on it)
+    let id; let uid;
+    for (let n = 9000; n < 9999 && !uid; n += 1) {
+      const [rows] = await pool.query('SELECT 1 FROM employees WHERE employee_id = ?', [String(n)]);
+      if (!rows.length) id = String(n);
+      if (id) uid = randomUUID();
+    }
+    const dept = randomUUID();
+    await pool.query(
+      `INSERT INTO employees (employee_uid, employee_id, first_name_th, last_name_th, email, department, employee_type, hire_date, status, role, created_at, updated_at)
+       VALUES (?, ?, 'ทดสอบ', 'นำเข้า', ?, 'test', 'department', NULL, 'active', 'user', NOW(), NOW())`,
+      [dept, id, `${dept}@bulk.test`],
+    );
+    t.after(async () => {
+      await pool.query('DELETE FROM leave_hr_audit WHERE employee_uid = ?', [dept]).catch(() => {});
+      await pool.query('DELETE FROM leave_hr_import_batch WHERE operator_uid = ? AND file_sha256 IN (?)', [owner, ['x']]).catch(() => {});
+      await pool.query('DELETE FROM employee_leave_profile WHERE employee_uid = ?', [dept]).catch(() => {});
+      await pool.query('DELETE FROM employees WHERE employee_uid = ?', [dept]).catch(() => {});
+    });
+    const container = { repositories, dataSource: 'mariadb', config: { leave: { entitlementEngine: 'on' } }, now: NOW };
+    const bulk = createLeaveBulkManagementService(container);
+    const c = csv.PROFILE_COLUMNS;
+    const head = [c.employeeId, c.name, c.type, c.hireDate, c.continuousServiceStart, c.appointmentKind, c.eligibilityConfirmed, c.eligibilityReference, c.sourceReference, c.note].join(',');
+    const file = `${head}\n${id},ทดสอบ นำเข้า,พนักงานส่วนงาน,2017-02-01,2017-02-01,บรรจุครั้งแรก,,,หนังสือ 3/2569,`;
+
+    const dry = await bulk.importFiles(auth, { profile: file });
+    assert.deepEqual([dry.written, dry.blockingErrors, dry.files.profile.toApply], [false, 0, 1]);
+    assert.equal((await repositories.employees.getLeaveFacts(dept)).hireDate, null);
+
+    const applied = await bulk.importFiles(auth, { profile: file, confirm: true });
+    assert.equal(applied.written, true);
+    assert.equal((await repositories.employees.getLeaveFacts(dept)).hireDate, '2017-02-01');
+    const again = await bulk.importFiles(auth, { profile: file, confirm: true });
+    assert.deepEqual([again.written, again.alreadyApplied], [false, true]);
+
+    const eligibility = await bulk.bulkEligibility(auth, { employeeUids: [dept], confirmed: true, reference: 'คำสั่ง 9/2569' });
+    assert.equal(eligibility.changed, 1);
+    const [audit] = await pool.query("SELECT field_name, after_value, actor_uid FROM leave_hr_audit WHERE employee_uid = ? AND field_name IN ('eligibility_confirmed','eligibility_reference','hire_date') ORDER BY id", [dept]);
+    assert.deepEqual(audit.map((a) => a.field_name).sort(), ['eligibility_confirmed', 'eligibility_reference', 'hire_date']);
+    assert.ok(audit.every((a) => a.actor_uid === owner));
+    // the contract worker created above stays out of every bulk path
+    await assert.rejects(() => bulk.bulkEligibility(auth, { employeeUids: [other], confirmed: true }), (e) => e.status === 400);
   });
 });

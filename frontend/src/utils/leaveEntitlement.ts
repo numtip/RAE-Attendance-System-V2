@@ -132,8 +132,12 @@ export function cellView(cell: EntitlementCell | undefined): { text: string; sub
   if (cell.available && cell.remainingDays !== null) {
     return { text: formatDays(cell.remainingDays), sub: `จาก ${formatDays(cell.totalDays)}`, tone: 'ok', meter: usedPercent(cell) };
   }
-  // Status ok but no remaining figure: the entitlement is known, the usage is not (months missing from the leave import).
-  const sub = cell.status === 'ok' ? (cell.usageComplete ? 'ยังคำนวณไม่ได้' : 'ข้อมูลการลาไม่ครบทุกเดือน') : statusLabelTh(cell.status);
+  // What is missing, named per leave type; otherwise the reason the figure is withheld.
+  const missing = cell.missing.map(missingLabelTh);
+  let sub: string;
+  if (missing.length) sub = `ขาด: ${missing.join(', ')}`;
+  else if (cell.status === 'ok') sub = cell.usageComplete ? 'ยังคำนวณไม่ได้' : 'ข้อมูลการลาไม่ครบทุกเดือน'; // entitlement known, usage months missing
+  else sub = statusLabelTh(cell.status);
   return { text: 'ไม่มีข้อมูล', sub, tone: 'wait', meter: null };
 }
 
@@ -154,4 +158,41 @@ export function parseDaysInput(text: string, max: number): number | null | 'inva
   if (!/^\d+(\.\d)?$/.test(t)) return 'invalid';
   const n = Number(t);
   return n >= 0 && n <= max && Number.isInteger(n * 2) ? n : 'invalid';
+}
+
+// ---------------------------------------------------------------- import findings (rule codes -> Thai)
+
+const FINDING_TH: Record<string, string> = {
+  unknown_column: 'มีคอลัมน์ที่ไม่อยู่ในแบบฟอร์ม', missing_column: 'ขาดคอลัมน์ตามแบบฟอร์ม', duplicate_column: 'คอลัมน์ซ้ำ',
+  too_many_rows: 'จำนวนแถวมากเกินไป', empty_file: 'ไฟล์ว่าง', unterminated_quote: 'ไฟล์มีเครื่องหมายคำพูดไม่ครบ',
+  row_columns: 'จำนวนช่องในแถวไม่ตรงกับหัวตาราง', id_format: 'รหัสพนักงานต้องเป็นเลข 4 หลัก', id_duplicate: 'แถวซ้ำ', id_not_found: 'ไม่พบรหัสพนักงานนี้ในระบบ',
+  not_active: 'พนักงานไม่ได้อยู่ในสถานะใช้งาน', type_mismatch: 'ประเภทบุคลากรไม่ตรงกับในระบบ', type_out_of_scope: 'พนักงานจ้างเหมาอยู่นอกประกาศ ไม่นำเข้า',
+  name_mismatch: 'ชื่อไม่ตรงกับในระบบ (ตรวจรหัสอีกครั้ง)', date_format: 'รูปแบบวันที่ไม่ถูกต้อง', hire_in_future: 'วันที่เริ่มงานอยู่ในอนาคต',
+  continuity_after_hire: 'วันเริ่มนับอายุงานต่อเนื่องหลังวันเริ่มงาน', appointment_kind_unknown: 'ประเภทการบรรจุไม่ถูกต้อง', appointment_kind_missing: 'ต้องระบุประเภทการบรรจุ (เริ่มงานตั้งแต่ 1 ต.ค. 2568)',
+  confirmation_value: 'การยืนยันสิทธิ์ต้องเป็น ใช่ / ไม่ใช่', confirmation_needs_reference: 'การยืนยันสิทธิ์ต้องมีเลขที่หนังสือ/เหตุผล', source_missing: 'ต้องระบุแหล่งข้อมูล/เอกสารอ้างอิง',
+  note_too_long: 'หมายเหตุยาวเกินไป', days_format: 'จำนวนวันต้องเป็นตัวเลขหลายเท่าของ 0.5', fiscal_year_range: 'ปีงบประมาณอยู่นอกช่วงที่รับ', leave_type_unknown: 'ประเภทการลาไม่ถูกต้อง',
+  carryover_not_vacation: 'ยอดสะสมใช้กับลาพักผ่อนเท่านั้น', baseline_pair: 'ยอดที่ใช้ไปก่อนเริ่มนับต้องมาคู่กับวันที่ และอยู่ในปีงบประมาณเดียวกัน',
+  no_data: 'ไม่มีข้อมูลในแถวนี้ (ข้าม)', hire_missing: 'ยังไม่ระบุวันที่เริ่มงาน', conflicts_with_existing: 'ค่าใหม่ต่างจากที่บันทึกไว้ (จะถูกแทนที่และบันทึกประวัติ)',
+  eligibility_unconfirmed: 'ยังไม่ได้ยืนยันสิทธิ์ตามประกาศ', vacation_cap_exceeded: 'สิทธิ์ลาพักผ่อนรวมเกินเพดาน', differs_from_policy: 'ต่างจากที่ประกาศกำหนด',
+};
+export function findingLabelTh(code: string): string {
+  return FINDING_TH[code] ?? 'ข้อมูลไม่ถูกต้อง';
+}
+
+/** Group findings by level + code with the line numbers (never the values), errors first. */
+export function groupFindings(findings: { kind: string; line: number; level: string; code: string }[]): { level: string; kind: string; code: string; lines: number[] }[] {
+  const map = new Map<string, { level: string; kind: string; code: string; lines: number[] }>();
+  for (const f of findings) {
+    const key = `${f.level}|${f.kind}|${f.code}`;
+    if (!map.has(key)) map.set(key, { level: f.level, kind: f.kind, code: f.code, lines: [] });
+    if (f.line > 0) map.get(key)!.lines.push(f.line);
+  }
+  return [...map.values()].sort((a, b) => (a.level === b.level ? a.code.localeCompare(b.code) : (a.level === 'error' ? -1 : 1)));
+}
+
+/** The confirm button is offered only after a clean dry run of exactly the files on screen. */
+export function canConfirmImport(result: { mode: string; ok: boolean; blockingErrors: number; alreadyApplied: boolean; files: Record<string, { toApply: number; alreadyApplied: boolean } | undefined> } | null): boolean {
+  if (!result || result.mode !== 'dry-run' || !result.ok || result.blockingErrors > 0 || result.alreadyApplied) return false;
+  const files = Object.values(result.files).filter(Boolean) as { toApply: number; alreadyApplied: boolean }[];
+  return files.some((f) => f.toApply > 0 && !f.alreadyApplied);
 }

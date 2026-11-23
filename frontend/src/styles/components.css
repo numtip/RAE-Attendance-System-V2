@@ -878,3 +878,15 @@
 .ent-person .muted { font-size: 0.8rem; }
 .toolbar .field--inline input[type='checkbox'], .ent-group .field--inline input[type='checkbox'] { width: auto; min-height: 0; height: 1.1rem; }
 .toolbar label.field--inline, .ent-group label.field--inline { display: flex; align-items: center; gap: 0.5rem; }
+.ent-line-note { grid-column: 1 / -1; margin: 0; }
+.ent-baseline-date { display: grid; gap: 0.4rem; }
+.ent-panel { margin: 0 0 1.25rem; padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.ent-panel summary { cursor: pointer; font-weight: 600; }
+.ent-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.6rem 0; }
+.ent-findings { margin: 0.4rem 0; padding-left: 1.1rem; }
+.ent-findings li { margin: 0.15rem 0; }
+.ent-bulkbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: 0 0 0.75rem; padding: 0.6rem 0.8rem; border: 1px solid var(--gold); border-radius: var(--radius); background: var(--surface); }
+.ent-group .ent-line { grid-template-columns: repeat(auto-fit, minmax(min(100%, 13.5rem), 1fr)); padding: 0.6rem 0; border-top: 1px dashed var(--border); }
+.ent-group .ent-line:first-of-type { border-top: 0; }
+.ent-line .field, .ent-line .field input { min-width: 0; width: 100%; box-sizing: border-box; }
+.ent-line .field--inline { width: auto; }
