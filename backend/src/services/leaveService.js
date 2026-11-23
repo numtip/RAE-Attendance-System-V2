@@ -1,5 +1,7 @@
 const { HttpError } = require('../utils/httpError');
 const { assertCanReadEmployee } = require('./access');
+const { createLeaveEntitlementService, bangkokDate } = require('./leaveEntitlementService');
+const { fiscalYearOf } = require('../domain/leavePolicyEngine');
 const {
   PART_LABEL, REASON_LABEL, TYPE_LABEL, RECORD_STATUS_LABEL, LEGACY_STATUS_LABEL, SOURCE_LABEL, recordStatus,
 } = require('./leaveLabels');
@@ -67,7 +69,30 @@ function legacyItem(row) {
  * Recorded-but-undecided, needs-review and rejected days never deduct. No entitlement row => the balance is
  * unavailable (null), never zero.
  */
-function createLeaveService({ repositories }) {
+function createLeaveService({ repositories, config, shadowLog = (line) => console.info(line) }) {
+  // LEAVE_ENTITLEMENT_ENGINE: off (default) | shadow | on. Anything but `on` keeps every response exactly as before.
+  const engineFlag = () => (config && config.leave && config.leave.entitlementEngine) || 'off';
+  const entitlementService = createLeaveEntitlementService({ repositories });
+  let lastShadow = Promise.resolve();
+
+  /**
+   * Shadow mode: after a legacy balance response has been authorised and built, compute the fiscal-year result
+   * in the background and log ONLY the status per type (no employee, no numbers). It never changes or delays a
+   * response and never throws.
+   */
+  function scheduleShadow(employeeUid) {
+    if (engineFlag() !== 'shadow') return;
+    const fiscalYear = fiscalYearOf(bangkokDate(new Date())).be;
+    lastShadow = new Promise((resolve) => {
+      setTimeout(() => {
+        entitlementService.balance(employeeUid, fiscalYear)
+          .then((rows) => shadowLog(`leave-entitlement-shadow fy=${fiscalYear} ${rows.map((r) => `${r.leaveType}=${r.status}`).join(' ')}`))
+          .catch(() => shadowLog(`leave-entitlement-shadow fy=${fiscalYear} error`))
+          .finally(resolve);
+      }, 0);
+    });
+  }
+
   async function recordsFor(employeeUid) {
     return typeof repositories.leaveRecords?.listForEmployee === 'function'
       ? repositories.leaveRecords.listForEmployee(employeeUid) : [];
@@ -105,7 +130,31 @@ function createLeaveService({ repositories }) {
       return (await combined(employeeUid, null)).items;
     },
 
-    async balance(auth, employeeUid, year) {
+    /** Resolves when the last scheduled shadow computation has finished (tests only). */
+    shadowSettled() { return lastShadow; },
+
+    /**
+     * `options.basis`: `calendar` (default, the behaviour that has always existed) or `fiscal` (Buddhist fiscal
+     * year, e.g. 2570 = 2026-10-01..2027-09-30). The two are never mixed: a fiscal request is refused unless the
+     * engine flag is `on`, and `year` must then be a fiscal year, not a calendar year.
+     */
+    async balance(auth, employeeUid, year, options = {}) {
+      const basis = options.basis || 'calendar';
+      if (basis !== 'calendar' && basis !== 'fiscal') {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'basis must be calendar or fiscal');
+      }
+      if (basis === 'fiscal') {
+        if (!Number.isInteger(year) || year < 2569 || year > 2700) {
+          throw new HttpError(400, 'VALIDATION_ERROR', 'a fiscal year is a Buddhist-era year such as 2570');
+        }
+        if (engineFlag() !== 'on') {
+          throw new HttpError(503, 'LEAVE_ENTITLEMENT_ENGINE_OFF', 'Fiscal-year leave balances are not enabled');
+        }
+        await assertCanReadEmployee(auth, employeeUid, repositories, 'data');
+        const target = await repositories.employees.findByUid(employeeUid);
+        if (!target) throw new HttpError(404, 'NOT_FOUND', 'Employee was not found');
+        return entitlementService.balance(employeeUid, year);
+      }
       if (!Number.isInteger(year) || year < 2000 || year > 2100) {
         throw new HttpError(400, 'VALIDATION_ERROR', 'year is invalid');
       }
@@ -136,7 +185,7 @@ function createLeaveService({ repositories }) {
 
       const byType = new Map(entitlements.map((row) => [row.leaveType, row]));
       const types = [...new Set([...TRACKED, ...byType.keys()])];
-      return types.map((leaveType) => {
+      const result = types.map((leaveType) => {
         const entitlement = byType.get(leaveType) || null;
         const tracked = TRACKED.includes(leaveType);
         const totalDays = entitlement ? num(entitlement.totalDays) : null;
@@ -155,6 +204,8 @@ function createLeaveService({ repositories }) {
           unavailableReason: available ? null : (totalDays === null ? 'no_entitlement' : 'deductions_not_tracked'),
         };
       });
+      scheduleShadow(employeeUid);
+      return result;
     },
   };
 }

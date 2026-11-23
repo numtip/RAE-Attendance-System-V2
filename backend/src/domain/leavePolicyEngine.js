@@ -151,16 +151,19 @@ function dayKey(row) { return `${row.leaveType}|${row.date}`; }
 
 /**
  * Approved, deductible days of ONE leave type inside the fiscal year, each calendar day once.
+ * `countFrom` (default: the policy's effective date) is the first day that is counted at all; a caller that holds
+ * a verified entitlement for an earlier year passes the fiscal-year start so those days are counted too, while
+ * the announcement's own review rules (half-day vacation, ...) still apply only from its effective date.
  * Returns the deductible total, the approved total before exceptions, and review flags.
  */
-function summarizeUsage(records, fy, policy, leaveType) {
+function summarizeUsage(records, fy, policy, leaveType, { countFrom = policy.effectiveFrom } = {}) {
   const flags = [];
   const byDay = new Map();
   for (const row of records || []) {
     if (!row || row.leaveType !== leaveType || typeof row.date !== 'string') continue;
     if (row.date < fy.start || row.date > fy.end) continue;
     if (row.status !== 'approved') continue; // recorded / awaiting / needs_review / rejected never deduct
-    if (row.date < policy.effectiveFrom) { flags.push({ code: 'before_policy_effective', date: row.date }); continue; }
+    if (row.date < countFrom) { flags.push({ code: 'before_policy_effective', date: row.date }); continue; }
     const fraction = row.dayFraction;
     if (typeof fraction !== 'number' || !Number.isFinite(fraction) || fraction <= 0 || fraction > 1) {
       flags.push({ code: 'invalid_fraction', date: row.date });
@@ -195,10 +198,12 @@ function summarizeUsage(records, fy, policy, leaveType) {
     approved += dayTotal;
     nonDeductible += dayExempt;
 
-    if (leaveType === 'vacation' && dayTotal < policy.vacation.minDaysPerRequest) {
+    // Rules of the announcement are not applied to days before it took effect, even when those days are counted.
+    const underPolicy = date >= policy.effectiveFrom;
+    if (underPolicy && leaveType === 'vacation' && dayTotal < policy.vacation.minDaysPerRequest) {
       flags.push({ code: 'vacation_half_day_review', date, detail: 'clause 25 sets a 1 working day minimum; kept as recorded, not rounded' });
     }
-    if (leaveType === 'personal' && dayTotal < policy.personal.minDaysPerRequest) {
+    if (underPolicy && leaveType === 'personal' && dayTotal < policy.personal.minDaysPerRequest) {
       flags.push({ code: 'personal_below_minimum', date });
     }
   }
@@ -516,6 +521,7 @@ module.exports = {
   policyForFiscalYear,
   classifyEligibility,
   summarizeUsage,
+  tenYearStatus,
   computeEntitlements,
   vacationCarryoverForNextYear,
   workingDaysBetween,
