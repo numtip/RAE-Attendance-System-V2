@@ -73,6 +73,7 @@ const REASON_TH: Record<string, string> = {
   service_under_6_months: 'ทำงานยังไม่ครบ 6 เดือนตลอดปีงบประมาณนี้ จึงยังไม่มีสิทธิ์ลาพักผ่อน',
   qualification_mid_year_pending_owner_decision: 'ครบเกณฑ์อายุงานกลางปีงบประมาณ — รอ Owner พิจารณาวิธีจัดสรรสิทธิ์ (ระบบไม่คำนวณตามสัดส่วนเอง)',
   policy_period_not_confirmed: 'ยังไม่ได้ระบุช่วงบังคับใช้ของหลักเกณฑ์สำหรับปีงบประมาณนี้ จึงยังไม่คำนวณ',
+  no_policy_for_period: 'หลักเกณฑ์นี้ยังไม่มีผลในปีงบประมาณนี้ จึงไม่คำนวณย้อนหลัง',
   policy_effective_mid_year: 'หลักเกณฑ์เริ่มมีผลกลางปีงบประมาณนี้ จึงยังไม่คำนวณทั้งปี',
   policy_unmapped: 'ประเภทบุคลากรนี้ยังไม่ได้กำหนดว่าใช้หลักเกณฑ์ใด',
   needs_hr: 'ต้องรอการยืนยันข้อมูลบุคลากร',
@@ -125,7 +126,7 @@ export function missingLabelTh(code: string): string {
 const FLAG_NOTE_TH: Record<string, string> = {
   medical_certificate_review: 'ตรวจใบรับรองแพทย์',
   carryover_not_allowed: 'หลักเกณฑ์นี้ไม่มียอดสะสม (ไม่นำยอดที่บันทึกไว้มาบวก)',
-  vacation_half_day_review: 'ลาพักผ่อนครึ่งวัน รอตรวจสอบ',
+  vacation_half_day_review: 'ลาพักผ่อนน้อยกว่าขั้นต่ำของหลักเกณฑ์ รอตรวจสอบ',
   hr_differs_from_policy: 'สิทธิ์ที่กรอกต่างจากที่หลักเกณฑ์กำหนด',
   policy_assumed_university: 'ยังไม่ได้กำหนดหลักเกณฑ์ของประเภทนี้ — ใช้เกณฑ์พนักงานมหาวิทยาลัยตามที่ยืนยันไว้',
 };

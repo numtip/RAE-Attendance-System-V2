@@ -90,12 +90,13 @@ policies:
     personal: {paid_allowance_days: 5, minimum_service_months: 3, minimum_request_days: 0.5}
     vacation: {paid_allowance_days: 10, minimum_service_months: 6, minimum_request_days: 1, carryover_allowed: false, advance_notice_days: 3}
   section_contract:
-    id: RAE-SECTION-CONTRACT-2569-V2
-    source: S2
-    effective_from: null # Owner must specify applicability before historical calculation
+    id: RAE-SECTION-CONTRACT-2570-V3
+    source: S2 + Owner Decisions 2026-11-23
+    effective_from: '2026-10-01' # Owner Decision 2026-11-23: start of FY2570; no backfill
+    prorating: false
     sick: {annual_limit_days: 10, medical_certificate_over_workdays: 3}
     personal: {annual_limit_days: 5}   # Owner Decision 2026-11-23: 5 (supersedes the 10 in the first draft of this file)
-    vacation: {annual_limit_days: 10, carryover_allowed: false}
+    vacation: {annual_limit_days: 10, minimum_request_days: 0.5, carryover_allowed: false}
     maternity: {automation: deferred}
 ```
 
@@ -122,10 +123,10 @@ policies:
 | section อายุงานยังไม่ครบ 3 เดือน ณ เวลาที่ประเมินสิทธิ์ชัดเจน | ลากิจไม่มีสิทธิ์ ณ เวลานั้น |
 | section อายุงานยังไม่ครบ 6 เดือน ณ เวลาที่ประเมินสิทธิ์ชัดเจน | พักผ่อนไม่มีสิทธิ์ ณ เวลานั้น |
 | section มีคุณสมบัติครบและไม่ติดกรณีกลางปี | 15/5/10 วัน; carryover 0 |
-| contract ยืนยัน mapping (Owner ยืนยันรายบุคคล) | 10/5/10 วัน (ลากิจ 5); carryover 0; ธง `policy_effective_date_unspecified` |
+| contract ยืนยัน mapping (Owner ยืนยันรายบุคคล) | 10/5/10 วัน (ลากิจ 5); carryover 0; มีผล 2026-10-01 |
 | ทั้งสองกลุ่มส่ง carryover > 0 | ปฏิเสธหรือส่งตรวจสอบ ไม่รวมเป็นสิทธิ์ |
 | section ไม่มี hire_date | ลาป่วยคำนวณ allowance ได้เมื่อข้อมูลอื่นครบ; กิจ/พักผ่อน unknown |
-| contract ไม่ทราบ policy effective date | pending_policy สำหรับช่วงที่ยังไม่รับรอง (ปีงบประมาณก่อน 2570; ไม่ backfill) |
+| contract ปีงบประมาณก่อน 2570 | pending_policy (`no_policy_for_period`; ไม่ backfill) |
 | university เดิม | 60/45/10 และกฎปีแรก/สะสมเดิมไม่เปลี่ยน |
 | รออนุมัติ/ไม่อนุมัติ/รอตรวจสอบ | ไม่หักสิทธิ์ |
 | พนักงานทั่วไปขอข้อมูลผู้อื่น | 403 |
@@ -144,6 +145,10 @@ policies:
 | 2026-11-23 | พนักงานส่วนงานจ้างเหมา (`contract`) ใช้ลาป่วย 10 / ลากิจ 10 / ลาพักผ่อน 10; ไม่มีสะสมพักผ่อน | `RAE-SECTION-CONTRACT-2569-V1` — **ไม่เคยถูกนำไปใช้** |
 | 2026-11-23 | **แก้ไข:** ลากิจของพนักงานส่วนงานจ้างเหมา = **5 วันทำการ/ปีงบประมาณ** (แทนที่ 10) ตรงกับ S2 (`00pork.MD`) | policy `RAE-SECTION-CONTRACT-2569-V2` = 10/**5**/10, carryover 0 (เวอร์ชันแรกที่ใช้คำนวณยอดจริง) |
 
+| 2026-11-23 | พนักงานส่วนงานจ้างเหมา: **มีผลตั้งแต่ปีงบประมาณ 2570 (2026-10-01)**; ลาป่วย/ลากิจ/ลาพักผ่อน 10/5/10 วันทำการต่อปีงบประมาณ; **ไม่สะสม ไม่ prorate**; **ลาพักผ่อนครึ่งวัน (0.5) ได้**; ใบรับรองแพทย์เมื่อลาป่วยเกิน 3 วันทำการติดต่อกัน | policy `RAE-SECTION-CONTRACT-2570-V3` (แทน V2 ที่ไม่มีวันที่มีผล; V1/V2 ไม่เคยถูกใช้คำนวณยอดที่บันทึกไว้) ไม่ใช้ migration |
+| 2026-11-23 | ยืนยันสิทธิ์พนักงานส่วนงานจ้างเหมาที่ตรวจสอบแล้วทั้ง 19 คน | บันทึกผ่านเส้นทางเดียวกับ bulk eligibility (มี audit ใน `employee_leave_profile_audit` พร้อมเลขอ้างอิง) ไม่ระบุวันที่เริ่มงานขึ้นเอง |
+| 2026-11-23 | `procurement_academic` ยังคงรอการกำหนด policy ชัดเจน | ไม่เปลี่ยน (ใช้กฎมหาวิทยาลัยพร้อมธง `policy_assumed_university` เมื่อ Owner ยืนยันแล้ว) |
+
 ค่าอื่นของพนักงานมหาวิทยาลัย (`MJU-LEAVE-2569`: 60/45/10) และพนักงานส่วนงาน (15/5/10) ไม่เปลี่ยน
 
 ### การ map และสิ่งที่ระบบทำจริง (ตรวจจากโค้ด)
@@ -152,12 +157,13 @@ policies:
 |---|---|---|
 | `university` | `MJU-LEAVE-2569` | เหมือนเดิมทุกประการ |
 | `department` | `RAE-SECTION-EMPLOYEE-2569` | ไม่ต้องยืนยัน; ลาป่วยต้องการเพียงชนิดบุคลากร; ลากิจ/ลาพักผ่อนต้องมี `hire_date` |
-| `contract` | `RAE-SECTION-CONTRACT-2569-V2` | Owner ยืนยันรายบุคคล (หรือเป็นกลุ่ม) พร้อมเลขที่อ้างอิง; ไม่ต้องมี hire_date |
+| `contract` | `RAE-SECTION-CONTRACT-2570-V3` | Owner ยืนยันรายบุคคล (หรือเป็นกลุ่ม) พร้อมเลขที่อ้างอิง; ไม่ต้องมี hire_date |
 | `procurement_academic` | ยังไม่มี | Owner ยังไม่ระบุ policy: `needs_hr` จน Owner ยืนยัน; เมื่อยืนยันแล้วคงพฤติกรรมเดิมคือใช้เกณฑ์พนักงานมหาวิทยาลัย พร้อมธง `policy_assumed_university` (production มี 1 คนที่ Owner ยืนยันไว้แล้ว จึงไม่ถอนตัวเลขเดิม) — รอ Owner ระบุ policy จริง |
 
-- **ไม่ backfill:** policy ของพนักงานส่วนงานจ้างเหมาไม่มีวันที่มีผลใน S2 จึงไม่เดา; ระบบคำนวณเฉพาะปีงบประมาณ 2570 เป็นต้นไป (`applicableFromFiscalYearBe` ไม่ใช่วันที่มีผล) ปีก่อนหน้าเป็น `pending_policy` จน Owner ระบุช่วงบังคับใช้ ทุกแถวที่คำนวณมีธง `policy_effective_date_unspecified`
+- **ไม่ backfill:** policy ของพนักงานส่วนงานจ้างเหมามีผลตั้งแต่ 2026-10-01 (Owner) ปีงบประมาณก่อน 2570 เป็น `pending_policy` (เหตุผล `no_policy_for_period`) ไม่คำนวณย้อนหลัง
 - **ไม่ prorate:** พนักงานส่วนงานที่ครบ 3/6 เดือนกลางปีงบประมาณ = `pending_hr_decision` (ข้อความ UI: รอ Owner พิจารณา); ถ้าไม่ครบตลอดทั้งปี = ไม่มีสิทธิ์ (0) ที่ยืนยันแล้ว
 - **ใบรับรองแพทย์:** ธงตรวจเอกสาร `medical_certificate_review` เมื่อลาป่วยต่อเนื่อง ≥ 3 วันทำการ (พนักงานส่วนงาน) หรือ > 3 วันทำงาน (จ้างเหมา) เป็นธงเท่านั้น ไม่ตัดสินอนุมัติ/หักสิทธิ์; ไม่มีปฏิทินวันหยุด วันหยุดจึงตัดความต่อเนื่อง (ธงอาจตกหล่น)
 - **ยอดยกมา:** ปฏิเสธ `carryoverDays > 0` (ฟอร์ม, CSV, bulk) พร้อมเหตุผล; ข้อมูลเก่าที่มีอยู่ไม่ถูกลบ แต่ไม่ถูกบวก และมีธง `carryover_not_allowed`
 - **ฟิลด์ที่ต้องกรอกตาม policy:** `continuous_service_start`, `appointment_kind`, ยอดยกมา ใช้เฉพาะพนักงานมหาวิทยาลัย; `hire_date` ใช้กับพนักงานส่วนงาน (ลากิจ/ลาพักผ่อน) และพนักงานมหาวิทยาลัยเท่านั้น
-- **ข้อที่ยังไม่ชัด (รอ Owner):** วันที่เริ่มมีผล/ช่วงบังคับใช้ของ S2; หน่วยวัน (วันทำงาน) และเกณฑ์ลาครึ่งวันของ S2; การ prorate กลางปี; policy ของนักวิชาการพัสดุ
+- **ลาครึ่งวัน (จ้างเหมา):** ลาพักผ่อน 0.5 วันได้ (ขั้นต่ำ 0.5; น้อยกว่านั้นขึ้นธง `vacation_half_day_review`); พนักงานส่วนงานยังคงขั้นต่ำ 1 วันตาม S1
+- **ข้อที่ยังไม่ชัด (รอ Owner):** policy ของนักวิชาการพัสดุ (`procurement_academic`) เท่านั้น

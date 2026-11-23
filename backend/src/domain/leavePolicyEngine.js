@@ -116,16 +116,6 @@ function policyForDate(date, policies = POLICIES) {
  * inside, is a transition year: the earlier rules are not on file, so it stays pending_policy.
  */
 function policyForFiscalYear(fy, policies = POLICIES) {
-  // A policy whose source states no effective date (section contract staff) is not gated by a date: it applies once
-  // the person is confirmed, and every result says so (`policy_effective_date_unspecified`). No date is guessed.
-  if (policies.length > 0 && policies.every((p) => p.effectiveFrom === null)) {
-    const policy = policies[0];
-    // No backfill: a year before the owner's first applicable year is not calculated under a period nobody stated.
-    if (policy.applicableFromFiscalYearBe && fy.be < policy.applicableFromFiscalYearBe) {
-      return { policy: null, reason: 'policy_period_not_confirmed', effectiveFrom: null, effectiveDateUnspecified: true };
-    }
-    return { policy, reason: null, effectiveFrom: null, effectiveDateUnspecified: true };
-  }
   const atStart = policyForDate(fy.start, policies);
   if (!atStart) {
     const inside = policies.find((p) => p.effectiveFrom > fy.start && p.effectiveFrom <= fy.end);
@@ -230,7 +220,7 @@ function summarizeUsage(records, fy, policy, leaveType, { countFrom = policy.eff
     // Rules of the announcement are not applied to days before it took effect, even when those days are counted.
     const underPolicy = policy.effectiveFrom ? date >= policy.effectiveFrom : true;
     if (underPolicy && leaveType === 'vacation' && policy.vacation.minDaysPerRequest && dayTotal < policy.vacation.minDaysPerRequest) {
-      flags.push({ code: 'vacation_half_day_review', date, detail: 'clause 25 sets a 1 working day minimum; kept as recorded, not rounded' });
+      flags.push({ code: 'vacation_half_day_review', date, detail: `the policy sets a ${policy.vacation.minDaysPerRequest} working day minimum; kept as recorded, not rounded` });
     }
     if (underPolicy && leaveType === 'personal' && policy.personal.minDaysPerRequest && dayTotal < policy.personal.minDaysPerRequest) {
       flags.push({ code: 'personal_below_minimum', date });
@@ -587,7 +577,6 @@ function computeEntitlements({ fiscalYear, employee, records = [], carryover = {
   for (const type of TYPES) {
     const out = builders[type](ctx);
     out.flags.push(...result.eligibility.flags);
-    if (resolved.effectiveDateUnspecified && out.status === STATUS.OK) out.flags.push({ code: 'policy_effective_date_unspecified' });
     result.results[type] = out.status === STATUS.NOT_STARTED ? out : applyUsage(out, records, fy, policy);
   }
   return result;

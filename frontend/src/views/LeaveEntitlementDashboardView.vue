@@ -202,7 +202,7 @@ onMounted(load);
             <p class="muted">คำนวณครบ 3 ประเภท {{ data!.summary.byPolicy[f.key].fullyDetermined }} · รอยืนยันสิทธิ์ {{ data!.summary.byPolicy[f.key].unconfirmed }}</p>
           </li>
         </ul>
-        <p v-if="data.summary.byPolicy.section_contract?.people" class="callout" role="note">พนักงานส่วนงานจ้างเหมา: ลาป่วย 10 · ลากิจ 5 · ลาพักผ่อน 10 วันทำการ/ปีงบประมาณ ไม่มียอดสะสม — หลักเกณฑ์ไม่ระบุวันที่เริ่มมีผล จึงคำนวณตั้งแต่ปีงบประมาณ 2570 เป็นต้นไป และแสดงเมื่อเจ้าของระบบยืนยันสิทธิ์แล้ว</p>
+        <p v-if="data.summary.byPolicy.section_contract?.people" class="callout" role="note">พนักงานส่วนงานจ้างเหมา: ลาป่วย 10 · ลากิจ 5 · ลาพักผ่อน 10 วันทำการ/ปีงบประมาณ ไม่มียอดสะสม ไม่คิดตามสัดส่วน ลาพักผ่อนครึ่งวัน (0.5 วัน) ได้ — ใช้ตั้งแต่ปีงบประมาณ 2570 (1 ต.ค. 2569) ตามที่เจ้าของระบบกำหนด ลาป่วยเกิน 3 วันทำการติดต่อกันต้องมีใบรับรองแพทย์</p>
 
         <template v-if="missingChips.length">
           <p class="muted">ข้อมูลที่ยังขาด (นับจำนวนคนที่อยู่ในหลักเกณฑ์หรือรอยืนยัน):</p>

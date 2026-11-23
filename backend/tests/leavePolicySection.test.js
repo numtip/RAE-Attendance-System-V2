@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { computeEntitlements, policyContextFor, fiscalYearByBE } = require('../src/domain/leavePolicyEngine');
-const { SECTION_EMPLOYEE_2569, SECTION_CONTRACT_2569_V2, FAMILIES, POLICY_FAMILY_BY_TYPE, familyForType } = require('../src/domain/leavePolicySection');
+const { SECTION_EMPLOYEE_2569, SECTION_CONTRACT_2570_V3, FAMILIES, POLICY_FAMILY_BY_TYPE, familyForType } = require('../src/domain/leavePolicySection');
 const { MJU_LEAVE_2569 } = require('../src/domain/leavePolicy2569');
 
 const FY = 2570; // 2026-10-01 .. 2027-09-30
@@ -21,14 +21,16 @@ const CONTRACT = { employeeType: 'contract', eligibilityConfirmation: CONFIRMED 
 test('policy values: university 60/45/10 untouched, section 15/5/10, section contract 10/5/10 (owner decision, personal is 5)', () => {
   assert.deepEqual([MJU_LEAVE_2569.sick.paidDaysPerFiscalYear, MJU_LEAVE_2569.personal.paidDaysPerFiscalYear, MJU_LEAVE_2569.vacation.daysPerFiscalYear], [60, 45, 10]);
   assert.deepEqual([SECTION_EMPLOYEE_2569.sick.paidDaysPerFiscalYear, SECTION_EMPLOYEE_2569.personal.paidDaysPerFiscalYear, SECTION_EMPLOYEE_2569.vacation.daysPerFiscalYear], [15, 5, 10]);
-  assert.deepEqual([SECTION_CONTRACT_2569_V2.sick.paidDaysPerFiscalYear, SECTION_CONTRACT_2569_V2.personal.paidDaysPerFiscalYear, SECTION_CONTRACT_2569_V2.vacation.daysPerFiscalYear], [10, 5, 10]);
-  assert.equal(SECTION_CONTRACT_2569_V2.id, 'RAE-SECTION-CONTRACT-2569-V2');
-  assert.match(SECTION_CONTRACT_2569_V2.supersedes, /personal 10/);
-  assert.equal(SECTION_CONTRACT_2569_V2.ownerDecisions[0].date, '2026-11-23');
-  assert.match(SECTION_CONTRACT_2569_V2.ownerDecisions[0].decision, /personal 5/);
-  assert.equal(SECTION_CONTRACT_2569_V2.effectiveFrom, null); // not stated: never guessed
+  assert.deepEqual([SECTION_CONTRACT_2570_V3.sick.paidDaysPerFiscalYear, SECTION_CONTRACT_2570_V3.personal.paidDaysPerFiscalYear, SECTION_CONTRACT_2570_V3.vacation.daysPerFiscalYear], [10, 5, 10]);
+  assert.equal(SECTION_CONTRACT_2570_V3.id, 'RAE-SECTION-CONTRACT-2570-V3');
+  assert.match(SECTION_CONTRACT_2570_V3.supersedes, /personal 10/);
+  assert.equal(SECTION_CONTRACT_2570_V3.ownerDecisions[0].date, '2026-11-23');
+  assert.match(SECTION_CONTRACT_2570_V3.ownerDecisions[0].decision, /personal 5/);
+  assert.equal(SECTION_CONTRACT_2570_V3.effectiveFrom, '2026-10-01'); // owner decision: start of FY2570
+  assert.equal(SECTION_CONTRACT_2570_V3.prorating, false);
+  assert.equal(SECTION_CONTRACT_2570_V3.vacation.halfDayAllowed, true);
   assert.equal(SECTION_EMPLOYEE_2569.effectiveFrom, '2026-08-21');
-  assert.equal(SECTION_CONTRACT_2569_V2.vacation.carryoverAllowed, false);
+  assert.equal(SECTION_CONTRACT_2570_V3.vacation.carryoverAllowed, false);
   assert.equal(SECTION_EMPLOYEE_2569.vacation.carryoverAllowed, false);
 });
 
@@ -112,7 +114,7 @@ test('section employee: hired after the fiscal year -> not started; FY2569 (the 
 
 test('section contract: 10 / 5 / 10 once confirmed, no hire date or any other fact needed, carry-over 0', () => {
   const res = run(CONTRACT);
-  assert.equal(res.policyVersion, 'RAE-SECTION-CONTRACT-2569-V2');
+  assert.equal(res.policyVersion, 'RAE-SECTION-CONTRACT-2570-V3');
   assert.equal(res.policyFamily, 'section_contract');
   assert.deepEqual(statuses(res), [OK, OK, OK]);
   assert.deepEqual(figures(res), [10, 5, 10]); // personal leave is 5 (owner decision 2026-11-23), not 10
@@ -120,7 +122,7 @@ test('section contract: 10 / 5 / 10 once confirmed, no hire date or any other fa
   assert.equal(res.results.personal.kind, 'annual_limit'); // S2 does not say the days are paid: not called an allowance
   for (const t of ['sick', 'personal', 'vacation']) {
     assert.deepEqual(res.results[t].missing, []);
-    assert.ok(res.results[t].flags.some((f) => f.code === 'policy_effective_date_unspecified'), t);
+    assert.ok(!res.results[t].flags.some((f) => f.code === 'policy_effective_date_unspecified'), t);
   }
 });
 
@@ -133,10 +135,10 @@ test('section contract: unconfirmed -> needs the owner (no numbers); explicitly 
   assert.deepEqual(statuses(run({ employeeType: 'contract', eligibilityConfirmation: { confirmed: false, reference: 'owner decision' } })), ['out_of_scope', 'out_of_scope', 'out_of_scope']);
 });
 
-test('section contract: no backfill. Before the first applicable fiscal year the period is unconfirmed -> pending_policy', () => {
+test('section contract: no backfill. Before FY2570 (2026-10-01) the policy does not apply -> pending_policy', () => {
   const old = computeEntitlements({ fiscalYear: 2569, employee: CONTRACT });
   assert.deepEqual(statuses(old), ['pending_policy', 'pending_policy', 'pending_policy']);
-  assert.deepEqual(old.results.sick.reasons, ['policy_period_not_confirmed']);
+  assert.deepEqual(old.results.sick.reasons, ['no_policy_for_period']);
   assert.equal(old.policyVersion, null);
   // FY2571 (future) is calculated under the same figures
   assert.deepEqual(figures(computeEntitlements({ fiscalYear: 2571, employee: CONTRACT })), [10, 5, 10]);
@@ -196,11 +198,13 @@ test('medical certificate review: one continuous leave only (a weekend does not 
   assert.equal(sickRun(SECTION, ['2026-11-03', '2026-11-04', '2026-11-05'], { status: 'rejected' }).length, 0);
 });
 
-test('vacation half-day review follows S1 (minimum 1 working day) and is not borrowed for contract staff', () => {
+test('vacation half-day: S1 minimum is 1 working day (flagged); contract staff may take 0.5 day (owner decision), counted as recorded', () => {
   const rec = [day('2026-11-04', 'vacation', { dayPart: 'AM', dayFraction: 0.5 })];
   assert.ok(run(SECTION, { records: rec }).results.vacation.flags.some((f) => f.code === 'vacation_half_day_review'));
   assert.ok(!run(CONTRACT, { records: rec }).results.vacation.flags.some((f) => f.code === 'vacation_half_day_review'));
   assert.equal(run(CONTRACT, { records: rec }).results.vacation.usedDays, 0.5); // counted as recorded, not rounded
+  const quarter = [day('2026-11-04', 'vacation', { dayPart: 'AM', dayFraction: 0.25 })];
+  assert.ok(run(CONTRACT, { records: quarter }).results.vacation.flags.some((f) => f.code === 'vacation_half_day_review')); // below 0.5 still reviewed
 });
 
 // ------------------------------------------------------------ policy lookup helper
@@ -209,9 +213,9 @@ test('policyContextFor: the family, the policy in force for a year and why none 
   const fy = (be) => fiscalYearByBE(be);
   assert.equal(policyContextFor('university', fy(2570)).policy.id, 'MJU-LEAVE-2569');
   assert.equal(policyContextFor('department', fy(2570)).policy.id, 'RAE-SECTION-EMPLOYEE-2569');
-  assert.equal(policyContextFor('contract', fy(2570)).policy.id, 'RAE-SECTION-CONTRACT-2569-V2');
+  assert.equal(policyContextFor('contract', fy(2570)).policy.id, 'RAE-SECTION-CONTRACT-2570-V3');
   assert.equal(policyContextFor('department', fy(2569)).reason, 'policy_effective_mid_year');
-  assert.equal(policyContextFor('contract', fy(2569)).reason, 'policy_period_not_confirmed');
+  assert.equal(policyContextFor('contract', fy(2569)).reason, 'no_policy_for_period');
   const unmapped = policyContextFor('procurement_academic', fy(2570));
   assert.deepEqual([unmapped.family, unmapped.unmapped], [null, true]);
 });

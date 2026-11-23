@@ -154,7 +154,6 @@ function createLeaveEntitlementService({ repositories, now = () => new Date() })
     }
     if (eligibility.status === 'needs_hr') flags.push({ code: 'eligibility_from_hr_row' });
     if (engineOut.status === STATUS.PENDING_POLICY) flags.push({ code: 'policy_pending_hr_verified' });
-    if (policyCtx.effectiveDateUnspecified) flags.push({ code: 'policy_effective_date_unspecified' });
 
     const uncovered = uncoveredMonths(fy, covered, today, hr.usageBaselineThrough);
     const usageComplete = uncovered.length === 0;
