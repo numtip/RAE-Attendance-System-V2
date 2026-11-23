@@ -5,12 +5,22 @@
 
 const port = Number(process.env.PORT || 3210);
 
+/** off | shadow | on. Anything else (including unset) is off: the engine never turns on by accident. */
+function leaveEngineFlag(value) {
+  const flag = String(value || '').trim().toLowerCase();
+  return flag === 'shadow' || flag === 'on' ? flag : 'off';
+}
+
 module.exports = {
+  leaveEngineFlag,
   app: {
     name: 'RAE Attendance System V2',
     env: process.env.NODE_ENV || 'development',
     port: Number.isInteger(port) && port > 0 ? port : 3210,
     url: process.env.APP_URL || 'http://127.0.0.1:3100',
+  },
+  leave: {
+    entitlementEngine: leaveEngineFlag(process.env.LEAVE_ENTITLEMENT_ENGINE),
   },
   database: {
     host: process.env.DB_HOST || '',

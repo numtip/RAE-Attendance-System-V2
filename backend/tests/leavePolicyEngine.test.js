@@ -449,17 +449,22 @@ test('the salary-increment indicator is informational and independent of the lea
 
 // ------------------------------------------------------------ boundary
 
-test('Phase 1 is unwired: nothing under src outside the domain files uses the engine', () => {
+test('the engine is used only by the integration layer; the salary-increment note is used by nothing', () => {
   const root = path.join(backendRoot, 'src');
-  const offenders = [];
+  const allowed = new Set(['leaveEntitlementService.js', 'leaveService.js', 'leaveController.js']);
+  const usingEngine = [];
+  const usingSalary = [];
   (function walk(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
       else if (/\.js$/.test(entry.name) && !/leavePolicy(Engine|2569)\.js$|leaveSalaryIncrement\.js$/.test(entry.name)) {
-        if (/leavePolicyEngine|leavePolicy2569|leaveSalaryIncrement/.test(fs.readFileSync(full, 'utf8'))) offenders.push(full);
+        const text = fs.readFileSync(full, 'utf8');
+        if (/leavePolicyEngine|leavePolicy2569/.test(text)) usingEngine.push(entry.name);
+        if (/leaveSalaryIncrement/.test(text)) usingSalary.push(entry.name);
       }
     }
   }(root));
-  assert.deepEqual(offenders, []);
+  assert.deepEqual(usingEngine.filter((name) => !allowed.has(name)), []);
+  assert.deepEqual(usingSalary, []);
 });
