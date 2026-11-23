@@ -112,3 +112,37 @@ test('an entitlement for a type with no verifiable deductions has no remaining f
   assert.equal(maternity.remainingDays, null);
   assert.equal(maternity.unavailableReason, 'deductions_not_tracked');
 });
+
+test('personal report uses the same records-first rows and balances as the leave pages', async () => {
+  const { createReportService } = require('../src/services/reportService');
+  const repos = makeRepos({
+    balances: [{ employeeUid: ME, year: 2026, leaveType: 'vacation', totalDays: 10, usedDays: 0, remainingDays: 10 }],
+    records: [
+      rec({ leaveDate: '2026-03-04', leaveType: 'vacation', approvalStatus: 'approved' }),
+      rec({ leaveDate: '2026-03-05', leaveType: 'vacation' }),
+      rec({ leaveDate: '2026-04-02', leaveType: 'vacation', approvalStatus: 'approved' }),
+    ],
+  });
+  repos.employees = { async findByUid(uid) { return { employeeUid: uid, employeeId: '1', firstNameTh: 'ก', lastNameTh: 'ข', department: 'D', position: 'P' }; } };
+  repos.attendance = { async findMonthly() { return null; }, async findForEmployee() { return []; }, async latestDailyDate() { return null; } };
+  repos.leaveRecords.coveredPeriods = async () => ['2026-03'];
+  repos.leaveRecords.listBetween = async () => [];
+  const report = await createReportService({ repositories: repos }).personal(me, { year: '2026', month: '3' });
+  assert.deepEqual(report.leaveRows.map((r) => r.statusLabel), ['บันทึกแล้ว · รออนุมัติ', 'อนุมัติแล้ว']);
+  assert.equal(report.leaveRows.length, 2, 'only March rows');
+  const vacation = report.leaveBalances.find((b) => b.leaveType === 'vacation');
+  assert.equal(vacation.remainingDays, 8, 'two approved days (March and April) deducted; the undecided one is not');
+  assert.equal(report.remainingLeaveDays, 8);
+  assert.equal(report.leaveBalances.find((b) => b.leaveType === 'sick').remainingDays, null);
+});
+
+test('no entitlement anywhere: remaining is null, not 0', async () => {
+  const { createReportService } = require('../src/services/reportService');
+  const repos = makeRepos({ records: [rec({ approvalStatus: 'approved' })] });
+  repos.employees = { async findByUid(uid) { return { employeeUid: uid, employeeId: '1', firstNameTh: 'ก', lastNameTh: 'ข', department: 'D', position: 'P' }; } };
+  repos.attendance = { async findMonthly() { return null; }, async findForEmployee() { return []; }, async latestDailyDate() { return null; } };
+  repos.leaveRecords.coveredPeriods = async () => [];
+  repos.leaveRecords.listBetween = async () => [];
+  const report = await createReportService({ repositories: repos }).personal(me, { year: '2026', month: '3' });
+  assert.equal(report.remainingLeaveDays, null);
+});

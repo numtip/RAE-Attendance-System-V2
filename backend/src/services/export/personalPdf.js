@@ -1,5 +1,6 @@
 const PDFDocument = require('pdfkit');
 const { ORGANIZATION_NAME_TH, INSTITUTION_NAME_TH } = require('../../config/organization');
+const { describeBalances } = require('../leaveLabels');
 
 const REGULAR = require.resolve('../../assets/fonts/Sarabun-Regular.ttf');
 const BOLD = require.resolve('../../assets/fonts/Sarabun-Bold.ttf');
@@ -36,8 +37,7 @@ function renderPersonalPdf(report) {
         } else {
           doc.text('ไม่มีสรุปรายเดือนที่บันทึกไว้', { width: 500 });
         }
-        const remaining = report.remainingLeaveDays == null ? 'ไม่มีวันลาคงเหลือที่บันทึกไว้' : String(report.remainingLeaveDays);
-        doc.text(`วันลาคงเหลือ ${remaining}`, { width: 500 });
+        for (const line of describeBalances(report.leaveBalances)) doc.text(`วันลาคงเหลือ — ${line.label}: ${line.text}`, { width: 500 });
         doc.moveDown(0.4);
         doc.font('Sarabun-Bold').text('รายการสแกนที่บันทึกไว้', { width: 500 });
         doc.font('Sarabun');
@@ -57,7 +57,7 @@ function renderPersonalPdf(report) {
           doc.text('ไม่มีรายการลาที่บันทึกไว้', { width: 500 });
         }
         for (const row of report.leaveRows) {
-          doc.text(`${row.typeLabel}  ${row.startLabel} – ${row.endLabel}  ${row.statusLabel}`, { width: 500 });
+          doc.text(`${row.typeLabel}  ${row.startLabel}${row.endLabel !== row.startLabel ? ` – ${row.endLabel}` : ''}${row.dayFraction != null ? `  ${row.dayFraction} วัน` : ''}  ${row.statusLabel}`, { width: 500 });
         }
       }
       doc.end();

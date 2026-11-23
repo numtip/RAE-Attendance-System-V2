@@ -99,7 +99,11 @@ export interface PersonalLeaveRow {
   typeLabel: string;
   startLabel: string;
   endLabel: string;
+  status?: string;
   statusLabel: string;
+  partLabel?: string | null;
+  dayFraction?: number | null;
+  sourceLabel?: string | null;
 }
 
 export interface PersonalReport {
@@ -126,6 +130,8 @@ export interface PersonalReport {
   dataThrough?: DataThrough;
   scans: PersonalScan[];
   leaveRows: PersonalLeaveRow[];
+  leaveBalances: LeaveBalanceRow[];
+  /** Sum over the types with a verified entitlement; null when none (NOT zero). */
   remainingLeaveDays: number | null;
   source: string;
   notices: {

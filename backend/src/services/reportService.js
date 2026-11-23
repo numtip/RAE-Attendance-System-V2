@@ -1,4 +1,6 @@
 const { recordedLeaveByEmployee } = require('./recordedLeave');
+const { createLeaveService } = require('./leaveService');
+const { describeBalances } = require('./leaveLabels');
 const { dataThrough } = require('./dataThrough');
 const { HttpError } = require('../utils/httpError');
 const { writeXlsx } = require('./export/xlsxWriter');
@@ -11,8 +13,6 @@ const THAI_MONTHS = [
 ];
 
 const STATUS_TH = { late: 'สาย', present: 'มาทำงาน', leave: 'ลา' };
-const LEAVE_TH = { personal: 'ลากิจ' };
-const LEAVE_STATUS_TH = { approved: 'อนุมัติ', pending: 'รออนุมัติ', rejected: 'ไม่อนุมัติ' };
 
 const HOLIDAY_NOTE = 'จำนวนวันทำงานยังไม่หักวันหยุดนักขัตฤกษ์';
 
@@ -60,6 +60,7 @@ function labelOrMissing(value, missingLabel) {
 }
 
 function createReportService({ repositories }) {
+  const leaveService = createLeaveService({ repositories });
   return {
     async personal(auth, query) {
       const year = Number(query.year);
@@ -85,19 +86,24 @@ function createReportService({ repositories }) {
           statusLabel: !row.checkIn && row.checkOut ? 'กลับก่อน' : (STATUS_TH[row.status] || row.status),
           lateMinutes: row.lateMinutes ?? null,
         }));
-      const leaveRows = (await repositories.leave.list(auth.employeeUid))
+      // Same records-first source, status and balance rules as the personal leave list / history / balance pages.
+      const leaveItems = await leaveService.list(auth, auth.employeeUid, { year });
+      const leaveRows = leaveItems
         .filter((row) => row.startDate <= end && row.endDate >= start)
         .map((row) => ({
           leaveType: row.leaveType,
-          typeLabel: LEAVE_TH[row.leaveType] || row.leaveType,
+          typeLabel: row.typeLabel,
           startDate: row.startDate,
           endDate: row.endDate,
           startLabel: thaiDate(row.startDate),
           endLabel: thaiDate(row.endDate),
           status: row.status,
-          statusLabel: LEAVE_STATUS_TH[row.status] || row.status,
+          statusLabel: row.statusLabel,
+          partLabel: row.partLabel,
+          dayFraction: row.dayFraction,
+          sourceLabel: row.sourceLabel,
         }));
-      const balances = await repositories.leave.balance(auth.employeeUid, year);
+      const leaveBalances = await leaveService.balance(auth, auth.employeeUid, year);
       const recorded = await recordedLeaveByEmployee(repositories, year, month, start, end);
       const mineRecorded = recorded.byUid.get(auth.employeeUid);
       const coverageThrough = await dataThrough(repositories, start, end, thaiDate);
@@ -130,8 +136,10 @@ function createReportService({ repositories }) {
         lateMinutes: hasMonthlySummary ? monthly.totalLateMinutes : null,
         scans,
         leaveRows,
-        remainingLeaveDays: balances.length
-          ? balances.reduce((sum, row) => sum + Number(row.remainingDays || 0), 0)
+        leaveBalances,
+        // Sum over the leave types that have a verified entitlement; null when none do (never 0).
+        remainingLeaveDays: leaveBalances.some((row) => row.available)
+          ? leaveBalances.filter((row) => row.available).reduce((sum, row) => sum + row.remainingDays, 0)
           : null,
         dataThrough: coverageThrough,
         source: 'stored-monthly-and-leave',
@@ -191,7 +199,7 @@ function summaryRows(report) {
   } else {
     rows.push(['สรุปรายเดือน', 'ไม่มีสรุปรายเดือนที่บันทึกไว้']);
   }
-  rows.push(['วันลาคงเหลือ', report.remainingLeaveDays == null ? 'ไม่มีวันลาคงเหลือที่บันทึกไว้' : report.remainingLeaveDays]);
+  for (const line of describeBalances(report.leaveBalances)) rows.push([`วันลาคงเหลือ — ${line.label}`, line.text]);
   return rows;
 }
 
@@ -200,8 +208,8 @@ function writePersonalXlsx(report) {
     ? report.scans.map((row) => [row.dateLabel, row.checkInLabel, row.checkOutLabel, row.statusLabel, row.lateMinutes])
     : [['ไม่มีรายการสแกนที่บันทึกไว้', '', '', '', '']];
   const leaveSheetRows = report.leaveRows.length
-    ? report.leaveRows.map((row) => [row.typeLabel, row.startLabel, row.endLabel, row.statusLabel])
-    : [['ไม่มีรายการลาที่บันทึกไว้', '', '', '']];
+    ? report.leaveRows.map((row) => [row.typeLabel, row.startLabel, row.endLabel, row.partLabel || '', row.dayFraction ?? '', row.statusLabel, row.sourceLabel || ''])
+    : [['ไม่มีรายการลาที่บันทึกไว้', '', '', '', '', '', '']];
   return writeXlsx({
     sheets: [
       {
@@ -226,7 +234,10 @@ function writePersonalXlsx(report) {
           { header: 'ประเภท', width: 16 },
           { header: 'เริ่ม', width: 24 },
           { header: 'สิ้นสุด', width: 24 },
-          { header: 'สถานะ', width: 16 },
+          { header: 'ช่วงเวลา', width: 16 },
+          { header: 'จำนวนวัน', width: 12 },
+          { header: 'สถานะ', width: 24 },
+          { header: 'แหล่งข้อมูล', width: 24 },
         ],
         rows: report.empty ? [] : leaveSheetRows,
       },

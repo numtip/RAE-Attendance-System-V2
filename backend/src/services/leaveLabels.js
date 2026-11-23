@@ -24,6 +24,7 @@ const RECORD_STATUS_LABEL = {
   needs_review: 'รอตรวจสอบ',
   rejected: 'ไม่อนุมัติ',
 };
+const LEGACY_STATUS_LABEL = { approved: 'อนุมัติแล้ว', pending: 'รออนุมัติ', rejected: 'ไม่อนุมัติ' };
 const SOURCE_LABEL = { hip_daily_report_remark: 'รายงาน HIP (หมายเหตุ)', owner_manual_entry: 'บันทึกด้วยมือ', legacy: 'ระบบเดิม' };
 
 function recordStatus(record) {
@@ -32,4 +33,15 @@ function recordStatus(record) {
   return record.approvalStatus === 'approved' ? 'approved' : 'unverified';
 }
 
-module.exports = { PART_LABEL, REASON_LABEL, TYPE_LABEL, APPROVAL_LABEL, RECORD_STATUS_LABEL, SOURCE_LABEL, recordStatus };
+const fmtDays = (value) => (Number.isInteger(value) ? String(value) : value.toFixed(1));
+/** One display line per leave type; a missing entitlement is "ไม่มีข้อมูล", never 0. */
+function describeBalances(balances) {
+  return (balances || []).map((row) => ({
+    label: row.typeLabel || TYPE_LABEL[row.leaveType] || row.leaveType,
+    text: row.available
+      ? `คงเหลือ ${fmtDays(row.remainingDays)} วัน (ใช้ไป ${fmtDays(row.usedDays)} จาก ${fmtDays(row.totalDays)})`
+      : 'ไม่มีข้อมูล',
+  }));
+}
+
+module.exports = { PART_LABEL, REASON_LABEL, TYPE_LABEL, APPROVAL_LABEL, RECORD_STATUS_LABEL, LEGACY_STATUS_LABEL, SOURCE_LABEL, recordStatus, describeBalances };

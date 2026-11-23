@@ -50,6 +50,14 @@ export function leaveStatusLabel(value: string | undefined | null): string {
   return map[value.toLowerCase()] ?? value;
 }
 
+/** Chip class for the status of one leave record (approved / unverified / needs_review / rejected / legacy pending). */
+export function leaveRecordChipClass(status: string): string {
+  if (status === 'approved') return 'chip chip--ok';
+  if (status === 'needs_review' || status === 'pending') return 'chip chip--late';
+  if (status === 'rejected') return 'chip chip--muted';
+  return 'chip chip--leave';
+}
+
 export type Tone = 'ok' | 'late' | 'leave' | 'muted';
 
 /** Visual tone for a Thai status label already produced by the API (`statusLabel`). */

@@ -8,7 +8,7 @@ import KpiTile from '../components/KpiTile.vue';
 import PageHeader from '../components/PageHeader.vue';
 import ThaiDateInput from '../components/ThaiDateInput.vue';
 import YearSelect from '../components/YearSelect.vue';
-import { THAI_MONTHS } from '../utils/thai';
+import { THAI_MONTHS, leaveRecordChipClass } from '../utils/thai';
 
 const now = new Date();
 const year = ref(now.getUTCFullYear());
@@ -59,12 +59,6 @@ function cell(row: LeaveMonthlyRow, kind: LeaveKind): string {
   if (b.records === 0) return '0';
   const half = b.halfDays ? ` (ครึ่งวัน ${b.halfDays})` : '';
   return `${days(b.days)} วัน${half}`;
-}
-function statusChip(code: LeaveRecordStatus): string {
-  if (code === 'approved') return 'chip chip--ok';
-  if (code === 'needs_review') return 'chip chip--late';
-  if (code === 'rejected') return 'chip chip--muted';
-  return 'chip chip--leave';
 }
 
 async function load() {
@@ -290,7 +284,7 @@ onMounted(load);
                         <li v-for="(d, i) in row.recordedDetails" :key="i">
                           {{ d.typeLabel }} · {{ d.dateLabel }} · {{ d.partLabel }}
                           <template v-if="d.dayFraction !== null"> · {{ days(d.dayFraction) }} วัน</template>
-                          <span v-if="d.status" :class="statusChip(d.status)">{{ d.statusLabel }}</span>
+                          <span v-if="d.status" :class="leaveRecordChipClass(d.status)">{{ d.statusLabel }}</span>
                           <span v-if="d.reasonLabels.length" class="muted"> — {{ d.reasonLabels.join('; ') }} (ไม่รวมในยอด)</span>
                         </li>
                       </ul>
@@ -318,7 +312,7 @@ onMounted(load);
                   <td data-label="ช่วงเวลา">{{ r.partLabel }}</td>
                   <td data-label="จำนวนวัน" class="num">{{ r.dayFraction === null ? '—' : days(r.dayFraction) }}</td>
                   <td data-label="สถานะ">
-                    <span :class="statusChip(r.status)">{{ r.statusLabel }}</span>
+                    <span :class="leaveRecordChipClass(r.status)">{{ r.statusLabel }}</span>
                     <span v-if="r.reasonLabels.length" class="muted"> {{ r.reasonLabels.join('; ') }}</span>
                   </td>
                 </tr>

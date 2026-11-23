@@ -6,7 +6,9 @@ const { resolveScope } = require('./authorizationService');
 const { reportHelpers } = require('./reportService');
 const { DIVISIONS } = require('../config/organization');
 
-const { PART_LABEL, REASON_LABEL, APPROVAL_LABEL } = require('./leaveLabels');
+const {
+  PART_LABEL, REASON_LABEL, APPROVAL_LABEL, TYPE_LABEL: BASE_TYPE_LABEL, RECORD_STATUS_LABEL, LEGACY_STATUS_LABEL, SOURCE_LABEL, recordStatus,
+} = require('./leaveLabels');
 
 const { assertPeriod, monthBounds, thaiDate } = reportHelpers;
 
@@ -15,30 +17,9 @@ const TYPES = [
   { type: 'sick', labelTh: 'ลาป่วย' },
   { type: 'vacation', labelTh: 'ลาพักผ่อน' },
 ];
-const TYPE_LABEL = { ...Object.fromEntries(TYPES.map((t) => [t.type, t.labelTh])), other: 'ลาอื่น ๆ' };
-const STATUS_LABEL = { approved: 'อนุมัติ', pending: 'รออนุมัติ', rejected: 'ไม่อนุมัติ' };
-/**
- * Explicit status of one HIP-recorded day. It is derived only from stored columns:
- *   rejected     approval_status = rejected (a decision; never counted)
- *   needs_review review_status = needs_review (conflicting/ambiguous; never counted)
- *   approved     candidate + approval_status = approved (executive decided)
- *   unverified   candidate + not yet decided (counted as recorded, not as approved)
- */
-const RECORD_STATUS_LABEL = {
-  approved: 'อนุมัติแล้ว',
-  unverified: 'บันทึกจาก HIP · รออนุมัติ',
-  needs_review: 'รอตรวจสอบ',
-  rejected: 'ไม่อนุมัติ',
-};
+const TYPE_LABEL = { ...BASE_TYPE_LABEL, other: 'ลาอื่น ๆ' };
 const RECORD_STATUSES = Object.keys(RECORD_STATUS_LABEL);
-const SOURCE_LABEL = { hip_daily_report_remark: 'รายงาน HIP (หมายเหตุ)', owner_manual_entry: 'บันทึกด้วยมือ' };
 const LEGACY_STATUS_FOR = { approved: 'approved', unverified: 'pending', rejected: 'rejected' };
-
-function recordStatus(record) {
-  if (record.approvalStatus === 'rejected') return 'rejected';
-  if (record.reviewStatus !== 'candidate') return 'needs_review';
-  return record.approvalStatus === 'approved' ? 'approved' : 'unverified';
-}
 
 function validIsoDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -262,7 +243,7 @@ function createLeaveMonthlyReportService({ repositories }) {
             startLabel: thaiDate(row.startDate),
             endLabel: thaiDate(row.endDate),
             status,
-            statusLabel: STATUS_LABEL[status] || row.status,
+            statusLabel: LEGACY_STATUS_LABEL[status] || row.status,
             daysInMonth: days,
             crossesMonth: row.startDate < start || row.endDate > end,
             counted: status === 'approved' && Boolean(byType[row.leaveType]),
