@@ -391,4 +391,14 @@ export interface LeaveBalanceRow {
   remainingDays: number | null;
   available?: boolean;
   unavailableReason?: 'no_entitlement' | 'deductions_not_tracked' | null;
+  /** Present only on fiscal-basis rows (LEAVE_ENTITLEMENT_ENGINE=on). */
+  basis?: 'fiscal';
+  fiscalYear?: { be: number; start: string; end: string };
+  status?: 'ok' | 'unknown' | 'pending_policy' | 'pending_hr_decision' | 'needs_hr' | 'out_of_scope' | 'not_started';
+  reasons?: string[];
+  /** null = not known; 0 = HR confirmed nothing is carried over. */
+  carryoverDays?: number | null;
+  entitlementDays?: number | null;
+  usageComplete?: boolean;
+  uncoveredMonths?: string[];
 }

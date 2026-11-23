@@ -217,8 +217,27 @@ async function handleLeaveList(query: string): Promise<LeaveRow[]> {
   return fixtureLeave.filter((row) => row.employeeUid === target);
 }
 
-async function handleLeaveBalance(employeeUid: string, year: number): Promise<LeaveBalanceRow[]> {
+/** Synthetic fiscal-basis rows (fixture build only). Mirrors the shape of the engine's rows; no real person or HR figure. */
+function fiscalFixtureRows(employeeUid: string, year: number): LeaveBalanceRow[] {
+  const fiscalYear = { be: year, start: `${year - 544}-10-01`, end: `${year - 543}-09-30` };
+  const base = { employeeUid, year, basis: 'fiscal' as const, fiscalYear };
+  return [
+    { ...base, leaveType: 'vacation', typeLabel: 'ลาพักผ่อน', status: 'ok', reasons: [], entitlementDays: 10, carryoverDays: 5, totalDays: 15, usedDays: 4, pendingDays: 1, remainingDays: 11, available: true, unavailableReason: null, usageComplete: true, uncoveredMonths: [] },
+    { ...base, leaveType: 'personal', typeLabel: 'ลากิจ', status: 'ok', reasons: ['usage_coverage_incomplete'], entitlementDays: 15, carryoverDays: null, totalDays: 15, usedDays: 2, pendingDays: 0, remainingDays: null, available: false, unavailableReason: 'deductions_not_tracked', usageComplete: false, uncoveredMonths: [`${year - 544}-12`] },
+    { ...base, leaveType: 'sick', typeLabel: 'ลาป่วย', status: 'needs_hr', reasons: ['needs_hr'], entitlementDays: null, carryoverDays: null, totalDays: null, usedDays: 0, pendingDays: 0, remainingDays: null, available: false, unavailableReason: 'no_entitlement', usageComplete: true, uncoveredMonths: [] },
+  ];
+}
+
+async function handleLeaveBalance(employeeUid: string, year: number, basis: 'calendar' | 'fiscal' = 'calendar'): Promise<LeaveBalanceRow[]> {
   const auth = authFromSession();
+  if (basis === 'fiscal') {
+    if (!Number.isInteger(year) || year < 2569 || year > 2700) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'a fiscal year is a Buddhist-era year such as 2570');
+    }
+    assertCanReadEmployee(auth, employeeUid);
+    if (!findEmployeePublic(employeeUid)) throw new ApiError(404, 'NOT_FOUND', 'Employee was not found');
+    return fiscalFixtureRows(employeeUid, year);
+  }
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {
     throw new ApiError(400, 'VALIDATION_ERROR', 'year is invalid');
   }
@@ -534,9 +553,9 @@ export async function fixtureApiRequest<T>(
     return (await handleLeaveList(query)) as T;
   }
 
-  const balanceMatch = path.match(/^\/leave\/balance\/([^/?]+)\?year=(\d+)$/);
+  const balanceMatch = path.match(/^\/leave\/balance\/([^/?]+)\?year=(\d+)(&basis=fiscal)?$/);
   if (auth && method === 'GET' && balanceMatch) {
-    return (await handleLeaveBalance(decodeURIComponent(balanceMatch[1]), Number(balanceMatch[2]))) as T;
+    return (await handleLeaveBalance(decodeURIComponent(balanceMatch[1]), Number(balanceMatch[2]), balanceMatch[3] ? 'fiscal' : 'calendar')) as T;
   }
 
   const leaveMonthlyMatch = path.match(/^\/reports\/leave-monthly\?year=(\d+)&month=(\d+)/);
