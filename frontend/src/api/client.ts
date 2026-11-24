@@ -205,6 +205,8 @@ export const api = {
     apiRequest<import('./types').LeaveDecisionResult>('/leave-review/decisions', { method: 'POST', body: { decisions } }),
   leaveMonthlyReport: (query: import('./types').LeaveReportQuery) =>
     apiRequest<import('./types').LeaveMonthlyReport>(`/reports/leave-monthly?${leaveReportParams(query)}`),
+  attendanceAnalytics: (query: import('./types').AttendanceAnalyticsQuery) =>
+    apiRequest<import('./types').AttendanceAnalyticsReport>(`/reports/attendance-analytics?${attendanceAnalyticsParams(query)}`),
   personalReport: (year: number, month: number) =>
     apiRequest<import('./types').PersonalReport>(`/reports/personal?year=${year}&month=${month}`),
 };
@@ -222,6 +224,17 @@ export function leaveReportParams(query: import('./types').LeaveReportQuery): st
   const params = new URLSearchParams({ year: String(query.year) });
   if (query.month) params.set('month', String(query.month));
   for (const key of ['from', 'to', 'division', 'employeeUid', 'status', 'type'] as const) {
+    const value = query[key];
+    if (value) params.set(key, value);
+  }
+  return params.toString();
+}
+
+/** Query string for the attendance analytics report (month null = whole year). */
+export function attendanceAnalyticsParams(query: import('./types').AttendanceAnalyticsQuery): string {
+  const params = new URLSearchParams({ year: String(query.year) });
+  if (query.month) params.set('month', String(query.month));
+  for (const key of ['from', 'to', 'division', 'employeeUid'] as const) {
     const value = query[key];
     if (value) params.set(key, value);
   }

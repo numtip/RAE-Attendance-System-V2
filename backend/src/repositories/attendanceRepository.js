@@ -23,6 +23,13 @@ class AttendanceRepository {
     return this.dailyRows.filter((row) => row.employeeUid === employeeUid);
   }
 
+  /** Every stored day row in [start,end] across all employees, for period analytics. */
+  async listForPeriod(start, end) {
+    return this.dailyRows
+      .filter((row) => row.date >= start && row.date <= end)
+      .sort((a, b) => String(a.employeeUid).localeCompare(String(b.employeeUid)) || String(a.date).localeCompare(String(b.date)));
+  }
+
   /**
    * Upsert by (employeeUid, date) — the same key the MariaDB unique index enforces, so a correction
    * replaces the day instead of appending a second one. Arrays are replaced, never mutated: the

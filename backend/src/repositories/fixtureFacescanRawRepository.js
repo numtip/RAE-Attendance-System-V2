@@ -82,6 +82,15 @@ function createFixtureFacescanRawRepository() {
         .map((row) => ({ ...row }));
     },
 
+    /** Quarantined scans (unmapped or duplicate) whose scan datetime falls in [start,end] — evidence kept, never promoted. */
+    async countUnresolvedBetween(start, end) {
+      return [...rowsById.values()].filter((row) => {
+        if (row.resolutionStatus === 'resolved') return false;
+        const day = String(row.scanDatetime).slice(0, 10);
+        return day >= start && day <= end;
+      }).length;
+    },
+
     async resolveRow(id, { employeeUid, resolutionStatus }) {
       const row = rowsById.get(id);
       if (!row) return null;

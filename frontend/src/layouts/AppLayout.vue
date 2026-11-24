@@ -16,6 +16,7 @@ const myNav = [
   { name: 'profile', label: 'ข้อมูลของฉัน' },
   { name: 'attendance-daily', label: 'ลงเวลารายวัน' },
   { name: 'attendance-monthly', label: 'สรุปรายเดือน' },
+  { name: 'attendance-analytics', label: 'วิเคราะห์การเข้างาน' },
   { name: 'reports', label: 'รายงานของฉัน' },
 ];
 const leaveNav = [

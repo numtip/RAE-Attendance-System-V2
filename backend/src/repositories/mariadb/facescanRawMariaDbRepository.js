@@ -197,6 +197,17 @@ function createFacescanRawMariaDbRepository(pool) {
       return rows.map((row) => mapRawRow(row));
     },
 
+    /** Quarantined scans (unmapped or duplicate) whose scan datetime falls in [start,end] — evidence kept, never promoted. */
+    async countUnresolvedBetween(start, end) {
+      const [rows] = await pool.query(
+        `SELECT COUNT(*) AS quarantined
+           FROM staging_facescan_raw
+          WHERE resolution_status <> 'resolved' AND check_time >= ? AND check_time < DATE_ADD(?, INTERVAL 1 DAY)`,
+        [start, end],
+      );
+      return Number(rows[0].quarantined) || 0;
+    },
+
     async resolveRow(id, { employeeUid, resolutionStatus }) {
       const now = new Date();
       await pool.query(
