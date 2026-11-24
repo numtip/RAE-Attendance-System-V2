@@ -1,4 +1,24 @@
-# Next actions — as of 2026-11-20 closeout (current)
+# Next actions — as of 2026-11-24 (current)
+
+**Gate:** `ATTENDANCE_DATA_COMPLETE = PARTIAL`. `main` `cf0d78b`. Resume from here; do not repeat completed work.
+Attendance data readiness audit is done (read-only, see `docs/STATUS.md` 2026-11-24): 52/52 employees mapped, every available 2026 HIP file fully imported (scan counts equal batch rows exactly), events/daily/monthly reconcile, 328 unmapped scans are the two former employees by owner decision. **No import was needed; no production write was made.**
+
+## Owner / evidence first (attendance data)
+
+| # | Action | Who | Notes |
+|---|---|---|---|
+| 1 | Provide the HIP export for 19–30 Nov 2026 (and onward) | owner | Import is idempotent: `facescan:import <file> --format hip-daily --confirm --derive`; then daily/monthly reconcile automatically |
+| 2 | Decide the MJU 2026 holiday calendar | owner | `attendance_holiday` is empty; `expected_working_days` stays weekday-based until then; never invent holidays |
+| 3 | Decide the Oct–Dec 2025 classification policy | owner | Files are attested (1,962/1,937/1,863 scans) but AR-0001 approves 2026 only |
+| 4 | Unchanged leave/identity items | owner | 29 `needs_review` leave records; SSO links for 3 pending employees; executive self-approval policy |
+
+## Dashboard next (engineering)
+
+Attendance Analytics Dashboard may proceed on the reconciled tables; keep partial-month handling ("ข้อมูลถึงวันที่ …"), keep `absent: null` / no absence KPI (D-2026-11-19-03), and reuse the leave dashboard design baseline.
+
+---
+
+# Next actions — as of 2026-11-20 closeout (historical)
 
 **Gate:** `RELEASE1_PRODUCTION_ACCEPTED`; Release 2 live. `main` `3d38715`, backend `dark-4bd7790`, frontend from `4bd7790`. Resume from here; do not repeat completed work. Day: `docs/reports/DAY_SUMMARY_2026-11-20.md`, decisions D-2026-11-20-01 … -05.
 
