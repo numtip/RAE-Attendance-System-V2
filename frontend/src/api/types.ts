@@ -339,6 +339,120 @@ export interface DataThrough {
   note?: string | null;
 }
 
+// ---- attendance analytics (organization / department / individual) ----
+
+export interface AttendanceAnalyticsQuery {
+  year: number;
+  /** null = the whole year. */
+  month: number | null;
+  from?: string;
+  to?: string;
+  division?: string;
+  employeeUid?: string;
+}
+
+export interface AttendanceMonthCoverage {
+  month: string;
+  covered: boolean;
+  through: string | null;
+  throughLabel: string | null;
+  partial: boolean;
+  expectedDays: number | null;
+  calculatedDays: number | null;
+  workdays: number | null;
+  leaveDays: number | null;
+  lateArrivals: number | null;
+  earlyDepartures: number | null;
+  lateMinutes: number | null;
+  noDataDays: number | null;
+  completeness: number | null;
+}
+
+export interface AttendanceAnalyticsRow {
+  employeeUid: string;
+  employeeId: string;
+  employeeName: string;
+  divisionCode: string;
+  divisionName: string;
+  hasData: boolean;
+  expectedDays: number;
+  calculatedDays: number;
+  workdays: number;
+  leaveDays: number;
+  lateArrivals: number;
+  earlyDepartures: number;
+  lateMinutes: number;
+  earlyMinutes: number;
+  noDataDays: number;
+  pendingPolicyDays: number;
+  missingDays: number;
+  /** Share of the weekday denominator with computed data; null = no denominator (no data). */
+  completeness: number | null;
+  /** HIP-recorded leave context: excluded from every attendance KPI until approved. */
+  leaveApprovedDays: number;
+  leaveAwaitingDays: number;
+  leaveNeedsReviewRecords: number;
+}
+
+export interface AttendanceDivisionSummary extends AttendanceAnalyticsRow {
+  code: string;
+  nameTh: string;
+  headcount: number;
+  employeesWithRecords: number;
+}
+
+export interface AttendanceAnalyticsReport {
+  scope: 'organization' | 'team' | 'self';
+  year: number;
+  month: number | null;
+  from: string;
+  to: string;
+  buddhistYear: number;
+  periodLabel: string;
+  filters: { division: string | null; employeeUid: string | null; divisionName: string | null; active: boolean };
+  divisions: { code: string; nameTh: string }[];
+  dataThrough: DataThrough;
+  coverage: {
+    holidayCalendarConfigured: boolean;
+    workdayBasisNote: string;
+    noAbsentNote: string;
+    quarantinedNote: string;
+    leaveApprovalNote: string;
+    quarantinedScansExcluded: { count: number; countedInKpis: boolean } | null;
+    months: AttendanceMonthCoverage[];
+    uncoveredMonths: string[];
+    partialMonths: string[];
+    leaveCoveredMonths: string[];
+  };
+  totals: {
+    employeesInScope: number;
+    employeesWithRecords: number;
+    employeesWithoutRecords: number;
+    employeeCoverage: { withRecords: number; total: number; ratio: number | null };
+    expectedDays: number;
+    calculatedDays: number;
+    workdays: number;
+    leaveDays: number;
+    lateArrivals: number;
+    earlyDepartures: number;
+    lateMinutes: number;
+    earlyMinutes: number;
+    noDataDays: number;
+    pendingPolicyDays: number;
+    otherDays: number;
+    missingDays: number;
+    completeness: number | null;
+    leaveApprovedDays: number;
+    leaveAwaitingDays: number;
+    leaveNeedsReviewRecords: number;
+    absent: null;
+  };
+  byDivision: AttendanceDivisionSummary[];
+  rows: AttendanceAnalyticsRow[];
+  reconciliation: { daysInTotals: number; daysInDivisions: number; daysInRows: number; daysInMonths: number; reconciled: boolean };
+  notices: { holidayNote: string; countingBasis: string; noAbsent: string };
+}
+
 export interface OrganizationReportRow {
   employeeId: string;
   employeeName: string;

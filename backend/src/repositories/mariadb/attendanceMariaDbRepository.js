@@ -40,6 +40,19 @@ function createAttendanceMariaDbRepository(pool) {
       return mapRows(rows);
     },
 
+    /** Every stored day row in [start,end] across all employees, for period analytics. */
+    async listForPeriod(start, end) {
+      const [rows] = await pool.query(
+        `SELECT employee_uid, date, status, computation_status, day_classification,
+                is_late, late_minutes, early_minutes, work_duration, is_leave
+         FROM daily_attendance
+         WHERE date BETWEEN ? AND ?
+         ORDER BY employee_uid, date`,
+        [start, end],
+      );
+      return mapRows(rows);
+    },
+
     /** Idempotent by uk_daily_attendance_employee_date: a correction updates the day in place. */
     async upsertDay(record) {
       await pool.query(

@@ -38,6 +38,11 @@ const router = createRouter({
           component: () => import('../views/AttendanceMonthlyView.vue'),
         },
         {
+          path: 'attendance/analytics',
+          name: 'attendance-analytics',
+          component: () => import('../views/AttendanceAnalyticsView.vue'),
+        },
+        {
           path: 'leave',
           name: 'leave-list',
           component: () => import('../views/LeaveListView.vue'),
