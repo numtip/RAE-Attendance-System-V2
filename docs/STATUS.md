@@ -1,4 +1,36 @@
-# Status — 2026-11-23 (current)
+# Status — 2026-11-24 (current)
+
+**Gate:** `ATTENDANCE_DATA_COMPLETE = PARTIAL` · LEAVE_SOFTWARE_COMPLETE · LEAVE_PRODUCTION_LIVE stand.
+**Source baseline:** main `cf0d78b` (PR #141); **Production (operator-reported):** backend `dark-017d432`, schema through 036, healthy. **No production write was made for this audit** — read-only queries against `attendance_v2_prod_next`.
+**Scope:** attendance data readiness (HIP coverage, employee mapping, reconciliation, rules) before the Attendance Analytics Dashboard.
+
+## Verified data coverage — 2026-11-24 (read-only)
+
+| Item | Value | Label |
+|---|---|---|
+| Workforce mapping | **52/52** employees have resolved HIP scans and events; `1032`'s scans start 2026-03-02 (source truth, see below) | VERIFIED |
+| Scan pipeline | staging **20,224** = resolved **19,896** + unmapped **328**; events **19,896** (1:1 with resolved staging); daily **10,275** rows, Σ`source_event_count` = 19,896, **0** unlinked; monthly **569** rows, present totals equal daily counts every month | VERIFIED |
+| Daily statuses | 8,683 `present` + 1,592 `late`, all `AR-0001`/`calculated`, nothing else, no ABSENT anywhere (D-2026-11-19-03) | VERIFIED |
+| Source completeness | every available 2026 HIP file's scan count equals its import batch `rows_read` exactly (Jan 1,822 · Feb 1,782 · Mar 2,054 · Apr 1,733 · May 1,849 · Jun 1,883 · Jul 1,928 · Aug 1,924 · Sep 2,124 · Oct 1,871 · Nov 1–18 1,254) — **nothing importable remains**; replay is proven idempotent | VERIFIED |
+| Unmapped scans | 328 = `1013`×291 (Jan–Sep) + `1015`×37 (Feb) — the two former employees, quarantined per D-2026-11-18-01 / D-2026-11-19-08 | VERIFIED · OWNER_DECISION |
+| "Missing" month-employees | `1032` Jan–Feb and `3033` Feb have **no scans in the attested source exports** (calendar rows marked วันทำงาน with empty punch slots) — the DB is faithful to source, not an import gap, and must never become absence | VERIFIED |
+| Boundaries | staging/daily span 2026-01-05 → 2026-11-18; nothing ≥ Nov 19, nothing pre-2026, 0 orphan rows, no December monthly row | VERIFIED |
+| Rules | AR-0001 in-repo (ADR-014): Mon–Fri 08:30–16:30, late after 08:30, 2026 only, refuses dates outside the approved year, no ABSENT status; `attendance_rule_version` table empty **by design** (engine is code) | VERIFIED |
+| Holidays | `attendance_holiday` **0 rows**; `expected_working_days` is weekday-based, not holiday-adjusted | KNOWN GAP · OWNER POLICY |
+| Tests | backend 616 pass / 0 fail / 27 skipped (Node 22) — matches the reported baseline | VERIFIED |
+
+## Why PARTIAL (owner / evidence, not code)
+
+1. **HIP export for 19–30 Nov 2026 does not exist yet** (Nov 19–23 have elapsed without an export). When provided: `facescan:import … --confirm --derive` (idempotent), then reconcile — no other step needed.
+2. **Holiday calendar** — MJU 2026 holidays are not configured and cannot be invented; owner policy pending (affects `expected_working_days` presentation only).
+3. **Oct–Dec 2025** — the three attested files exist (1,962 / 1,937 / 1,863 scans) but AR-0001 approves 2026 only; a 2025 classification policy is pending, so they stay unimported.
+4. Unchanged owner items: 29 `needs_review` leave records, SSO links for 3 pending employees, executive self-approval policy.
+
+**Dashboard may proceed** — its inputs (`daily_attendance`, `monthly_summary`, `employee_leave_record`) reconcile and partial-month handling ("ข้อมูลถึงวันที่ …") already exists. No schema, API or behaviour change in this PR.
+
+---
+
+# Status — 2026-11-23 (historical, superseded by the section above)
 
 **Gate:** LEAVE_SOFTWARE_COMPLETE · LEAVE_PRODUCTION_LIVE · EMPLOYEE_DATA_COMPLETE = PARTIAL.
 **Source baseline:** main `017d432` (PR #140); **Production (operator-reported):** backend `dark-017d432`, frontend `index-B1RpNuR1.js`, schema through 036, entitlement engine ON, healthy.
