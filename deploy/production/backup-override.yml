@@ -1,5 +1,5 @@
-# Add to the production compose command after provisioning a private, persistent
-# directory writable by the container's node user.
+# The prod-dark compose file already contains this mount. Use this fragment only
+# for a compose file that does not. Keep the prod-dark copy when the image tag changes.
 services:
   backend:
     environment:

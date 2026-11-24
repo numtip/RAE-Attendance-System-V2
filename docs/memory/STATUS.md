@@ -1,10 +1,35 @@
-# STATUS — 2026-11-24 work in progress
+# STATUS — 2026-11-24
 
-Branch `feat/hip-holidays-attendance`: HIP self-service, production backup gate, calendar management and
-holiday-aware calculations are implemented and under verification. Synthetic MariaDB tests cover replay,
-backup and recalculation. The 16 December entry remains a candidate pending MJU verification. The existing
-attendance analytics people table does not display employment dates or duration. PR, CI and deployment are
-pending. No production write or deployment was performed in this work.
+**Gate:** `DAY_20261124_CLOSED`. Next phase: real-world usage, then feedback, then targeted fixes.
+
+**Production is the `prod-dark` stack.** GitHub `main` `5b5ec41` (PR #146). Backend image
+`rae-attendance-v2-backend:dark-5b5ec41`, healthy. Frontend bundle `index-Bzby0xSx.js`, base
+`/attendance-v2/`. Schema through `037_thai_holidays_2026.sql`.
+
+PR #144 `30ddd1d`, PR #145 `9eea54d`, and PR #146 `5b5ec41` are merged. CI for #146 was 9/9 before merge.
+The isolated rehearsal and the production run of `holidayRecalculateCli.js 2026 --confirm` both reported
+22 approved dates and 0 protected monthly summaries. The 10 summaries previously held back differed only
+by stored early-departure minutes of zero; those now match the daily rows. Employee, identifier, identity-link,
+event, daily, and monthly counts stayed 52 / 52 / 49 / 19,896 / 10,275 / 569. No daily row falls on an
+approved 2026 holiday, so day statuses remain present 8,683 and late 1,592. Expected working days follow
+the weekday calendar minus the approved weekday holidays. `total_absent` stays 0. The 16 December entry
+remains a candidate pending MJU verification.
+
+Fresh backup before the production write:
+`/home/rae_admin/backups/attendance-v2/pre-hip-holiday-deploy-20261124T073909Z.sql.gz` (mode 0600).
+Gzip, completion marker, and a restore into an isolated database matched the live counts. The earlier
+`pre-hip-holiday-20261124.sql.gz` was not overwritten. The confirmed command also wrote its own dump under
+the private runtime backup directory. Rollback copies: `prod-dark/docker-compose.yml.bak-pre-5b5ec41`,
+`prod-dark/frontend-dist.prev-5b5ec41`, image `dark-3c0615b`.
+
+Public smoke: login page renders, `/attendance/analytics` returns to login, 68/68 frontend files return 200,
+health/ready 200, unauthenticated analytics and holiday routes return 401. No employee session was used.
+Real-user QA of the HIP upload and holiday panels remains.
+
+The backup mount is in `prod-dark/docker-compose.yml`
+(`/home/rae_admin/backups/attendance-v2/runtime` → `/var/lib/attendance-backups`). A missing backup
+directory returns `BACKUP_UNAVAILABLE` before a dump; that rejection was run with `node --test` and
+did not use production. No redeploy was required.
 
 # STATUS — 2026-11-20: see `docs/STATUS.md` and `docs/reports/DAY_SUMMARY_2026-11-20.md` (`main` `3d38715`, backend `dark-4bd7790`). The page below is the 2026-11-19 closeout.
 
