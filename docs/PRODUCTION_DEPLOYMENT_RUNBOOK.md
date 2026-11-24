@@ -51,15 +51,36 @@ Agent Core (`AGENT_CORE_*`) is optional for Attendance API runtime; configure on
 
 ## 3. Pre-deploy backup
 
-For HIP self-service and holiday edits, provision a persistent host directory owned by the backend
-container's `node` user with mode `0700`, set `ATTENDANCE_BACKUP_HOST_DIR`, and include
-`deploy/production/backup-override.yml` after the production compose file on every compose invocation.
-The API refuses these production writes if it cannot create a database dump in that directory. Verify
-the dump can be restored to a disposable database. Migration 037 seeds approved holidays; after applying
-it, run `node src/imports/holidayRecalculateCli.js 2026` in the backend container for a dry run, then
-repeat with `--confirm` for the backed-up recalculation; no employee login is impersonated. The owner
-holiday screen also provides the action.
-The 16 December entry remains a candidate until MJU applicability is confirmed.
+HIP upload and holiday edits refuse to write unless they can dump the database into a private
+directory. On the production `prod-dark` stack that mount is in
+`/home/rae_admin/prod-dark/docker-compose.yml`, so a normal `docker compose up` keeps it:
+
+```yaml
+ATTENDANCE_BACKUP_DIR: /var/lib/attendance-backups
+volumes:
+  - /home/rae_admin/backups/attendance-v2/runtime:/var/lib/attendance-backups
+```
+
+The directory is mode `0700` and owned by uid 1000, the container's `node` user. Keep these lines
+when changing the image tag. `deploy/production/backup-override.yml` is the same fragment for a
+compose file that does not have them yet. `deploy/production/cutover.sh` targets the older runtime
+and is not this stack. A missing or shared directory fails the write with `BACKUP_UNAVAILABLE`
+before any database change. Verify a dump by restoring it to a disposable database.
+
+### Owner: HIP CSV and holidays
+
+Sign in as the executive who holds the organization grant and open **วิเคราะห์การเข้างาน**.
+Both panels are shown only for that organization scope.
+
+* **อัปโหลดข้อมูล HIP.** Choose a UTF-8 `.csv` of at most 8 MB, then **ตรวจสอบก่อนนำเข้า**.
+  The preview shows the date range and the counts of scans, new rows, duplicates, and device
+  codes that match no employee. **ยืนยันนำเข้า** writes only after that preview, and only after
+  a database dump. Importing the same file again counts those rows as duplicates.
+* **จัดการวันหยุด.** An approved date changes attendance calculations. A candidate does not.
+  A new or edited row needs the date, the name, and an `https://` source. Saving, deleting, or
+  **คำนวณข้อมูลปีนี้ใหม่** recalculates that year and keeps any monthly summary whose stored
+  totals do not match its daily rows. The 16 December 2026 entry stays a candidate until MJU
+  applicability is confirmed.
 
 1. **Database:** logical backup before first migration on production data:
    ```bash

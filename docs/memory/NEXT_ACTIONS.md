@@ -1,10 +1,18 @@
 # Next actions — as of 2026-11-24 (current)
 
-2026-11-24 work on `feat/hip-holidays-attendance`: HIP upload and holiday management are implemented;
-the synthetic MariaDB workflow tests preview, retries, backup and holiday recalculation. Production
-requires a private persistent backup mount, a pre-migration backup, migration 037, and owner-triggered
-2026 recalculation. The 16 December holiday is a candidate pending MJU verification. Complete PR and CI,
-obtain deployment approval, then deploy and smoke-test. No production write or deployment has been done.
+**Gate:** `DAY_20261124_CLOSED`. Production `prod-dark` is on `main` `5b5ec41`, backend `dark-5b5ec41`,
+migration 037, with 22 approved 2026 holidays and 16 December still a candidate. See `docs/memory/STATUS.md`
+and the runbook section "Owner: HIP CSV and holidays". Next phase: real-world usage, then feedback, then
+targeted fixes. Do not reopen SSO, Leave, or completed attendance audits.
+
+The backup mount is in `prod-dark/docker-compose.yml`. Keep it when changing the image tag.
+`deploy/production/cutover.sh` targets the older runtime.
+
+| # | Action | Who | Notes |
+|---|---|---|---|
+| 1 | Use HIP upload and holiday management, then report what is wrong | owner | Organization scope on วิเคราะห์การเข้างาน. This is the remaining real-user QA |
+| 2 | Confirm whether 16 December 2026 applies to MJU | owner | Seeded as `candidate` only |
+| 3 | Provide the HIP export for 19–30 Nov 2026 | owner | Import is idempotent; approved holidays already reduce the working-day denominator |
 
 **Gate:** `ATTENDANCE_DATA_COMPLETE = PARTIAL`. `main` `cf0d78b`. Resume from here; do not repeat completed work.
 Attendance data readiness audit is done (read-only, see `docs/STATUS.md` 2026-11-24): 52/52 employees mapped, every available 2026 HIP file fully imported (scan counts equal batch rows exactly), events/daily/monthly reconcile, 328 unmapped scans are the two former employees by owner decision. **No import was needed; no production write was made.**
@@ -14,13 +22,13 @@ Attendance data readiness audit is done (read-only, see `docs/STATUS.md` 2026-11
 | # | Action | Who | Notes |
 |---|---|---|---|
 | 1 | Provide the HIP export for 19–30 Nov 2026 (and onward) | owner | Import is idempotent: `facescan:import <file> --format hip-daily --confirm --derive`; then daily/monthly reconcile automatically |
-| 2 | Decide the MJU 2026 holiday calendar | owner | `attendance_holiday` is empty; `expected_working_days` stays weekday-based until then; never invent holidays |
+| 2 | Decide the MJU 2026 holiday calendar | owner | Done for 22 approved dates. 16 December remains a candidate |
 | 3 | Decide the Oct–Dec 2025 classification policy | owner | Files are attested (1,962/1,937/1,863 scans) but AR-0001 approves 2026 only |
 | 4 | Unchanged leave/identity items | owner | 29 `needs_review` leave records; SSO links for 3 pending employees; executive self-approval policy |
 
 ## Dashboard next (engineering)
 
-Attendance Analytics Dashboard may proceed on the reconciled tables; keep partial-month handling ("ข้อมูลถึงวันที่ …"), keep `absent: null` / no absence KPI (D-2026-11-19-03), and reuse the leave dashboard design baseline.
+Attendance Analytics Dashboard shipped in PR #143. Keep partial-month handling ("ข้อมูลถึงวันที่ …") and `absent: null` (D-2026-11-19-03).
 
 ---
 
