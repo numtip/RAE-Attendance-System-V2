@@ -107,6 +107,8 @@ test('ingestFile: mapped ids resolve, unknown ids are quarantined, a re-import a
   assert.equal(again.batch.insertedCount, 0);
   assert.equal(again.batch.duplicateCount, 4);
   assert.equal(again.contentSha256, first.contentSha256);
+  assert.equal(again.results.filter((row) => row.employeeUid === staffUid).length, 3);
+  assert.equal(again.results[3].employeeUid, undefined, 'unmapped duplicates remain quarantined');
 });
 
 test('chain (fixture): file -> staging -> events -> daily -> monthly, in Bangkok time, no invented days', async () => {

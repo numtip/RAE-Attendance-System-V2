@@ -26,11 +26,12 @@ const FACESCAN_ID_MAX = 64; // staging_facescan_raw.facescan_id VARCHAR(64)
 const MAX_REPORTED_ISSUES = 20;
 
 class FacescanFileError extends Error {
-  constructor(message, issues = []) {
+  constructor(message, issues = [], rejectedRows = null) {
     super(message);
     this.name = 'FacescanFileError';
     this.code = 'FACESCAN_FILE_INVALID';
     this.issues = issues;
+    this.rejectedRows = rejectedRows;
   }
 }
 

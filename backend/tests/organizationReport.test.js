@@ -65,7 +65,7 @@ test('organization report: an organization executive sees every employee with st
   assert.equal(staff.absent, null, 'absence is policy-pending, never derived');
   assert.equal(report.totals.absent, null);
   assert.equal(report.totals.present, report.rows.filter((row) => row.hasMonthlySummary).reduce((sum, row) => sum + row.present, 0));
-  assert.match(report.notices.holidayNote, /ไม่หักวันหยุด/);
+  assert.match(report.notices.holidayNote, /วันหยุดที่อนุมัติ/);
   assert.equal(report.notices.absenceNote, undefined);
   // A month with no stored summary is reported as missing, not as zeros.
   const january = await service.organization(auth, { year: '2026', month: '1' });

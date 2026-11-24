@@ -29,6 +29,10 @@ const { createReportService } = require('../../services/reportService');
 const { createOrganizationReportService } = require('../../services/organizationReportService');
 const { createAttendanceAnalyticsService } = require('../../services/attendanceAnalyticsService');
 const { createReportController } = require('../../controllers/reportController');
+const { createHipUploadService } = require('../../services/hipUploadService');
+const { createHolidayManagementService } = require('../../services/holidayManagementService');
+const { asyncRoute } = require('../../utils/asyncRoute');
+const { success } = require('../../utils/response');
 
 function createV1Router(container) {
   const authService = createAuthService(container);
@@ -72,6 +76,8 @@ function createV1Router(container) {
     createAttendanceAnalyticsService(container),
   );
   const authenticate = createAuthenticate(container.repositories.accessTokenRevocations);
+  const hipUpload = createHipUploadService(container);
+  const holidays = createHolidayManagementService(container);
 
   const router = express.Router();
   router.use('/health', healthRoutes);
@@ -117,6 +123,14 @@ function createV1Router(container) {
   router.post('/attendance/daily/:employeeUid/:date', authenticate, attendance.record);
   // Promote that day's resolved facescan scans into attendance_events and derive the day from them.
   router.post('/attendance/facescan/:employeeUid/:date', authenticate, attendance.deriveFacescan);
+  router.post('/attendance/hip/preview', authenticate, asyncRoute(async (req, res) => success(res, await hipUpload.preview(req.auth, req.body), 'ตรวจสอบข้อมูล HIP')));
+  router.post('/attendance/hip/import', authenticate, asyncRoute(async (req, res) => success(res, await hipUpload.confirm(req.auth, req.body), 'นำเข้าข้อมูล HIP')));
+  router.get('/attendance/hip/history', authenticate, asyncRoute(async (req, res) => success(res, await hipUpload.history(req.auth), 'ประวัตินำเข้า HIP')));
+  router.get('/attendance/holidays', authenticate, asyncRoute(async (req, res) => success(res, await holidays.list(req.auth, req.query.year), 'วันหยุด')));
+  router.post('/attendance/holidays/recalculate', authenticate, asyncRoute(async (req, res) => success(res, await holidays.recalculateYear(req.auth, req.body.year), 'คำนวณการเข้างานใหม่')));
+  router.post('/attendance/holidays', authenticate, asyncRoute(async (req, res) => success(res, await holidays.change(req.auth, null, req.body), 'บันทึกวันหยุด')));
+  router.put('/attendance/holidays/:id', authenticate, asyncRoute(async (req, res) => success(res, await holidays.change(req.auth, req.params.id, req.body), 'บันทึกวันหยุด')));
+  router.delete('/attendance/holidays/:id', authenticate, asyncRoute(async (req, res) => success(res, await holidays.change(req.auth, req.params.id, {}, true), 'ลบวันหยุด')));
   router.post('/attendance/evaluate-day', authenticate, attendanceCompute.evaluateDay);
   router.post('/attendance/evaluate-period', authenticate, attendanceCompute.evaluatePeriod);
   router.post('/attendance/explain', authenticate, attendanceCompute.explainResult);

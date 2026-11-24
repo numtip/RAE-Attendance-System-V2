@@ -13,6 +13,7 @@ const { createIdentityLinkMariaDbRepository } = require('./mariadb/identityLinkM
 const { createEmployeeIdentifierMariaDbRepository } = require('./mariadb/employeeIdentifierMariaDbRepository');
 const { createFacescanRawMariaDbRepository } = require('./mariadb/facescanRawMariaDbRepository');
 const { createAccessTokenRevocationMariaDbRepository } = require('./mariadb/accessTokenRevocationMariaDbRepository');
+const { createAttendanceHolidayMariaDbRepository } = require('./mariadb/attendanceHolidayMariaDbRepository');
 
 function blockedRepo() {
   const error = getDbUnavailableError();
@@ -28,6 +29,7 @@ function createMariaDbRepositories(database = config.database) {
       employees: blockedRepo(),
       attendance: blockedRepo(),
       attendanceEvents: blockedRepo(),
+      attendanceHolidays: blockedRepo(),
       leave: blockedRepo(),
       leaveHr: blockedRepo(),
       refreshTokens: blockedRepo(),
@@ -45,6 +47,7 @@ function createMariaDbRepositories(database = config.database) {
     employees: createEmployeeMariaDbRepository(pool),
     attendance: createAttendanceMariaDbRepository(pool),
     attendanceEvents: createAttendanceEventMariaDbRepository(pool),
+    attendanceHolidays: createAttendanceHolidayMariaDbRepository(pool),
     leave: createLeaveMariaDbRepository(pool),
     leaveRecords: createLeaveRecordMariaDbRepository(pool),
     leaveHr: createLeaveHrMariaDbRepository(pool),

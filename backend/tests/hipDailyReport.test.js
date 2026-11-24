@@ -97,6 +97,10 @@ test('adapter: fails closed on the whole file', () => {
   refused(report('X,,,16/11/2569,,,08:00,,,,,', 'X,,,16/11/2569,,,09:00,,,,,'), (error) => error.issues[0].message.includes('same code and date'));
   refused(report('X,,,16/11/2569,,,,,,,,'), /no scan times/);
   refused(Buffer.from([0x41, 0xff, 0xfe]), /not UTF-8/);
+  assert.throws(() => parseHipDailyReport(report('X,,,31/04/2569,,,bad,,,,,')), (error) => {
+    assert.equal(error.rejectedRows, 1);
+    return true;
+  });
 });
 
 test('service: preview writes nothing; import stamps report provenance; replay adds 0 rows', async () => {
@@ -165,5 +169,18 @@ test('cli: --confirm --derive imports, quarantines the unknown code and records 
   const replay = await run(['r.csv', '--format', 'hip-daily', '--confirm', '--derive', '--operator', adminUid], repositories);
   assert.equal(replay.exitCode, EXIT.OK);
   assert.deepEqual(replay.report.rows, { duplicate: 4 });
-  assert.deepEqual(replay.report.derive, { employeeDays: 0, outcomes: {} });
+  assert.deepEqual(replay.report.derive, { employeeDays: 1, outcomes: { recorded: 1 } });
+});
+
+test('cli: replay derives previously imported rows when an earlier import did not derive', async () => {
+  const repositories = build({ operatorRole: 'executive', grant: true });
+  const first = await run(['r.csv', '--format', 'hip-daily', '--confirm'], repositories);
+  assert.equal(first.exitCode, EXIT.OK);
+  assert.equal(first.report.derive, null);
+  const replay = await run(['r.csv', '--format', 'hip-daily', '--confirm', '--derive', '--operator', adminUid], repositories);
+  assert.equal(replay.exitCode, EXIT.OK);
+  assert.deepEqual(replay.report.rows, { duplicate: 4 });
+  assert.deepEqual(replay.report.derive, { employeeDays: 1, outcomes: { recorded: 1 } });
+  const day = (await repositories.attendance.findForEmployee(staffUid)).find((row) => row.date === '2026-11-16');
+  assert.equal(new Date(day.checkIn).toISOString(), '2026-11-16T01:41:00.000Z');
 });

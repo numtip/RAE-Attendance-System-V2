@@ -239,7 +239,9 @@ function createAttendanceRecordService({ repositories }) {
 
       let evaluation;
       try {
-        evaluation = engine.evaluateDay({ date, checkIn, checkOut, leave });
+        const holidays = repositories.attendanceHolidays
+          ? await repositories.attendanceHolidays.listApproved(date, date) : [];
+        evaluation = engine.evaluateDay({ date, checkIn, checkOut, leave }, { holiday: holidays.length > 0 });
       } catch (error) {
         // A year with no approved rule set is recorded honestly instead of guessed.
         if (error && error.code === 'RULE_YEAR_NOT_APPROVED') {
@@ -267,6 +269,16 @@ function createAttendanceRecordService({ repositories }) {
         String(item.date).slice(0, 7) === `${row.year}-${String(row.month).padStart(2, '0')}`
       ));
       const monthly = deriveSummary(employeeUid, row.year, row.month, inPeriod);
+      if (monthly.expectedWorkingDays !== null && repositories.attendanceHolidays) {
+        const start = `${row.year}-${String(row.month).padStart(2, '0')}-01`;
+        const end = `${row.year}-${String(row.month).padStart(2, '0')}-${String(new Date(Date.UTC(row.year, row.month, 0)).getUTCDate()).padStart(2, '0')}`;
+        const holidays = await repositories.attendanceHolidays.listApproved(start, end);
+        const weekdays = new Set(holidays.map((item) => item.date).filter((day) => {
+          const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+          return weekday > 0 && weekday < 6;
+        }));
+        monthly.expectedWorkingDays -= weekdays.size;
+      }
       await repositories.attendance.upsertMonthly(monthly);
 
       return {

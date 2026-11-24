@@ -65,6 +65,16 @@ function makeRepos({ dayRows = [], grants = execGrant, members = [], leaveCovere
 const service = (repos) => createAttendanceAnalyticsService({ repositories: repos });
 const rowOf = (report, employeeId) => report.rows.find((row) => row.employeeId === employeeId);
 
+test('approved calendar dates remove stale workday rows from completeness and attendance KPIs', async () => {
+  const repos = makeRepos({ dayRows: [day({ date: '2026-03-03', status: 'late', isLate: 1, lateMinutes: 15 }), day({ date: '2026-03-31' })] });
+  repos.attendanceHolidays = { async listApproved() { return [{ date: '2026-03-03' }, { date: '2026-03-07' }]; } };
+  const report = await service(repos).analytics(exec, { year: '2026', month: '3' });
+  assert.equal(report.totals.expectedDays, 42);
+  assert.equal(report.totals.calculatedDays, 1);
+  assert.equal(report.totals.lateArrivals, 0);
+  assert.equal(report.totals.absent, null);
+});
+
 test('weekdaysBetween counts Mon–Fri inclusively and clips empty windows to 0', () => {
   assert.equal(weekdaysBetween('2026-03-02', '2026-03-06'), 5); // Mon–Fri
   assert.equal(weekdaysBetween('2026-03-02', '2026-03-08'), 5); // + weekend changes nothing

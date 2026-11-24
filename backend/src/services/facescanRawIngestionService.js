@@ -31,7 +31,7 @@ function parseFile(content, format) {
     return { ...entry.parse(content), sourceSystem: entry.sourceSystem };
   } catch (error) {
     if (error instanceof FacescanFileError) {
-      throw new HttpError(400, error.code, error.message, { issues: error.issues });
+      throw new HttpError(400, error.code, error.message, { issues: error.issues, rejectedRows: error.rejectedRows });
     }
     throw error;
   }
@@ -106,6 +106,7 @@ function createFacescanRawIngestionService({ repositories, nationalIdProtector =
       let alreadyImported = 0;
       let newResolved = 0;
       let newUnmapped = 0;
+      const seen = new Set();
       for (const raw of parsed.rows) {
         const facescanId = normalizeFacescanId(raw.facescanId);
         const idempotencyKey = buildIdempotencyKey({
@@ -113,10 +114,11 @@ function createFacescanRawIngestionService({ repositories, nationalIdProtector =
           scanDatetime: normalizeScanDatetime(raw.scanDatetime),
           scanType: normalizeScanType(raw.scanType),
         });
-        if (await facescanRaw.findByIdempotencyKey(idempotencyKey)) {
+        if (seen.has(idempotencyKey) || await facescanRaw.findByIdempotencyKey(idempotencyKey)) {
           alreadyImported += 1;
           continue;
         }
+        seen.add(idempotencyKey);
         if (!codes.has(facescanId)) codes.set(facescanId, await resolveFacescanUid(facescanId));
         if (codes.get(facescanId)) newResolved += 1;
         else newUnmapped += 1;
@@ -172,6 +174,9 @@ function createFacescanRawIngestionService({ repositories, nationalIdProtector =
             idempotencyKey,
             resolutionStatus: 'duplicate',
             existingRowId: existing.id,
+            // A retry must be able to repair a previous incomplete derivation. Only a
+            // resolved staging row can supply a target; unmapped rows remain quarantined.
+            employeeUid: existing.resolutionStatus === 'resolved' ? existing.employeeUid : undefined,
           });
           continue;
         }

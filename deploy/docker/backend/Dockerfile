@@ -4,6 +4,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache mariadb-client
+
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev
 

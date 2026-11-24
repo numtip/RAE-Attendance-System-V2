@@ -79,7 +79,7 @@ async function operatorAuth(repositories, employeeUid) {
 function deriveTargets(ingested) {
   const targets = new Map();
   ingested.results.forEach((result, index) => {
-    if (result.resolutionStatus !== 'resolved') return;
+    if (!result.employeeUid || !['resolved', 'duplicate'].includes(result.resolutionStatus)) return;
     const date = ingested.rows[index].scanDatetime.slice(0, 10);
     targets.set(`${result.employeeUid}|${date}`, { employeeUid: result.employeeUid, date });
   });

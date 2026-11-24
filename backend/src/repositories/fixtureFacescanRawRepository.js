@@ -7,6 +7,8 @@ function createFixtureFacescanRawRepository() {
   let nextRowId = 1;
 
   return {
+    async listRecentBatches() { return [...batches.values()].reverse().slice(0, 50).map((row) => ({ ...row })); },
+    async withImportLock(fn) { return fn(); },
     async createBatch(input) {
       const id = input.id || randomUUID();
       const now = new Date().toISOString();

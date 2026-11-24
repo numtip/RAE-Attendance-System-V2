@@ -90,6 +90,8 @@ jobs:
             backend/package-lock.json
       - name: Install migration tooling
         run: npm ci
+      - name: Install MariaDB backup client
+        run: sudo apt-get update && sudo apt-get install -y mariadb-client
       - name: Apply migrations
         run: npm run db:migrate
       - name: Migration idempotency (second run applies nothing)
@@ -111,7 +113,8 @@ jobs:
         run: |
           npm ci
           npm run lint
-          node --test --test-force-exit tests/*.test.js
+          # Database suites share synthetic fixture identities and must not delete each other's rows.
+          node --test --test-force-exit --test-concurrency=1 tests/*.test.js
       - name: Release 1 contract smoke (MariaDB)
         env:
           JWT_SECRET: ci-mariadb-only-secret

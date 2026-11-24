@@ -100,6 +100,21 @@ function mapRawRow(row) {
 
 function createFacescanRawMariaDbRepository(pool) {
   return {
+    async listRecentBatches() {
+      const [rows] = await pool.query(`${BATCH_SELECT} WHERE b.source_system = 'hip_daily_report' ORDER BY b.started_at DESC LIMIT 50`);
+      return rows.map(mapBatch);
+    },
+    async withImportLock(fn) {
+      const connection = await pool.getConnection();
+      try {
+        const [rows] = await connection.query("SELECT GET_LOCK('rae_hip_self_service_import', 0) AS acquired");
+        if (Number(rows[0].acquired) !== 1) {
+          const { HttpError } = require('../../utils/httpError');
+          throw new HttpError(409, 'IMPORT_BUSY', 'Another import is running');
+        }
+        try { return await fn(); } finally { await connection.query("SELECT RELEASE_LOCK('rae_hip_self_service_import')"); }
+      } finally { connection.release(); }
+    },
     async createBatch(input) {
       const now = new Date();
       await pool.query(

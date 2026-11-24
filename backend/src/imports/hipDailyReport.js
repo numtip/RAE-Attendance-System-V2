@@ -150,6 +150,7 @@ function parseHipDailyReport(input) {
     throw new FacescanFileError(
       `${issues.length} invalid line(s); the file was not imported`,
       issues.slice(0, MAX_REPORTED_ISSUES),
+      new Set(issues.map((issue) => issue.line)).size,
     );
   }
   const reportRows = daysWithScans + daysWithoutScans;

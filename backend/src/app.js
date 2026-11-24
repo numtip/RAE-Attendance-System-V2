@@ -8,6 +8,7 @@ function createApp(options = {}) {
   const container = options.container || createContainer(options);
   const app = express();
   app.disable('x-powered-by');
+  app.use('/api/v1/attendance/hip', express.json({ limit: '10mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false, limit: '32kb' }));
   app.use('/api/v1', createV1Router(container));
