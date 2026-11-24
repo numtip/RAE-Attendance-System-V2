@@ -56,7 +56,9 @@ container's `node` user with mode `0700`, set `ATTENDANCE_BACKUP_HOST_DIR`, and 
 `deploy/production/backup-override.yml` after the production compose file on every compose invocation.
 The API refuses these production writes if it cannot create a database dump in that directory. Verify
 the dump can be restored to a disposable database. Migration 037 seeds approved holidays; after applying
-it, use the owner holiday screen's recalculation action for 2569, following the usual pre-write backup.
+it, run `node src/imports/holidayRecalculateCli.js 2026` in the backend container for a dry run, then
+repeat with `--confirm` for the backed-up recalculation; no employee login is impersonated. The owner
+holiday screen also provides the action.
 The 16 December entry remains a candidate until MJU applicability is confirmed.
 
 1. **Database:** logical backup before first migration on production data:

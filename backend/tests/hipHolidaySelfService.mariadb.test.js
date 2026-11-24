@@ -10,6 +10,7 @@ const { createMariaDbRepositories } = require('../src/repositories/mariadbReposi
 const { createHipUploadService } = require('../src/services/hipUploadService');
 const { createHolidayManagementService } = require('../src/services/holidayManagementService');
 const { backupBeforeWrite } = require('../src/services/productionBackup');
+const { runHolidayRecalculate } = require('../src/imports/holidayRecalculateCli');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
@@ -94,10 +95,22 @@ test('owner HIP preview, replay, holiday approval and removal on MariaDB', { ski
   assert.equal(during.late_minutes, 0);
   const [[monthly]] = await pool.query('SELECT expected_working_days FROM monthly_summary WHERE employee_uid=? AND year=2026 AND month=11', [uid]);
   assert.equal(monthly.expected_working_days, 20);
+  const dry = await runHolidayRecalculate(['2026'], { container, backup });
+  assert.equal(dry.written, false);
+  assert.ok(dry.approvedDates > 0);
+  const [legacyBefore] = await pool.query("SELECT total_present, total_work_days FROM monthly_summary WHERE employee_uid='22222222-2222-2222-2222-222222222222' AND year=2026 AND month=3");
+  const recalculated = await runHolidayRecalculate(['2026', '--confirm'], { container, backup });
+  assert.equal(recalculated.written, true);
+  assert.equal(recalculated.approvedDates, dry.approvedDates);
+  if (legacyBefore.length) {
+    const [legacyAfter] = await pool.query("SELECT total_present, total_work_days FROM monthly_summary WHERE employee_uid='22222222-2222-2222-2222-222222222222' AND year=2026 AND month=3");
+    assert.deepEqual(legacyAfter, legacyBefore, 'legacy summaries without matching daily evidence are preserved');
+    assert.ok(recalculated.protectedSummaries > 0);
+  }
   await holidays.change(auth, holidayId, {}, true);
   holidayId = null;
   const [[after]] = await pool.query('SELECT status, late_minutes FROM daily_attendance WHERE employee_uid=? AND date=?', [uid, '2026-11-24']);
   assert.equal(after.status, 'late');
   assert.equal(after.late_minutes, 11);
-  assert.equal(backups, 4);
+  assert.equal(backups, 5);
 });

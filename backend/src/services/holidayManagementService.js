@@ -15,6 +15,30 @@ function createHolidayManagementService(container, backup = backupBeforeWrite) {
   async function recalculate(connection, dates) {
     const holidayRepo = createAttendanceHolidayMariaDbRepository(connection);
     const attendance = createAttendanceMariaDbRepository(connection);
+    let protectedSummaries = 0;
+    const protectedPeriods = new Set();
+    const periods = new Set(dates.map((date) => date.slice(0, 7)));
+    for (const period of periods) {
+      const [year, month] = period.split('-').map(Number);
+      const [summaries] = await connection.query(`SELECT employee_uid, calculated_at, source_kind,
+        total_work_days, total_present, total_late, total_leave, total_late_minutes,
+        total_early_minutes, total_work_hours, pending_days, holiday_days
+        FROM monthly_summary WHERE year=? AND month=? FOR UPDATE`, [year, month]);
+      for (const row of summaries) {
+        const rows = (await attendance.findForEmployee(row.employee_uid)).filter((item) => item.date.startsWith(period));
+        const before = deriveSummary(row.employee_uid, year, month, rows);
+        const fields = [
+          ['total_work_days', 'totalWorkDays'], ['total_present', 'totalPresent'], ['total_late', 'totalLate'],
+          ['total_leave', 'totalLeave'], ['total_late_minutes', 'totalLateMinutes'],
+          ['total_early_minutes', 'totalEarlyMinutes'], ['total_work_hours', 'totalWorkHours'],
+          ['pending_days', 'pendingDays'], ['holiday_days', 'holidayDays'],
+        ];
+        if (!row.calculated_at || row.source_kind !== 'derived_from_daily_attendance'
+          || fields.some(([stored, derived]) => Math.abs(Number(row[stored]) - Number(before[derived])) > 0.01)) {
+          protectedPeriods.add(`${row.employee_uid}|${period}`);
+        }
+      }
+    }
     for (const date of new Set(dates)) {
       const holiday = (await holidayRepo.listApproved(date, date)).length > 0;
       const [rows] = await connection.query(`SELECT employee_uid, is_leave,
@@ -44,21 +68,27 @@ function createHolidayManagementService(container, backup = backupBeforeWrite) {
           evaluation.pendingPolicy ? 'rule_year_not_approved' : evaluation.status, JSON.stringify(evaluation.reasons || []), row.employee_uid, date]);
       }
     }
-    for (const period of new Set(dates.map((date) => date.slice(0, 7)))) {
+    for (const period of periods) {
       const [year, month] = period.split('-').map(Number);
       const end = `${period}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, '0')}`;
       const holidays = await holidayRepo.listApproved(`${period}-01`, end);
       const excluded = new Set(holidays.map((h) => h.date).filter((date) => {
         const day = new Date(`${date}T00:00:00Z`).getUTCDay(); return day > 0 && day < 6;
       })).size;
-      const [people] = await connection.query('SELECT employee_uid FROM monthly_summary WHERE year=? AND month=?', [year, month]);
-      for (const { employee_uid: uid } of people) {
+      const [people] = await connection.query('SELECT employee_uid, calculated_at, source_kind FROM monthly_summary WHERE year=? AND month=?', [year, month]);
+      for (const { employee_uid: uid, calculated_at: calculatedAt, source_kind: sourceKind } of people) {
+        // A legacy summary may contain attendance not represented by the remaining daily rows.
+        // Never replace it with a smaller total merely because the calendar changed.
+        if (!calculatedAt || sourceKind !== 'derived_from_daily_attendance' || protectedPeriods.has(`${uid}|${period}`)) {
+          protectedSummaries += 1; continue;
+        }
         const rows = (await attendance.findForEmployee(uid)).filter((row) => row.date.startsWith(period));
         const summary = deriveSummary(uid, year, month, rows);
         if (summary.expectedWorkingDays !== null) summary.expectedWorkingDays -= excluded;
         await attendance.upsertMonthly(summary);
       }
     }
+    return { protectedSummaries };
   }
   function valid(body) {
     if (!engine.isCalendarDate(body.date) || typeof body.name !== 'string' || !body.name.trim() || body.name.length > 255
@@ -75,6 +105,10 @@ function createHolidayManagementService(container, backup = backupBeforeWrite) {
     },
     async recalculateYear(auth, year) {
       await owner(auth);
+      return this.recalculateYearForOperator(year);
+    },
+    // Only the local operator CLI calls this entry point; HTTP callers use recalculateYear above.
+    async recalculateYearForOperator(year) {
       if (!/^\d{4}$/.test(String(year))) throw new HttpError(400, 'VALIDATION_ERROR', 'Year is required');
       if (container.dataSource !== 'mariadb') throw new HttpError(503, 'DB_UNAVAILABLE', 'Recalculation requires MariaDB');
       return repositories.facescanRaw.withImportLock(async () => {
@@ -84,9 +118,9 @@ function createHolidayManagementService(container, backup = backupBeforeWrite) {
           await connection.beginTransaction();
           const holidayDates = await createAttendanceHolidayMariaDbRepository(connection).listApproved(`${year}-01-01`, `${year}-12-31`);
           const dates = [...new Set(holidayDates.map((row) => row.date))];
-          await recalculate(connection, dates);
+          const result = await recalculate(connection, dates);
           await connection.commit();
-          return { dates: dates.length };
+          return { dates: dates.length, ...result };
         } catch (error) { await connection.rollback(); throw error; }
         finally { connection.release(); }
       });
@@ -114,9 +148,9 @@ function createHolidayManagementService(container, backup = backupBeforeWrite) {
           else await connection.query(`INSERT INTO attendance_holiday (holiday_date,name,scope,status,source_system,source_reference,approved_by,approved_at,created_at,updated_at)
             VALUES (?,?,'university',?,'owner',?,?,IF(?='approved',UTC_TIMESTAMP(),NULL),UTC_TIMESTAMP(),UTC_TIMESTAMP())`,
           [body.date, body.name.trim(), body.status, body.sourceReference, body.status === 'approved' ? auth.employeeUid : null, body.status]);
-          await recalculate(connection, [...new Set([previous?.date, remove ? null : body.date].filter(Boolean))]);
+          const result = await recalculate(connection, [...new Set([previous?.date, remove ? null : body.date].filter(Boolean))]);
           await connection.commit();
-          return { saved: true };
+          return { saved: true, ...result };
         } catch (error) { await connection.rollback(); throw error; }
         finally { connection.release(); }
       });
