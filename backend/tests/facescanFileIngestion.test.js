@@ -152,3 +152,13 @@ test('chain (fixture): file -> staging -> events -> daily -> monthly, in Bangkok
   assert.equal(month.totalAbsent, 0);
   assert.equal(day.monthly.totalLate >= 1, true);
 });
+
+test('scan derivation does not overwrite a manual correction', async () => {
+  const { repositories } = build();
+  const recordService = createAttendanceRecordService({ repositories });
+  await recordService.recordDay(exec, staffUid, '2026-11-16', { checkIn: '08:15', checkOut: '16:30' });
+  const derive = createFacescanAttendanceIngestionService({ repositories, recordService });
+  await assert.rejects(() => derive.deriveDay(exec, staffUid, '2026-11-16'), { code: 'MANUAL_ATTENDANCE_PROTECTED' });
+  const day = (await repositories.attendance.findForEmployee(staffUid)).find((row) => row.date === '2026-11-16');
+  assert.equal(new Date(day.checkIn).toISOString(), '2026-11-16T01:15:00.000Z');
+});

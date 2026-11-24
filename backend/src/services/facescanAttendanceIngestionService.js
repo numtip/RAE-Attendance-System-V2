@@ -57,6 +57,13 @@ function createFacescanAttendanceIngestionService({ repositories, recordService 
       const employee = await repositories.employees.findByUid(employeeUid);
       if (!employee) throw new HttpError(404, 'NOT_FOUND', 'Employee was not found');
 
+      // A replay must never silently replace a person's manual correction with scan-derived times.
+      const existing = (await repositories.attendance.findForEmployee(employeeUid))
+        .find((row) => String(row.date).slice(0, 10) === date);
+      if (existing && ['API', 'MANUAL_CORRECTION'].includes(existing.sourceSystem)) {
+        throw new HttpError(409, 'MANUAL_ATTENDANCE_PROTECTED', 'A manual attendance correction needs review');
+      }
+
       const staging = await repositories.attendanceEvents.findResolvedStagingForDay(employeeUid, date);
       if (staging.length === 0) {
         // A day with no resolved scan is not stored at all: no scans is `pending`/`no_data`, and

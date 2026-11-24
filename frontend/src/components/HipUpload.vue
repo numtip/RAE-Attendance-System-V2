@@ -61,7 +61,8 @@ onMounted(() => { loadHistory().catch((e) => { error.value = errorMessageTh(e, '
       <button type="button" class="btn btn--primary" :disabled="busy" @click="confirmImport">ยืนยันนำเข้า</button>
     </div>
     <div v-if="result" role="status">
-      <p>{{ result.complete ? 'นำเข้าและคำนวณแล้ว' : 'นำเข้าแล้ว แต่คำนวณไม่ครบ กรุณานำเข้าไฟล์เดิมอีกครั้ง' }} · นำเข้า {{ (result.rows.resolved || 0) + (result.rows.unmapped || 0) }} · ซ้ำ {{ result.rows.duplicate || 0 }} · ไม่พบรหัส {{ result.rows.unmapped || 0 }} · ปฏิเสธ 0</p>
+      <p>{{ result.complete ? 'นำเข้าและคำนวณแล้ว' : 'นำเข้าแล้ว แต่คำนวณไม่ครบ กรุณาตรวจสอบก่อนนำเข้าไฟล์เดิมอีกครั้ง' }} · นำเข้า {{ (result.rows.resolved || 0) + (result.rows.unmapped || 0) }} · ซ้ำ {{ result.rows.duplicate || 0 }} · ไม่พบรหัส {{ result.rows.unmapped || 0 }} · ปฏิเสธ 0</p>
+      <p v-if="result.derive?.outcomes.MANUAL_ATTENDANCE_PROTECTED">พบ {{ result.derive.outcomes.MANUAL_ATTENDANCE_PROTECTED }} วันที่มีการแก้ไขด้วยมือ ระบบเก็บข้อมูลเดิมไว้และรอตรวจสอบ</p>
     </div>
     <h4>ประวัติการนำเข้า</h4>
     <p v-if="!history.length">ยังไม่มีประวัติ</p>
