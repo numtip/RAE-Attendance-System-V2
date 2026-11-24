@@ -30,10 +30,15 @@ function createHolidayManagementService(container, backup = backupBeforeWrite) {
         const fields = [
           ['total_work_days', 'totalWorkDays'], ['total_present', 'totalPresent'], ['total_late', 'totalLate'],
           ['total_leave', 'totalLeave'], ['total_late_minutes', 'totalLateMinutes'],
-          ['total_early_minutes', 'totalEarlyMinutes'], ['total_work_hours', 'totalWorkHours'],
+          ['total_work_hours', 'totalWorkHours'],
           ['pending_days', 'pendingDays'], ['holiday_days', 'holidayDays'],
         ];
-        if (!row.calculated_at || row.source_kind !== 'derived_from_daily_attendance'
+        // The previous MariaDB reader omitted early_minutes, so its own derived summaries
+        // stored zero even when daily records contained early departures. Correct only that
+        // identifiable zero; a different nonzero discrepancy is still protected.
+        const earlyMismatch = Number(row.total_early_minutes) !== 0
+          && Number(row.total_early_minutes) !== Number(before.totalEarlyMinutes);
+        if (!row.calculated_at || row.source_kind !== 'derived_from_daily_attendance' || earlyMismatch
           || fields.some(([stored, derived]) => Math.abs(Number(row[stored]) - Number(before[derived])) > 0.01)) {
           protectedPeriods.add(`${row.employee_uid}|${period}`);
         }

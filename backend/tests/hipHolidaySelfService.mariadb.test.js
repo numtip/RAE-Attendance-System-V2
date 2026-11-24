@@ -37,7 +37,7 @@ test('owner HIP preview, replay, holiday approval and removal on MariaDB', { ski
   const backup = async () => { backups += 1; };
   const upload = createHipUploadService(container, backup);
   const holidays = createHolidayManagementService(container, backup);
-  const csv = `รหัสที่เครื่อง,วัน/เวลา,เข้า [1],ออก [1]\n${code},24/11/2569,08:41,16:35`;
+  const csv = `รหัสที่เครื่อง,วัน/เวลา,เข้า [1],ออก [1]\n${code},24/11/2569,08:41,16:20`;
   let holidayId; const batchIds = [];
   t.after(async () => {
     if (holidayId) await pool.query('DELETE FROM attendance_holiday WHERE id=?', [holidayId]);
@@ -87,6 +87,9 @@ test('owner HIP preview, replay, holiday approval and removal on MariaDB', { ski
   assert.ok(history.length >= 2);
   const [[before]] = await pool.query('SELECT status, late_minutes FROM daily_attendance WHERE employee_uid=? AND date=?', [uid, '2026-11-24']);
   assert.equal(before.status, 'late');
+  // Reproduce the old MariaDB reader bug: the daily row has early minutes but the derived
+  // summary incorrectly stored zero because it did not select that column.
+  await pool.query('UPDATE monthly_summary SET total_early_minutes=0 WHERE employee_uid=? AND year=2026 AND month=11', [uid]);
   await holidays.change(auth, null, { date: '2026-11-24', name: 'Synthetic holiday', status: 'approved', sourceReference: 'https://example.invalid/notice' });
   const list = await holidays.list(auth, 2026);
   holidayId = list.find((row) => row.name === 'Synthetic holiday').id;
@@ -112,5 +115,7 @@ test('owner HIP preview, replay, holiday approval and removal on MariaDB', { ski
   const [[after]] = await pool.query('SELECT status, late_minutes FROM daily_attendance WHERE employee_uid=? AND date=?', [uid, '2026-11-24']);
   assert.equal(after.status, 'late');
   assert.equal(after.late_minutes, 11);
+  const [[corrected]] = await pool.query('SELECT total_early_minutes FROM monthly_summary WHERE employee_uid=? AND year=2026 AND month=11', [uid]);
+  assert.equal(corrected.total_early_minutes, 10);
   assert.equal(backups, 5);
 });
