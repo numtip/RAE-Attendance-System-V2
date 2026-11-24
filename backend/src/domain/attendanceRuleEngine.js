@@ -113,7 +113,7 @@ function evaluateDay(input, options = {}) {
   assertPolicyYear(date);
 
   const weekday = isoWeekday(date);
-  const isWorkday = policy.workdays.includes(weekday);
+  const isWorkday = policy.workdays.includes(weekday) && options.holiday !== true;
   const reasons = [];
   const result = {
     status: STATUS.NO_DATA,

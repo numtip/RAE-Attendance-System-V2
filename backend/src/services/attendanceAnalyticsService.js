@@ -120,6 +120,7 @@ function createAttendanceAnalyticsService({ repositories }) {
   function aggregate(rows, windowStart, windowEnd, holidayDates = new Set()) {
     const totals = emptyAgg();
     for (const row of rows) {
+      if (holidayDates.has(isoDay(row.date))) continue;
       const isWorkdaySlot = row.dayClassification === 'workday';
       const calculated = row.computationStatus === 'calculated';
       if (calculated) {
@@ -222,6 +223,8 @@ function createAttendanceAnalyticsService({ repositories }) {
     const coverageThrough = await dataThrough(repositories, start, end, thaiDate);
 
     const allDayRows = await repositories.attendance.listForPeriod(start, end);
+    const approvedHolidays = repositories.attendanceHolidays
+      ? await repositories.attendanceHolidays.listApproved(start, end) : [];
     const leave = await leaveContext(inScope, start, end, months);
 
     // ---- per-month aggregation, each month clipped to its own data-through date ----
@@ -244,11 +247,14 @@ function createAttendanceAnalyticsService({ repositories }) {
       const clipStart = monthStart < start ? start : monthStart;
       const clipEnd = [monthEnd, monthThrough, end].sort()[0];
       const byUid = new Map();
-      const holidayDates = new Set();
+      const holidayDates = new Set(approvedHolidays.map((item) => item.date).filter((day) => {
+        const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+        return weekday > 0 && weekday < 6;
+      }));
       for (const row of allDayRows) {
         const day = isoDay(row.date);
         if (day < clipStart || day > clipEnd || !inScope.has(row.employeeUid)) continue;
-        if (row.dayClassification === 'holiday') holidayDates.add(day);
+        if (row.dayClassification === 'holiday' && weekdaysBetween(day, day) === 1) holidayDates.add(day);
         if (!byUid.has(row.employeeUid)) byUid.set(row.employeeUid, []);
         byUid.get(row.employeeUid).push(row);
       }
@@ -355,8 +361,8 @@ function createAttendanceAnalyticsService({ repositories }) {
       divisions: DIVISIONS.map((d) => ({ code: d.code, nameTh: d.nameTh })),
       dataThrough: coverageThrough,
       coverage: {
-        holidayCalendarConfigured: false,
-        workdayBasisNote: 'ตัวชี้วัดอ้างอิงวันทำงานวันจันทร์–ศุกร์ตามกฎ AR-0001 เฉพาะช่วงที่มีข้อมูลนำเข้าจริง ระบบยังไม่มีปฏิทินวันหยุดนักขัตฤกษ์ที่กำหนดไว้ จึงไม่หักและไม่สร้างวันหยุดขึ้นเอง',
+        holidayCalendarConfigured: approvedHolidays.length > 0,
+        workdayBasisNote: 'ตัวชี้วัดอ้างอิงวันจันทร์–ศุกร์ตามกฎ AR-0001 เฉพาะช่วงที่มีข้อมูลนำเข้าจริง และหักเฉพาะวันหยุดที่อนุมัติแล้ว',
         noAbsentNote: 'ระบบไม่มีตัวชี้วัดการขาดงาน (ABSENT): วันทำงานที่ไม่มีข้อมูลการสแกนแสดงเป็น “ยังไม่มีข้อมูล” ไม่ใช่การขาดงาน',
         quarantinedNote: 'สแกนที่ระบุตัวตนไม่ได้ (quarantine) ถูกเก็บไว้ครบถ้วนเป็นหลักฐานเดิม แต่ไม่ถูกนำเข้าระบบและไม่นับในตัวชี้วัดใด ๆ',
         leaveApprovalNote: 'วันลาที่บันทึกจาก HIP แสดงแยกตามสถานะอนุมัติ เฉพาะวันที่อนุมัติแล้วจึงอธิบายวันทำงานที่ไม่มีสแกนได้ รายการที่ยังไม่อนุมัติหรือรอตรวจสอบไม่ถูกนับในตัวชี้วัด',
@@ -381,7 +387,7 @@ function createAttendanceAnalyticsService({ repositories }) {
       rows,
       reconciliation,
       notices: {
-        holidayNote: HOLIDAY_NOTE,
+        holidayNote: approvedHolidays.length ? 'หักวันหยุดที่อนุมัติแล้ว วันหยุดที่รอตรวจสอบยังไม่รวม' : HOLIDAY_NOTE,
         countingBasis: 'นับเฉพาะวันที่ระบบคำนวณแล้ว (calculated) วันที่คำนวณไม่ได้ (ไม่มีสแกน/รอนโยบาย) นับเป็นข้อมูลที่ยังขาด ไม่ใช่การมาหรือไม่มาทำงาน',
         noAbsent: 'ไม่มี KPI การขาดงาน — วันที่ไม่มีข้อมูลสแกนคือ “ยังไม่มีข้อมูล” ไม่ใช่การขาดงาน (ADR-014)',
       },

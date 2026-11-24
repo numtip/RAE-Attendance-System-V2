@@ -1,5 +1,11 @@
 # Next actions — as of 2026-11-24 (current)
 
+2026-11-24 work on `feat/hip-holidays-attendance`: HIP upload and holiday management are implemented;
+the synthetic MariaDB workflow tests preview, retries, backup and holiday recalculation. Production
+requires a private persistent backup mount, a pre-migration backup, migration 037, and owner-triggered
+2026 recalculation. The 16 December holiday is a candidate pending MJU verification. Complete PR and CI,
+obtain deployment approval, then deploy and smoke-test. No production write or deployment has been done.
+
 **Gate:** `ATTENDANCE_DATA_COMPLETE = PARTIAL`. `main` `cf0d78b`. Resume from here; do not repeat completed work.
 Attendance data readiness audit is done (read-only, see `docs/STATUS.md` 2026-11-24): 52/52 employees mapped, every available 2026 HIP file fully imported (scan counts equal batch rows exactly), events/daily/monthly reconcile, 328 unmapped scans are the two former employees by owner decision. **No import was needed; no production write was made.**
 

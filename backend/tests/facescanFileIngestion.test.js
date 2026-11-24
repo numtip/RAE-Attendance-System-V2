@@ -107,6 +107,8 @@ test('ingestFile: mapped ids resolve, unknown ids are quarantined, a re-import a
   assert.equal(again.batch.insertedCount, 0);
   assert.equal(again.batch.duplicateCount, 4);
   assert.equal(again.contentSha256, first.contentSha256);
+  assert.equal(again.results.filter((row) => row.employeeUid === staffUid).length, 3);
+  assert.equal(again.results[3].employeeUid, undefined, 'unmapped duplicates remain quarantined');
 });
 
 test('chain (fixture): file -> staging -> events -> daily -> monthly, in Bangkok time, no invented days', async () => {
@@ -149,4 +151,14 @@ test('chain (fixture): file -> staging -> events -> daily -> monthly, in Bangkok
   const month = await repositories.attendance.findMonthly(staffUid, 2026, 11);
   assert.equal(month.totalAbsent, 0);
   assert.equal(day.monthly.totalLate >= 1, true);
+});
+
+test('scan derivation does not overwrite a manual correction', async () => {
+  const { repositories } = build();
+  const recordService = createAttendanceRecordService({ repositories });
+  await recordService.recordDay(exec, staffUid, '2026-11-16', { checkIn: '08:15', checkOut: '16:30' });
+  const derive = createFacescanAttendanceIngestionService({ repositories, recordService });
+  await assert.rejects(() => derive.deriveDay(exec, staffUid, '2026-11-16'), { code: 'MANUAL_ATTENDANCE_PROTECTED' });
+  const day = (await repositories.attendance.findForEmployee(staffUid)).find((row) => row.date === '2026-11-16');
+  assert.equal(new Date(day.checkIn).toISOString(), '2026-11-16T01:15:00.000Z');
 });

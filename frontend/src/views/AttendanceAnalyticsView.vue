@@ -8,6 +8,8 @@ import KpiTile from '../components/KpiTile.vue';
 import PageHeader from '../components/PageHeader.vue';
 import ThaiDateInput from '../components/ThaiDateInput.vue';
 import YearSelect from '../components/YearSelect.vue';
+import HipUpload from '../components/HipUpload.vue';
+import HolidayManagement from '../components/HolidayManagement.vue';
 import { THAI_MONTHS, THAI_MONTHS_SHORT, leaveRecordChipClass } from '../utils/thai';
 import {
   NO_DATA, analyticsTrend, completenessLabel, completenessTone, formatLateMinutes,
@@ -64,7 +66,6 @@ async function load() {
   loadId += 1;
   loading.value = true;
   error.value = null;
-  report.value = null;
   query.value = '';
   try {
     const result = await api.attendanceAnalytics(currentQuery());
@@ -105,6 +106,9 @@ onMounted(load);
         {{ report ? (report.scope === 'organization' ? 'ทั้งองค์กร' : report.scope === 'team' ? 'ทีมของท่าน' : 'ของฉัน') : '…' }}
       </span>
     </PageHeader>
+
+    <HipUpload v-if="report?.scope === 'organization'" @imported="load" />
+    <HolidayManagement v-if="report?.scope === 'organization'" :year="year" @changed="load" />
 
     <form class="period" @submit.prevent="load">
       <label class="field">

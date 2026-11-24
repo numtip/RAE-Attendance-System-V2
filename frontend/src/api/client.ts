@@ -120,7 +120,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (response.status === 401 && auth) {
       clearSession();
     }
-    throw new ApiError(response.status, payload.error.code, payload.error.message);
+    throw new ApiError(response.status, payload.error.code, payload.error.message, payload.error.details);
   }
   return payload.data;
 }

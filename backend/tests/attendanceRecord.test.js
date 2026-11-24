@@ -83,6 +83,19 @@ test('a weekend is a holiday and a day with no scan is pending, never absent', a
   assert.equal(noScan.code, 'VALIDATION_ERROR', 'a write with no fact at all is refused, not invented');
 });
 
+test('approved weekday holidays affect daily status and the monthly workday denominator', async () => {
+  const { repositories, service } = build();
+  repositories.attendanceHolidays = { async listApproved(start, end) {
+    return ['2026-11-16', '2026-11-21'].filter((date) => date >= start && date <= end).map((date) => ({ date }));
+  } };
+  const result = await service.recordDay({ role: 'EXECUTIVE', employeeUid: adminUid }, staffUid,
+    '2026-11-16', { checkIn: '08:41', checkOut: '16:30' });
+  assert.equal(result.status, 'holiday');
+  assert.equal(result.dayClassification, 'holiday');
+  assert.equal(result.lateMinutes, 0);
+  assert.equal(result.monthly.expectedWorkingDays, 20);
+});
+
 test('an approved leave day is leave with its type', async () => {
   const { service } = build();
   const result = await service.recordDay(

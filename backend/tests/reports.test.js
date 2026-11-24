@@ -111,7 +111,7 @@ test('personal report is self-only and does not invent a missing month', async (
     assert.equal(report.body.data.leaveRows[0].typeLabel, 'ลากิจ');
     assert.equal(report.body.data.exclusions, undefined);
     assert.equal(report.body.data.notices.holidaysApplied, false);
-    assert.match(report.body.data.notices.holidayNote, /ไม่หักวันหยุด/);
+    assert.match(report.body.data.notices.holidayNote, /วันหยุดที่อนุมัติ/);
     assert.equal(report.body.data.notices.absenceNote, undefined, 'no absence notice is presented');
 
     const empty = await getJson(port, '/api/v1/reports/personal?year=2026&month=1', user);
@@ -169,7 +169,7 @@ test('personal export renders Thai identity, Buddhist dates and stored totals', 
     assert.match(xml, /08:35/);
     assert.match(xml, /ลากิจ/);
     assert.doesNotMatch(xml, /ขาด|ยังไม่คำนวณ/, 'owner policy: no absence presentation in exports');
-    assert.match(xml, /ไม่หักวันหยุด/);
+    assert.match(xml, /วันหยุดที่อนุมัติ/);
     assert.doesNotMatch(xml, /ไม่นำเข้า 19 รหัส|กักกัน 5 แถว/);
     assert.doesNotMatch(xml, /2026-03-03/);
 

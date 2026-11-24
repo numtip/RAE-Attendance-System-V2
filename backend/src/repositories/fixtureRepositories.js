@@ -17,6 +17,7 @@ function createFixtureRepositories() {
     employees,
     attendance: new AttendanceRepository(fixtures.attendance, fixtures.monthly),
     attendanceEvents: createAttendanceEventRepository(fixtures.attendanceEvents || []),
+    attendanceHolidays: { async listApproved() { return []; }, async listAll() { return []; } },
     leave: new LeaveRepository(fixtures.leave, fixtures.balances),
     leaveRecords: new LeaveRecordRepository(),
     leaveHr: new LeaveHrRepository({ employees }),

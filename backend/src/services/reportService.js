@@ -14,7 +14,7 @@ const THAI_MONTHS = [
 
 const STATUS_TH = { late: 'สาย', present: 'มาทำงาน', leave: 'ลา' };
 
-const HOLIDAY_NOTE = 'จำนวนวันทำงานยังไม่หักวันหยุดนักขัตฤกษ์';
+const HOLIDAY_NOTE = 'วันหยุดที่อนุมัติใช้กับการคำนวณใหม่ ข้อมูลเดิมอาจยังรอคำนวณใหม่';
 
 function assertPeriod(year, month) {
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {

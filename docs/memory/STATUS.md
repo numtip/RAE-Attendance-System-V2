@@ -1,3 +1,11 @@
+# STATUS — 2026-11-24 work in progress
+
+Branch `feat/hip-holidays-attendance`: HIP self-service, production backup gate, calendar management and
+holiday-aware calculations are implemented and under verification. Synthetic MariaDB tests cover replay,
+backup and recalculation. The 16 December entry remains a candidate pending MJU verification. The existing
+attendance analytics people table does not display employment dates or duration. PR, CI and deployment are
+pending. No production write or deployment was performed in this work.
+
 # STATUS — 2026-11-20: see `docs/STATUS.md` and `docs/reports/DAY_SUMMARY_2026-11-20.md` (`main` `3d38715`, backend `dark-4bd7790`). The page below is the 2026-11-19 closeout.
 
 # STATUS — 2026-11-19 closeout (one page)
