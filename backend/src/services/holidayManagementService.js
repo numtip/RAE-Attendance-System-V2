@@ -75,6 +75,10 @@ function createHolidayManagementService(container, backup = backupBeforeWrite) {
     },
     async recalculateYear(auth, year) {
       await owner(auth);
+      return this.recalculateYearForOperator(year);
+    },
+    // Only the local operator CLI calls this entry point; HTTP callers use recalculateYear above.
+    async recalculateYearForOperator(year) {
       if (!/^\d{4}$/.test(String(year))) throw new HttpError(400, 'VALIDATION_ERROR', 'Year is required');
       if (container.dataSource !== 'mariadb') throw new HttpError(503, 'DB_UNAVAILABLE', 'Recalculation requires MariaDB');
       return repositories.facescanRaw.withImportLock(async () => {
