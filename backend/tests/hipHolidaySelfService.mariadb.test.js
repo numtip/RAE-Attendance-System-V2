@@ -98,9 +98,15 @@ test('owner HIP preview, replay, holiday approval and removal on MariaDB', { ski
   const dry = await runHolidayRecalculate(['2026'], { container, backup });
   assert.equal(dry.written, false);
   assert.ok(dry.approvedDates > 0);
+  const [legacyBefore] = await pool.query("SELECT total_present, total_work_days FROM monthly_summary WHERE employee_uid='22222222-2222-2222-2222-222222222222' AND year=2026 AND month=3");
   const recalculated = await runHolidayRecalculate(['2026', '--confirm'], { container, backup });
   assert.equal(recalculated.written, true);
   assert.equal(recalculated.approvedDates, dry.approvedDates);
+  if (legacyBefore.length) {
+    const [legacyAfter] = await pool.query("SELECT total_present, total_work_days FROM monthly_summary WHERE employee_uid='22222222-2222-2222-2222-222222222222' AND year=2026 AND month=3");
+    assert.deepEqual(legacyAfter, legacyBefore, 'legacy summaries without matching daily evidence are preserved');
+    assert.ok(recalculated.protectedSummaries > 0);
+  }
   await holidays.change(auth, holidayId, {}, true);
   holidayId = null;
   const [[after]] = await pool.query('SELECT status, late_minutes FROM daily_attendance WHERE employee_uid=? AND date=?', [uid, '2026-11-24']);

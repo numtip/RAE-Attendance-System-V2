@@ -12,7 +12,7 @@ async function runHolidayRecalculate(argv, { container, backup } = {}) {
   if (flag !== '--confirm') return { mode: 'dry-run', year, approvedDates: dates.size, written: false };
   const service = createHolidayManagementService(container, backup);
   const result = await service.recalculateYearForOperator(year);
-  return { mode: 'recalculated', year, approvedDates: result.dates, written: true };
+  return { mode: 'recalculated', year, approvedDates: result.dates, protectedSummaries: result.protectedSummaries, written: true };
 }
 
 module.exports = { runHolidayRecalculate };
